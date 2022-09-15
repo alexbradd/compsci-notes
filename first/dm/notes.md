@@ -106,4 +106,92 @@ We can sample in different ways:
    - **Tree**: creates various "steps" by dividing the dataset in a tree manner
 
    Each type of regression fits best a certain type of data.
-2. **Classification**: ...
+2. **Classification**: given the input values, we crate a model that tries to
+   predict the label of other objects:
+   - **Logistic regression**: extension of the linear regression
+   - **K-Nearest neighbour**: assigns a label based on the values of the
+     neighbouring objects
+   - **Decision tree**: extension of the regression decision tree
+3. **Clustering**: we have some points and we try to create groups based on the
+   data:
+   - **K-means**: we look for similarity based on a similarity function. The $k$
+     specifies the number of groups the algorithm will create.
+
+     The accuracy of the method depends heavily on the similarity function.
+4. **Association**: we try to look create associations between various objects
+   (like amazon's "also bought with")
+5. Other:
+   - Outlier analysis: opposite of clustering
+   - Trend and deviation analysis: regression, pattern mining, periodicity
+     analysis and similarity-based analysis
+   - Text mining, Topic modeling, Graph mining, Data streams
+   - Sentiment analysis, Opinion mining...
+   - Other pattern or statistical analyses
+
+### Relevant issues
+
+Mining can generate thousands of patterns, but typically not all of them are
+interesting. A pattern is **interesting if is easily understood by humans, valid
+on new or test data with some degree of certainty, potentially useful, novel or
+validates some hypothesis that a user seeks to confirm**. Objective vs
+subjective interestingness matters:
+
+1. Objective: based on statistic
+2. Subjective: based on the user's beliefs in data
+
+Our methods cannot find all interesting patterns, but most. We will optimize
+algorithms by not wasting time on "uninteresting" patterns.
+
+### Pitfalls
+
+**Correlation does not imply causation!**. Just because a trend is similar
+between two topics, it does not mean that there is a link between the two.
+
+## Data representation
+
+We will usually see tables:
+
+1. Columns are called **attributes, features, independent variables**
+2. The rows are called **instances, observations**
+3. **Concepts, target, dependent variables** are still columns, however are
+   special because they can be learned
+
+Attributes can be: 
+
+1. **Numerical**: numbers, or differences from a reference
+2. **Categorical**: values taken from a set:
+   - **Nominal**: when only equality make sense. The values serve only as a
+     label, they are meaningless.
+   - **Ordinal**: when both equality and inequality are meaningful. They are
+     categorical values with an imposed order on values.
+3. **Binary**: `0` or `1`
+
+Some attributes can have an hierarchical structure (dates, addresses etc.).
+
+#### Missing values
+
+Missing values can be present due to various reasons (faulty questionnaires,
+censor, anonymous data etc.). **Missing values can have a meaning themselves: if
+the absence has a meaning, "missing" is a separate value; if it does not,
+"missing" must be handled in a special way.** Missing values are of different
+types:
+
+1. **Missing not at random**: the distribution of missing values depends on the
+   missing value (e.g. people with high income are less likely to
+   report it).
+
+   They are the most difficult to deal with: they can skew the results of the
+   analysis. They must be handled on case by case basis.
+2. **Missing at random**: distribution of missing values depends on the observed
+   attributes, but not the missing value.
+3. **Missing completely at random**: Distribution of missing values does not
+   depend neither on observed attributes or missing values.
+
+Identifying MNAR and MAR can be difficult and requires domain knowledge.
+
+The best strategy to deal with missing data depends on the application:
+
+1. Deletion: we can delete rows with missing data.
+2. Single imputation: we can use other values to predict missing ones.
+3. Model-based: we create a model to predict missing values
+
