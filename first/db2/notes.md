@@ -59,3 +59,44 @@ The cardinality of the set of serial schedules of $n$ transactions of $k_i$ is
 $N_s = n!$, however the cardinality of the total number of possible schedules
 is $N_d = \frac{(\sum_i^n k_i)!}{\prod_i^n (k_i)!}$. We have that $N_s \ll
 N_d$.
+
+#### View serializability
+
+1. **$r_i(x)$ reads from $w_j(x)$ in a schedule when $w_j(x)$ precedes
+   $r_i(x)$**
+2. **$w_i(x) is a final write if it is the last write on $x$ that occurs in a
+   schedule**
+
+Two schedules are **view-equivalent if they have the same operations, the same
+reads-from relationships, the same final writes**. A schedule is
+**view-serializable if it is view-equivalent to serial one on the same
+transactions**. The class of view-serializable schedules is named VSR.
+
+Determining the view equivalence of a schedule is done in polynomial time.
+However we need to try all possible serial schedules, which are $n!$, thus VSR
+is a **NP-complete problem**. 
+
+#### Conflict serializability
+
+To have a faster algorithm, we need to restrict VSR. Two definitions:
+
+1. **Two operations $o_i$ and $o_j$ ($i \neq j$) are in conflict if they address
+   the same resource and at least one of them is a write**
+2. Two schedules are **conflict equivalent ($\approx_C$) if both contain the
+   same operations and in all the conflicting pairs the transactions occur in the
+   same order**
+
+A schedule is **conflict-serializable if and only if it is conflict-equivalent
+to a serial schedule of the same transactions**. The class of
+conflict-serializable schedules is named CSR. We have that $CSR \subset VSR$, so
+then we have $CSR \implies VSR$.
+
+We can test CSR with the **conflict graph**:
+
+- One **node for each transition $T_i$**
+- One **arc from $T_i$ to $T_j$ if there exists at least one conflict between an
+  operation $o_i$ of $T_i$ and an operation $o_j$ of $T_j$ such that $o_i$
+  precedes $o_j$**.
+
+**A schedule is in CSR if and only if its conflict graph is acyclic**.
+
