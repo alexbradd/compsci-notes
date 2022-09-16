@@ -61,6 +61,24 @@ value.
 
 Scoping is present and is static (not dynamic like in traditional LISP).
 
+`let` binds variables parallely, `let*` does so sequentially. If mutual
+recursion is needed, `letrec` and `letrec*`.
+
+```scheme
+(let ((x 1)
+      (y 2)
+      (let ((x y) ; swaps x and y
+            (y x))
+      ...x)))
+
+; vv this is wrong vv
+(let ((x 1)
+      (y (* 2 x))) ; x is still not defined at this point. We need to use let*
+  ...)
+
+(letrec ((f (lambda () (f))))
+```
+
 #### Static vs dynamic scoping
 
 Consider the following:
@@ -75,3 +93,121 @@ Consider the following:
 
 In scheme (static scoping) the result is `1`. Static scoping is derived from how
 logic (like FOL) works. With dynamic scoping the result would be `2`.
+
+### Homoiconicity
+
+Scheme is **homoiconic: there is no distinction between code and data**. We have
+that code is data, and this is very effective for metaprogramming.
+
+_Note: machine code is itself homoiconic: both instruction and data are bytes,
+the meaning depends on the interpretation_
+
+### Syntactic forms
+
+Not everything is a procedure or value: e.g. `if` is a syntactic form. Unlike
+functions, `if` does not evaluate all its arguments. Similarly, `lambda` also is
+a syntactic form. **We can define new syntax using macros**.
+
+```scheme
+(if <condition> <then> <else>)
+(when <condition> <then>)
+(unless <condition> <else>)
+```
+
+Syntactic forms are needed beacuse we cannot create a language using only
+call-by-value semantics: and `if(cond, then, else)` can be defined and wrapping
+each branch in lambdas, but then how can we define lambdas?
+
+### Quoting
+
+**We can prevent evaluation by "quoting" an expression**. `quote` prevents
+evaluation, `quasiquote` and `unquote` are used for partial evaluation:
+
+1. `quasiquote` blocks external evaluation
+2. `unqoute` forces evaluation
+
+```scheme
+(quote <expr>)
+('<expr>) ; shorthand for quote
+`(1 ,(+ 1 1) 3) ; shorthand for quasiquote-unqoute
+                ; evaluates to (1 2 3)
+```
+
+### Eval
+
+`eval` is function that takes a code and interprets it. It is **effectively the 
+opposite of `quote`**. _Note: `eval` is considered dangerous, never use it_
+
+```scheme
+(eval '(+ 1 2 3)) ; outputs 6
+```
+
+### Begin
+
+If we are writing procedural code, we can use the `begin` construct. It
+evaluates vevery operation in order and the return value is the last one of the
+block
+
+```scheme
+(begin
+  (op1 ...)
+  (op2 ...)
+  ...
+  (opn ...))
+```
+
+### Define
+
+`define` cretes top-leve bindings. Defining a procedure is done via `define`
+
+```scheme
+(define <name> <what>)
+
+(define x 12)
+(define cube (lambda (x) (* x x x))) ; dot use this
+(define (cube x) (* x x x)) ; use this for procedures
+```
+
+We can also use `define` in procedures instead of `let`. For assignment we can
+use `set!` (_Note: functions with side-effects are by convention suffixed with `!`_).
+
+### Lists
+
+Lists are the center of the language (LISt Processor). Lists are **stored as
+linked lists**. **Each node of the chain is pair called a _cons_ node. The first
+element of the pair is data, and called `car` (Content of the Address Register),
+while the second `cdr` (Content of the Data Register)**.
+
+A **pair** is expressed in scheme as `(x . y)`. We can thus write a list as:
+
+```scheme
+(1 . (2 . (3 . ())))
+() ; the empty list, also called nil
+```
+
+**`car` and `cdr` functions are used as accessors. `member` checks element
+presence and returns the `cdr` of the element**.
+
+Defining data using **`'`, we are creating literal constants**. **To create a new
+pair/lists/arrays we use constructors**: `cons` for pairs, `list` for lists
+and `vector` for vectors.
+
+**Procedure bodies and parameter lists are plain lists. This is used to implement
+procedures with a variable number of arguments**.
+
+```scheme
+(define (f x y) (...)) ; we are defining a function with 2 parameters
+(define (f x . y) (...)) ; we are defining a function with a variable number of args
+;          ~~~~~ -> we have the first argument boud to x and all the othes to y
+
+;        ~~~~~ -> we define a function x with all variables bounded to y
+(define (x . y) y)
+(x 1 2 3) ; -> '(1 2 3)
+```
+
+`apply` can be used to apply a procedure to a list of elements.
+
+```scheme
+(apply + '(1 2 3 4)) ; => 10
+```
+
