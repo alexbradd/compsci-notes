@@ -33,7 +33,7 @@ $$
 
 ### Data science
 
-It can be brokem into 4 essential parts:
+It can be broken into 4 essential parts:
 
 1. Mining data
 2. Information analysis
@@ -168,7 +168,7 @@ Attributes can be:
 
 Some attributes can have an hierarchical structure (dates, addresses etc.).
 
-#### Missing values
+### Missing values
 
 Missing values can be present due to various reasons (faulty questionnaires,
 censor, anonymous data etc.). **Missing values can have a meaning themselves: if
@@ -191,7 +191,231 @@ Identifying MNAR and MAR can be difficult and requires domain knowledge.
 
 The best strategy to deal with missing data depends on the application:
 
-1. Deletion: we can delete rows with missing data.
-2. Single imputation: we can use other values to predict missing ones.
-3. Model-based: we create a model to predict missing values
+1. **Deletion**: we can delete rows with missing data.
+
+   - Pros: simplest method
+   - Cons: we can introduce bias or hide relationships
+2. **Single imputation** (_imputation = guessing_): we can use other values to
+   predict missing ones. Methods: mean/mode, dummy variable, single regression.
+3. **Model-based imputation**: we create a model to predict missing values. Methods:
+   maximum likelihood, multiple imputation.
+
+We can convert the missing values into a new value and assign meaning to it.
+However this increases the difficulty of the mining process. We can use other
+data mining methods to imputate missing values. We can also use a "Do Not
+Impute" policy: simply use default policy of the mining method for handling the
+missing values.
+
+#### List-wise deletion
+
+**We only analyze cases with available data on each variable**. This approach is the
+simplest, however we reduce the sample size and we remove information. **Estimates
+can be biased if data is not MCAR**.
+
+#### Pair-wise deletion
+
+**We delete cases with missing values that affect only the variable of interest**.
+Doing as such means we keep as many cases as possible for each analysis and we
+use as much info as possible. **Comparison of results, however, is more difficult
+because samples are different each time**.
+
+### Inaccurate values
+
+Data is not collected for the only purpose of mining. Errors and omissions don't
+affect the original purpose of data. We need to identify outliers and check for
+consistency. Errors in data may be deliberate.
+
+### Geometric view
+
+When data contains only numerical values, every row can be viewed as a point in
+$d$-dimensional space. Every column is a point in the space.
+
+Another view is the probabilistic view: every instance is extracted from a
+probability distribution.
+
+### From Categorical attributes to numerical
+
+We care about the type of the data because it influences the work we can do on
+data. Some algorithms and functions work only on specific data types. We can
+also check better for missing/invalid values.
+
+**To transform data from categorical to numerical we use encoders. We can
+transform numerical data into ordinal using discretization**.
+
+#### Encoders (Scikit-Learn encoders)
+
+1. **LabelEncoder**: Encodes target labels with values between 0 an $n-1$.
+
+   This replacement can influence the process in unexpected ways: if we map two
+   values to 1 and 2 we are implying that the first value is "smaller" than the
+   second. We would need to redo the analysis and change the mapping to check
+   that our encoding does not influence the analysis.
+2. **OneHotEncoder**: Performs a one-hot encoding of features: we map each
+   category to one boolean variable.
+
+   The good part is that we use the same values with all the labels. However we
+   can generate an enormous amount of variables if we have many categories.
+3. **OrdinalEncoder**: Performs an ordinal (integer) encoding of the categorical
+   features.
+
+#### Categorical embeddings
+
+A new approach that surfaced recently is applying deep learning to map
+categorical variables into Euclidean spaces. Similar values are mapped close to
+each other in the embedding space, revealing the intrinsic properties of the
+categorical variables.
+
+### Data formats
+
+Most commercial tools have their own proprietary formats. Most tools import
+excel an CSV files. There have been attempts to create a common format for data
+like ARFF.
+
+DSPL is an open format by Google. It consists in adding XML metadata to a CSV
+file.
+
+### Model representation
+
+PMML is an XML markup language to provide  a way for applications to define
+models related to predictive analytics and data mining. The goal is to share
+models between applications.
+
+## Data exploration
+
+Preliminary exploration of the data is aimed at identifying their most relevant
+characteristics. This helps in selecting the right tool for preprocessing and
+mining. We also exploit our brain's ability to analyze patterns non captured by
+automatic tools.
+
+### Exploration Data Analysis
+
+It is _an approach of analyzing data to summarize their main characteristics
+without using a statistical model to having formulated a priori hypothesis_. It
+mainly focuses on:
+
+- Visualization
+- Clustering and anomaly detection
+
+### Summary statistics
+
+Summary statistics are number that summarize properties of the data. Most
+summaries can be calculated in a single pass.
+
+1. **Frequency**: the percentage of time the values occurs in the dataset
+2. **Mode**: the most frequent value
+3. **Mean**: the most common measure for the location of a set of points. Very
+   sensible to outliers.
+
+   $$
+    mean(x) = \bar{x} = \frac{1}{m}\sum_{i=1}^m x_i
+   $$
+
+4. **Median**:
+
+   $$
+   median(x) = \begin{cases}
+     x_{(r+1)} &\quad \text{if m is odd} \\
+     0.5(x_r + x_{r+1}) &\quad \text{if m is even}
+   \end{cases}
+   $$
+
+5. **Percentile**: the p-th percentile is a value $x_p$ such that $p\%$ of the
+   observed values of $x$ are less  than $x_p$
+6. **Trimean**: weighted mean of the first, second and third quartile
+
+   $$
+     TM = \frac{x_{25} + 2x_{50} + x_{75}}{4}
+   $$
+
+7. **Truncated mean**: A mean that discards data above and below certain percentiles (e.g.
+   5th and 95th)
+8. **Interquantile mean**: A mean that truncates the data at the 25th and 75th percentiles.
+   If the data is sorted, we have:
+
+   $$
+   X_{IQM} = \frac{2}{n}\sum_{i=0.25n+1}^{0.75n} x_i
+   $$
+
+9. **Range**: the differences between max and min
+10. **Variance**: the most common measure for spread. Very sensitive to
+    outliers.
+
+    $$
+    variance(x) = s^2_x = \frac{1}{m - 1}\sum_{i=1}^m (x_i - \bar{x})^2
+    $$
+
+    Alternatives to variance that are more resilient to outliers:
+
+    $$
+    \begin{gathered}
+      AAD(x) = \frac{1}{m}\sum_{i=1}^m |x_i - \bar{x}| \\
+      MAD(x) = median(\{|x_1 - \bar{x}|, \ldots, |x_m - \bar{x}|\}) \\
+      \text{interquantile range}(x) = x_{75\%} - x_{25\%}
+    \end{gathered}
+    $$
+
+### Correlation analysis
+
+Given two attributes, we measure how strongly one attribute implies the other.
+We mainly look for linear relationships between variables. They can be positive
+or negative. Linear correlation is symmetric.
+
+Given two attributes we need to measure how strongly one attribute implies the
+other, based on the available data.
+
+- Numerical variables: Pearson's product moment coefficient
+- Ordinal variables: Spearman's rank correlation coefficient
+- Categorical variables: $\chi^2$ statistic test
+- Binary variables: Point-biserial correlation
+
+**Correlation does not mean causation**:
+
+1. Correlation does not imply causation
+2. Causality has direction, correlation typically doesn't
+3. Confounding variables can cause attributes to be correlated
+
+### Outliers
+
+Outliers are data objects that do not comply with the general behaviours or model
+of the data. Most analysis methods consider outliers as noise/exceptions.
+Outliers may be selected using:
+
+- **Manual inspection** and domain knowledge
+- **Statistical tests** that assume a distribution or probability model for the data
+- **Distance measures** where objects that are a substantial distance from any other
+  cluster
+- **Deviation based methods** identify outliers by examining differences in the main
+  characteristics of objects in a group
+
+Outliers are frequently filtered out, but **can be the focus of the analysis**.
+
+### Normalization
+
+We might need to normalize attributes that have a very different scales. 
+
+Range normalization converts all values to the range $[0;1]$:
+
+$$
+x'_i = \frac{x_i-min_i x_i}{max_i x_i - min_i x_i}
+$$
+
+Standard score normalization forces variables to have mean of 0 and standard
+deviation of 1
+
+$$
+x'_i = \frac{x_i - \mu}{\sigma}
+$$
+
+### Visualization
+
+Visualization is the conversion of data into a visual or tabular format so that
+characteristics of the data and the relationships among data items or attributes
+can be analyzed or reported.
+
+It is one of the most powerful and appealing techniques for data exploration:
+
+1. Pattern-matching and visual brain
+2. Can detect general patterns and trends
+3. Can detect outliers and unusual patterns
+
 
