@@ -108,7 +108,7 @@ regexp.
 
 There may exist several derivations that generate the same string, which however
 are substantially equivalent and vary only in the order of choices. **A regexp
-$f$ is ambiguous if the corresponding marked regexp $f_#$ generates two marked
+$f$ is ambiguous if the corresponding marked regexp $f_\#$ generates two marked
 strings $x$ and $y$ such that, if the indices were removed, the unmarked strings
 would be identical**.
 
@@ -125,7 +125,9 @@ difference) we obtain the extended regular expressions**.
 
 Regular languages are **closed** to: **concatenation, union and star**. This
 means that regular languages are also **closed with regards to the derived
-operators** i.e. cross, repetition, optionality, etc.
+operators** i.e. cross, repetition, optionality, etc. Regular languages are also
+closed w.r.t the set operations (intersection, complement and difference) and
+mirroring.
 
 Another property is that **REG is the smallest set such that**:
 
@@ -163,4 +165,47 @@ instance a list).
 
 **Regexp for a list with separators ad start/end markers: $ie(se)^\star f$ (or
 alternatively $i[e(se)^\star ]f$**.
+
+## Context free grammars
+
+A grammar is **defined by 4 entities**:
+
+1. $V$ is the **non-terminal alphabet**, a set of non-terminal symbols
+2. $\Sigma$ is **the terminal alphabet**, a set of characters that constitute the
+   phrases
+3. $P$ a set of **syntactic rules**
+4. $S\in V$ a **particular non-terminal called axiom**
+
+To avoid confusion, metasymbols like $\to,|,\cup,\epsilon$ must not appear among
+terminal and non terminal symbols. **Moreover the terminal and non-terminal
+alphabets bust be disjointed**.
+
+Grammars have been already discussed during **API**.
+
+A grammar should be **clean: every non-terminal is defined and that each of them
+actually contributes to generating the string**. A grammar is in **reduced form
+if**:
+
+1. **Every non terminal is reachable by the axiom**, i.e there exists a derivation
+   as follows: $S \overset{\star}{\implies} \alpha A\beta$
+2. **Every non terminal $A$ generates a non empty set of strings** $L_A(G)
+   \neq\emptyset$
+
+   A grammar can be **reduced by eliminating all undefined or unreachable non-terminal
+   symbols**. An **algorithm** exists for cleaning up grammars:
+
+1. We construct the set DEF of defined non-terms. First we define 
+   $DEF := \{A|(A\to u)\in P, u\in \Sigma^\star\}$. The we apply the following
+   transformation until it converges:
+   $DEF := DEF \cup \{B|(B\to D_1 D_2 \ldots D_n)\in P\}$
+2. The identification of reachable non-terminals can be reduced to finding a
+   path in the graph associated with the binary relation $produce$:
+
+   $$
+   \begin{gathered}
+     A\overset{produce}{\to} B \iff \\
+     A \to \alpha B\beta \quad A\neq B \quad \alpha,\beta \text{ strings}
+   \end{gathered}
+   $$
+
 
