@@ -211,3 +211,116 @@ procedures with a variable number of arguments**.
 (apply + '(1 2 3 4)) ; => 10
 ```
 
+### Loops
+
+One non-idimoatic way of looping is using a named `let`:
+
+```scheme
+(let ((x 0))
+  (let label ()
+    (when (< x 10)
+          (display x)
+          (newline)
+          (set! x (+ x 1))
+          (label)))) ; basically a goto label
+```
+
+We can make things better by better utilizing the named `let`:
+
+```scheme
+(let label ((x 0))
+  (when (< x 10)
+        (display x)
+        (newline)
+        (label (+ x 1)))) ; applies the return value of the last expression to
+                          ; the bindings
+```
+
+Every scheme implementation is required to be tail-recursive.
+
+```scheme
+(define (factorial n)
+  (define (fact-rec x acc)
+    (if (= x 0)
+      acc
+      (fact-rec (- x 1) (* x acc))))
+  (fact-rec x 1))
+```
+
+For each has a peculiar syntax:
+
+```scheme
+(for-each 
+  (lambda (x)
+    (display x)
+    (newline))
+  '(1 2 3 4))
+```
+
+### Equality
+
+A predicate that returns a boolean by convention ends with `?` (e.g `null?`).
+For testing equality between objects we have:
+
+- `=`: used only for numbers
+- `eq?`: tests if two objects are the same object
+- `eqv?`: like `eq?` but defined for numbers
+- `equal?`: true iff the unfolding of its arguments into regular trees are equal
+  as ordered trees.
+
+The longer the name, the more demanding the evaluation of the predicate.
+
+### Case and cond
+
+`case` is like a switch, while `cond` is a generalized if (if-elif chain). The
+predicate used by `case` is `eqv?`
+
+```scheme
+(case (car '(c d))
+  ((a e i o u) 'vowel)
+  ((w y) 'semivowel)
+  (else 'consonant))
+(cond ((> 3 3) 'greater)
+       (< 3 3) 'equal)
+       (else 'equal))
+```
+
+### Storage model
+
+The language is garbage collected. Variables and objects simply refer to
+locations on the heap. Constants reside in read-only memory, therefore literal
+constans are immutable. Mutation, if possible, is achieved using `!` functions.
+
+In racket, lists are immutable (so no `set-car!` or `set-cdr!`), unlike in LISP
+or other dialects of scheme. There is, however, a mutable pair datatype with
+`mcons`, `set-mcar!` end `set-mcdr!`.
+
+### Evaluation strategy
+
+Scheme uses _call by object sharing_, like java. Objects are allocated on the
+heap and references to them are passed by values. It is also called _called by
+value_, because objects are evaluated before the call and such values are copied
+into the activation record. The copied values is not the object itself, but a
+reference to it. This means that if the object is mutable, functions can exhibit
+side effects.
+
+### Structs
+
+In scheme we can create structs (like in C). Constructor, predicate for checking
+type and accessors (for mutable fields also setters) are created automatically
+on delcaration.
+
+```scheme
+(struct being (
+  name            ; by default fields are immutable
+  (age #:mutable) ; if we want to make them mutable we have to specify
+  ))
+
+(define p (being "pippo" 29)) ; `being` is automatically created
+(being? p) ; `being?` is automatically created
+(being-name p)
+(being-age p)
+(being-show p) ; like a print
+(set-being-age! p 12) 
+```
+
