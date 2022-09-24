@@ -45,8 +45,15 @@ world.
 The overlap between the world and the machine are the requirements we need to
 describe:
 
-- Goals are prescriptive assertions formulated in terms of world phenomena
-- Domain properties/assumptions are descriptive assertions assumed to hold in
-  the world
-- Requirements are prescriptive assertion formulated in terms of shared
+- Goals (`G`) are prescriptive assertions formulated in terms of world phenomena
+- Domain (`D`) properties/assumptions are descriptive assertions assumed to hold
+  in the world
+- Requirements (`R`) are prescriptive assertion formulated in terms of shared
   phenomena.
+
+  The requirements `R` are complete if:
+
+  1. `R` ensures staisfaction of the goals `G` in the context of the domain
+     properties `D` ($R \land D \models G$)
+  2. `G` adequately captures all the stakeholders' needs
+  3. `D` represents valid properties/assumptions about the world
