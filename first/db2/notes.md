@@ -142,8 +142,8 @@ to the resources according to the conflict table:
 
 Each r-lock has a counter `n` that counts the number of concurrent readers.
 
-**When access to a resource is not granted, the transaction if put on wait until
-the resource unlocks**.
+**When access to a resource is not granted, the transaction is put in a waiting
+queue until the resource unlocks**.
 
 Locks are implemented with **lock tables**, which are basically **hash tables**
 indexed by the hash of the resource locked. **Each locked item has a linked list
@@ -174,5 +174,126 @@ In commercial systems, different isolation levels are allowed. In SQL99 we have:
    and phantom updates)
 4. `SERIALIZABLE`: avoids all anomalies (2PL with predicate locks)
 
-Locking introduces the problem of deadlocks. Thus the `SERIALIzaBLE` level is
-used sparingly.
+Serializable transactions don't execute serially! The requirement is that the
+end result should be the same as if they executed serially. Locking introduces 
+synchronization problems:
+
+1. **Deadlocks**: two or more transactions in endless mutual wait
+2. **Starvation**: a single transaction in endless wait
+
+Thus the `SERIALIZABLE` level is used sparingly.
+
+##### Deadlocks
+
+Occurs because concurrent transactions hold and in turn request resources held
+by other transactions. To analyze deadlocks we can draw:
+
+1. **Lock graphs**: specifies who holds what (nodes are resources or transactions
+   and arcs are lock assignments/requests)
+2. **Wait-for graph**: a simplification of lock graphs in which nodes are
+   transactions and arcs are _waits for_ relationships.
+
+A deadlock is represented by a cycle in the wait-for graph of transactions.
+
+We have various ways of resolving deadlocks:
+
+1. **Timeout**: we kill transactions after a long wait
+
+   - We cannot determine if a transaction is simply waiting for along time or is
+     blocked
+   - Choosing a proper timeout is difficult: too long is useless in case of
+     deadlocks, too short leads to un-required kills. Timeout is usually
+     variable and system decided.
+2. **Deadlock prevention**: transactions killed when they could be in a
+   deadlock. Preventions worked using heuristics
+3. **Deadlock detection**: Transactions killed when they are in a deadlock.
+   Detection works by analyzing the wait-for graph
+
+###### Deadlock prevention
+
+We have two methods:
+
+1. **Resource-based prevention**: restricts lock requests
+   - Transactions requests resources all at once and only once
+   - Resources are globally sorted and must be requested _in global order_
+   - It is not easy for transactions to anticipate all requests
+2. **Transaction-based prevention**: restrictions based on the transaction's ID
+   - We assign IDs sequentially, making it possible to calculate a transaction's
+     age
+   - We can prevent older transactions waiting for younger ones to end:
+     - **Non-preemptive (wait-die)**: if requesting transaction (`RT`) `T1` is
+       older than conflicting transaction (`CT`) `T2`, then `T1` waits,
+       otherwise it dies.
+     - **Preemptive (wound-wait)**: if `RT` `T1` is older thhan `CT` `T2`, then
+       `T1` is wounded, otherwise `T1` waits.
+   - We can preemptively or non-preemptively choose the transaction to kill
+
+###### Deadlock detection
+
+Requires  an algorithm to detect cycles in the wait-for graph. It must work with
+distributed resources. We will use **Obermack's algorithm**.
+
+**Assumptions**:
+
+1. Transactions execute on a single main node
+2. Transactions may be decomposed in _sub-transactions_ running on other nodes
+3. When a transaction spawns a sub-transaction, it suspends work until the
+   latter completes (Synchronicity)
+4. We have two wait-for relationships:
+   - $T_i$ waits for $T_j$ on the same node because $T_i$ needs data locked by
+     $T_j$,
+   - A sub transaction of $T_1$ waits for another sub-transaction of $T_i$
+     running on a different node
+
+**Obermarck's algorithm works locally** and needs to exchange minimal amount of data
+with other nodes. It does not need to keep the whole global view. **Each node has
+a projection of the global dependencies**. Nodes exchange information and update
+their local view. **Communication is optimized to avoid that multiple nodes detect
+the same deadlock**.
+
+A node $A$ sends its local info to $B$ only if: $A$ contains a transaction $T_1$
+that is waited for from another remote transaction and waits for a transaction
+$T_j$ active on $B$ and $i > j$. **Mnemonically: $A$ sends info if a distributed
+transaction listed at $A$ waits for a distributed transaction listed at $B$ with
+smaller index**.
+
+Periodically:
+
+1. **Get the graph information from "previous nodes"**
+2. **Update the local graph by merging the received information**
+3. **Check the existence of cycles** among transactions denoting potential
+   deadlocks. **If one is found, select one of the transactions and kill it**.
+4. **Send updated graph info to the "next nodes"**
+
+There are **some arbitrary choices in the algorithm**: sending messages if $i < j$ or
+$i > j$, sending messages to the following or preceding node. **Therefore there
+are 4 variants of the algorithm. They are all equivalent**.
+
+##### Limiting deadlocks
+
+**The deadlock probability is much less than that of a conflict**. Considering a
+file with $n$ records and two transactions doing two accesses to their records
+the conflict is $\mathcal{O}(1/n)$ while deadlocks are $\mathcal{O}(1/n^2)$. 
+
+**The probability of a deadlock is linear in the number of transactions, but
+quadratic in record size, thus shorter transactions are healthier**.
+
+We have techniques that can reduce the frequency of deadlocks.
+
+###### Update locks
+
+The **most frequent type** of deadlock occurs when **2 concurrent transactions start
+by reading the same resource and then deciding to write and try to upgrade the
+locks. Update locks are another type of lock that grants a read and a
+successive write**. They are very easy to implement and mitigate the most common
+collision: `r1(x) - r2(x) - w1(x) - w2(x)`.
+
+| Request   | Free | Shared | Update | Exclusive |
+|:---------:|:----:|:------:|:------:|:---------:|
+| Shared    | OK   | OK     | OK     | KO        |
+| Update    | OK   | OK     | KO     | KO        |
+| Exclusive | OK   | KO     | KO     | KO        |
+
+Update locks are requested by using `SELECT FOR UPDATE` SQL statement.
+
+
