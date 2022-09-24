@@ -418,4 +418,64 @@ It is one of the most powerful and appealing techniques for data exploration:
 2. Can detect general patterns and trends
 3. Can detect outliers and unusual patterns
 
+### Projecting data into a lower dimensional space
 
+When we use high-dimensional data, if we do not want to use multi-dimensional
+representations like spider plots, we need to reduce the dimensionality of the
+data.
+
+1. We can find a linear relation between variables and project them (PCA)
+2. Otherwise we need to find non-linear projections (t-SNE)
+
+#### Principal Component Analysis (PCA)
+
+Typically applied to reduce the number of dimensions of data. The goal is to
+find a projection that captures the largest amount of variation in data. 
+
+Given $N$ data vectors from n-dimensions, we find $k<n$ orthogonal vectors (the
+principal components) that can be used to represent data.
+
+Steps:
+
+1. Normalize
+2. Compute $k$ orthonormal vectors
+3. Each input data point ca be written as a linear combination of the $k$
+   component principal vectors.
+
+The principal components are sorted in order of decreasing "significance", or
+strength. Data size can be reduced by eliminating the weak components, i.e those
+with low variance. Using the strongest principal vectors it is possible to
+reconstruct a good approximation of the original data.
+
+#### t Distributed Stochastic Neighbour Embedding
+
+Data in high dimensions never fills the enter space and always lives within som
+lower dimensional manifold. t-SNE is used to map highdimensional data ino 2 or 3
+dimensions. 
+
+Points from the original space are mapped onto "map points" in 2D/3D. Unlike
+PCA, the mapped points are not a linear combination of original attribute
+values, and the axes of mapped space are not linear combination of original
+axes. t-SNE tries to preserve local distanecs to nearby points, unlike PCA with
+tries to preserve global distances between points.
+
+Steps:
+
+1. Define a probability distribution over pairs of high-dimensional data points
+   so that:
+   - Similar data points have a high probability of being picked.
+   - Dissimilar points have an extremely small probability of being picked.
+2. Define a similar distribution over the points in the map space:
+   - Minimize Kullback-Leibler divergence between the two distributions with
+     respect to the location of the map points.
+   - To minimize the score, it applies gradient descent
+
+Different initializations will lead to different results. Should be applied with
+a reasonable number of dimensions.
+
+#### Force-directed layout
+
+The idea is to map complicated into 2D is not limited to high dimensional data.
+We can map any graph of data points into 2D provided we have some dissimilarity
+value between pairs of nodes. It works by moving points around in the mapped 2D
+space until convergence.
