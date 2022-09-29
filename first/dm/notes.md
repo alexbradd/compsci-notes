@@ -607,7 +607,7 @@ means we can adapt the apriori logic to confidence pruning.
 
 ### Rule assessment measures
 
-If minsup is set **too high**, we cold **miss itemsets containing rare items**. If it
+If minsup is set **too high**, we could **miss itemsets containing rare items**. If it
 set **too low**, it is **computationally expensive** and the number of sets is very
 large. **A single minsup may not be effective**.
 
@@ -622,3 +622,104 @@ $$
 Lift is a **measure of the deviation from stochastic independence**; it measures
 the surprise of the rule: a lift close to 1 means that the support of a rule is
 expected considering the supports of its components.
+
+### Summarizing itemsets
+
+**An itemset is called maximal if it has no frequent supersets**. The set of all
+maximal frequent itemsets is given as 
+$M = \{X|X\in F \land \not\exists X\subseteq Y: Y \in F\}$. $M$ is a **condensed
+representation** of the set of all frequent itemsets, because **we can determine
+whether any itemset is frequent or not by using $M$**. However, we cannot use $M$
+to determine $sup(X)$, **we can only use it to have a lower-bound**.
+
+An **itemset is closed if all supersets of $X$ have strictly less support**. The set
+of all closed frequent itemsets $C$ is a **condensed representation, as we can
+determine whether an itemset $X$ is frequent, as well as the exact support of
+$X$**.
+
+A frequent itemset $X$ is a **minimal generator if it has no subsets with the same
+support**. Thus, all subsets of $X$ have strictly higher support.
+
+### Searching for small communities
+
+Communities involve many people talking about the same things. We can use this
+to define "topics". More formally: **we enumerate the complete bipartite subgraphs
+$K_{s,t}$, which have $s$ nodes on the left and $t$ nodes on the right**. The left
+nodes link to the same node on the right, forming a fully connected bipartite
+graph. **Searching for such graph can be viewed as a frequent itemset mining
+problem**. 
+
+We can view **each node $i$** as a **set $S_i$ of nodes it points to**. $K_{s,t}$ would
+be a **set $Y$ of size $t$ that occurs in $s$ sets $S_i$**. Looking for $K_{s,t}$ is
+equivalent to settings the frequency threshold to $s4 and look at layer $t$
+
+### Mining sequences
+
+Given a database $D$ containing $N$ sequences, **the support of a sequence $r$ in
+$D$ is defined as the total number of sequences in $D$ that contains $r$**:
+
+$$
+sup(r) = |\{s_i \in D | r \subseteq s_i \}|
+$$
+
+The **relative support of $r$ is the percentage of sequences that contain $r$**:
+$rsup(r) = sup(r) / N$.
+
+Given a minsup threshold, we say that **$r$ is frequent i $sup(r) \geq
+minsup$**.
+
+In sequence mining **we need to consider all possible permutations**, non just
+the combinations.
+
+We can **search the sequence prefix tree using a level-wise (breadth-first)
+search**. Given the set of frequent sequences at level $k$, **the algorithm
+generates the candidate for level $k+1$ and compute the support of each
+candidate** and prune the not frequent ones. **For each sequence $s_i$ in D, we
+check if a candidate $r$ is a subsequence of $s$, if it is the support of $r$ is
+incremented**. Once the frequent sequences at level $k$ are computed the $k+1$
+candidates are generated. **For each leaf $r_a$, the sequence is extended with the
+last symbol of any other leaf $r_b$ that shares the same prefix**:
+$r_{ab} = r_a + r_b[k]$. If $r_{ab}$ is infrequent, we prune it.
+
+### Sequential pattern mining
+
+**Association rules do not consider the order of transactions, however, in many
+applications the ordering is significant**.
+
+A sequence is a ordered list of itemsets. We denote a sequence by $\langle a_1,
+\ldots a_n \rangle$. An element of a sequence is denoted by $\{x_1, \ldots,
+x_n\}$. We assume without loss of generality that items in an element of a
+sequence are in lexicographic order.
+
+**We need to find all the sequences that have a user-specified minimum support**.
+Each such sequence is called a frequent sequences, or sequential pattern. **The
+support for a sequences is the fraction of total data sequences in the input
+that contains this sequence**.
+
+Given a database $D$ of $N$ sequences and a sequence $r$, we define the **support
+count $r$** as:
+
+$$
+sup(r) = |\{s_i | r \text{ is a subsequence of } s_i\}|
+$$
+
+And the support (or relative support) $rsup(r) = sup(r) / N$
+
+The **apriori principle still applies**: if sequence is not frequent, then every
+supersequence is not frequent.
+
+### Association rules for classification
+
+Association rule mining assumes that the data consists of a set of transaction.
+Thus the typical tabular representation of data used in classification must be
+mapped into such a format. **Association rule mining is then applied to the new
+dataset and the search is focused on association rules in which the tail
+identifies a class label**. The rules are pruned using the pessimistic
+error-based methods and finally sorted to build the final classifier.
+
+## Clustering
+
+Clustering algorithms **group a collection of data points according to some
+distance measure**. Data points in the same cluster should have small distance
+from one another, while points in different clusters should be at a large
+distance from each other.
