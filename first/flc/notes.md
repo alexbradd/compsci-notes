@@ -191,8 +191,8 @@ if**:
 2. **Every non terminal $A$ generates a non empty set of strings** $L_A(G)
    \neq\emptyset$
 
-   A grammar can be **reduced by eliminating all undefined or unreachable non-terminal
-   symbols**. An **algorithm** exists for cleaning up grammars:
+   A grammar can be **reduced by eliminating all undefined or unreachable
+   non-terminal symbols**. An **algorithm** exists for cleaning up grammars:
 
 1. We construct the set DEF of defined non-terms. First we define 
    $DEF := \{A|(A\to u)\in P, u\in \Sigma^\star\}$. The we apply the following
@@ -208,4 +208,34 @@ if**:
    \end{gathered}
    $$
 
+A third property is often required for a grammar to be in reduced form: **the
+grammar may not have circular derivations**.
 
+**In order to generate infinitely many strings, it is necessary and sufficient to
+have recursive grammars**. A grammar is recursion free if and only if the graph
+of the binary relation produced is acyclic.
+
+A **syntax tree is a directed acyclic graph such that for every pair of nodes
+there exists one and only one path that connects them**. It represents
+graphically the derivation process. It assigns a _root-node-leaf_ relation. The
+sequence of leaves, from left to right, are called frontier. The degree of a
+node is the length of the rule. The root of the tree is the axiom, while the
+frontier is the final generated phrase.
+
+**Weak equivalence**: two grammars $G$ and $G'$ are weakly equivalent if and
+only if they generate the same language.
+
+**Strong equivalence** (or structural equivalence): two grammars $G$ and $G'$
+are strongly equivalent if and only if they generate the same language and if
+$G$ and $G'$ assign to every phrase syntactic trees that can be considered
+structurally equivalent.
+
+Strong equivalence implies weak equivalence. Strong equivalence is decidable,
+while weak is undecidable.
+
+The basic regular operations (union, concat and star) applied to free languages
+still yield free languages.
+
+**Syntactic ambiguity**: a phrase $x$ of the language defined by $G$ is said to
+be ambiguous if it admits two or more different syntactic trees. A grammar $G$ is
+said to be ambiguous if it generates an ambiguous string.
