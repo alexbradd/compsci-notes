@@ -324,3 +324,80 @@ on delcaration.
 (set-being-age! p 12) 
 ```
 
+Structs can inherit from other structs:
+
+```scheme
+(struct may-being being
+  ((alive? #:mutable)))
+(define (kill! x)
+  (if (may-being? x)
+    (set-may-being-alive?! x #f)
+    (error "not a may-being" x)))
+```
+
+The main difference between the struct system and OOP is the difference between
+procedures and methods: **Procedures are external, so we cannot
+redefine/overrride them**.
+
+### Closures
+
+A closure is a **function together with a referencing environment for the
+non-local variables of that function**. They are objects allocated on the heap
+and can be seen as the basic unit of object orientation (data + behaviour).
+
+#### Classic higher-order functions
+
+These operations are supported on most languages: `map`, `filter` and folds.
+
+Folds are more complicated. We have two of them: `foldr` and `foldl` (aka
+`reduce` in python). Given $\circ$ a binary operation:
+
+$$
+\begin{gathered}
+  fold_{left}(\circ, i, (e_1, \ldots, e_n)) &= (e_n \circ (e_{n-1) \circ \ldots ((e_1 \circ i))) \\
+  fold_{right}(\circ, i, (e_1, \ldots, e_n)) &= (e_1 \circ (e_2 \circ \ldots (e_n \circ i)))
+\end{gathered}
+$$
+
+The **left fold is more efficient, since it is easy to write as tail-recursion.
+The right fold can be written to be tail recursive, however it can be
+complicated and the results are not better**: the non-tail recursion uses the
+stack, while the tail-recursive one uses the heap since it needs to allocate a
+closure for each invocation.
+
+### Macros
+
+Macros are defined through `define-syntax` and `syntax-rules`. `syntax-rules`
+are pairs of `(pattern expansion)`: `pattern` is matched by the compiler and
+expanded into `expansion`.
+
+```scheme
+(define-syntax while
+  (syntax-rules ()          ; other keywords
+    ((_ condition b1 ...)   ; _ is a shorthand for the keyword
+                            ; ... is a keyword for matching multiple statements
+     (let loop ()           ; expansion of p
+        (when condition
+          (begin
+            b1 ...
+            (loop)))))))
+; Usage
+(while (condition) 
+  (intr1)
+  (istr2))
+```
+
+
+**Macros are expanded recursively**, so we can have looping macros. Therefore the
+macro system is turing complete.
+
+```scheme
+(define-syntax my-let*
+  (syntax-rules ()
+    ((_ ((var val)) istr ...)
+      ((lambda (var) istr ...) val))
+    ((_ ((var val) . rest) istr ...)
+      ((lambda (var)
+        (my-let* rest istr ...)) val))))
+```
+
