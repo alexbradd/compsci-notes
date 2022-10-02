@@ -328,4 +328,197 @@ are released starting from the locked resource going up the hierarchy**.
 - To **request an IXL, XL or SIXL** lock on a non-root element, a transaction **must
   hold an equally or more restrictive lock (SIXL or IXL) on its parent**.
 
+##### Timestamps
 
+Concurrency control based on timestamps is a method **complementary to 2PL** that,
+instead of assuming that conflicts will occur, **assumes that conflicts are rare**.
+This means we **first run the transaction and then calidate the operation before
+commit or before each operation**.
+
+**A timestamp is an identifier that defines a total ordering of events in a
+system**. Each transaction has a timestamp representing the time at which it
+begun. **A schedule is accepted only if it reflects the serial ordering of the
+transactions induced by their timestamps**.
+
+The scheduler has **two counters $RTM(x)$ and $WTM(x)$ for each object**:
+
+1. $RTM(x)$: the timestamp of the **transaction with the highest one** that has
+   **read** $x$
+2. $WTM(x)$: the timestamp of the **transaction with the highest one** that has
+   **written** $x$
+
+The **scheduler receives requests tagged with the timestamp of the requesting
+transaction**:
+
+1. $r_{ts}(x)$
+   - Is **rejected** if $ts < WTM(x)$ and the transaction is **killed**
+   - **Otherwise access is granted** and $RTM(x) = max(RTM(x), ts)$
+2. $w_{ts}(x)$
+   - Is **rejected** if $ts < RTM(x) \lor ts < WTM(x)$ and the transaction is **killed**
+   - **Otherwise access is granted** and $WTM(x) = ts$
+
+2PL and TS are incompatible: we can find schedules that are 2PL that are not TS
+and viceversa. However we have that $TS \implies CSR$.
+
+Basic **TS-based control works with commit-projection**. If aborts occur, the
+problem of dirty reads can still occur. **To cope with it** a variant, similar to
+long duration locks, must be used: **a transaction that issues $r_{ts}(x)$such
+that $ts > WTM(x)$ has its operation delayed until the last transaction commits
+or aborts**.
+
+##### TS with Thomas' Rule
+
+Thomas' rule can be used to reduce the number of transactions killed in TS. It
+is a variation of basic TS.
+
+1. $r_{ts}(x)$
+   - Is rejected if $ts < WTMx$ and the transaction is killed
+   - Otherwise access is granted and $RTMx = max(RTM(x), ts)$
+2. $w_{ts}(x)$
+   - Is **rejected** if $ts < RTM(x)$ and the transaction is **killed**
+   - **Else**, if $ts < WTM(x)$ our write is obsolete and can be **skipped**
+   - **Otherwise access is granted** and $WTM(x) = ts$
+
+The rationale behind the rule is that of skipping a write on an object that has
+already been written by a younger transaction without any killing.
+
+**This rule extends TS into a new set (TS') that is not directly contained in
+CSR nor in VSR**.
+
+##### Multiversion concurrency control
+
+A variation on TS is that **reads are always accepted and writes simply generate
+new versions and reads access only the right version**. Once no old versions are
+needed, they are discarded. **This means that there is a unique global $RTM$ and
+multiple $WTM_i$ for a single resource**.
+
+1. $r_{ts}(x)$ **always succeeds**. A copy $x_k$ is selected for reading such that:
+   - If $ts \geq WTM_N(X)$ then $k=N$
+   - Else tajke $k$ such that $WTM_k(x) \leq ts < WTM_{k+1}(x)$
+2. $w_{ts}(x)$
+   - Is **rejected** if $ts < RTM(x)$
+   - **Otherwise a new version is created** for timestamp $ts$. The number $N$ of
+     active versions is incremented. The **various versions are kept sorted from
+     oldest to youngest**.
+
+Like TS', the set of schedules serializable with **TS(multi) is not directly
+related to VSR nor CSR**.
+
+##### Snapshot isolation
+
+Snapshot isolation is new isolation level that **works similarly to TS(multi): no
+RTM is used, only WTMs**. Every transaction **reads the version consistent with its
+timestamp and defers writes to the end**. If the **scheduler detects that the
+writes of a transaction conflict** with writes of other concurrent transactions
+after the snapshot timestamp, **it aborts**.
+
+Snapshot isolation **does not guarantee serializability**. For example the following
+transactions
+
+```sql
+update Balls set Color="White" where Color="Black"; -- T1
+update Balls set Color="Black" where Color="White"; -- T2
+```
+
+Serial execution will produce either balls that are all white or black. An
+execution under SI in which the two transactions start from the same snapshot
+will just swap colors. This anomaly is called **write skew**.
+
+##### Timestamps in distributed systems
+
+A timestamp is an indication of the current time. However, no global time
+exists. We need some form of **synchronization**.
+
+We assume that we have a system's function that gives out timestamps formatted
+as **`eventId.nodeId` where `eventId` is unique for each node**. We synchronize
+different nodes by sending/receiving messages and **imposing that for a given
+message `send()` precedes `receive()`**. This means that **if for some reason I
+receive a message from the future, I increase my timestamp such that the `receive`
+is greater that the corresponding `send` (Lamport method)**.
+
+### Reliability control
+
+Reliability control **ensures that transactions are atomic and durable**. The
+reliability manager **realizes `commit`s and `abort`s, orchestrates IO to pages
+and handles recovery after failures**.
+
+#### Durability and stable memory
+
+Durability implies a **memory whose content lasts forever**. This means that we
+cannot use conventional storage as:
+
+- **Main memory** is not stable since it is **not persistent**.
+- **Mass memory** is not stable since **it is persistent, but can be damaged**.
+
+Of course this is an **abstraction**. In reality **stability is achieved by
+replication** (online (RAID) or offline (backups)) and **write protocols**.
+
+##### Buffers
+
+Stable memory is slow. We **can speed things up** by using:
+
+- **Buffers to cache data**
+- **Defer writing onto secondary storage**
+
+In main memory a DBMS stores the **buffered content, organized in pages, plus
+additional metadata: how many transactions are using the page and a flag
+indicating if the page has been modified and must be aligned to secondary
+memory**.
+
+The **primitives** that buffer management works with are:
+
+1. `fix`: **loads a page into the buffer**, returns a reference to the page and
+   increments the usage count
+2. `unfix`: the opposite of `fix`; **deallocates** and decrements the usage count
+3. `force`: **flushes synchronously** a page from buffer to disk
+4. `setDirty`: **flips the dirty bit** of a page
+5. `flush`: **flushes asynchronously pages** from buffer to disk **when a page is no
+   longer needed**
+
+The **`fix` primitive follows this algorithm**:
+
+1. **Search** for the page in the buffer, **if present increment** the usage counter and
+   return a reference
+2. **Select a free page in the buffer** (FIFO or LRU), if present return reference
+and increment usage counter. **If the dirty bit is set, flush the previous
+contents of the page to disk**.
+   - **If no page is found**, we select a page to deallocate by one of these two
+     policies:
+
+     1. **Steal**: grab a victim page from an active transaction and flush it to
+        disk.
+     2. **No steal**: put the transaction in a waiting list until a page frees.
+     
+**Other** buffer management **policies** include:
+
+1. **Force**: pages are always transferred at commit
+2. **No force**: transfer can be delayed by the buffer manager
+3. **Pre-fetching**: anticipate loading of pages that are likely to be read
+4. **Pre-flushing**: anticipate writing of de-allocated pages
+
+### Failure handling
+
+A transaction is an atomic transformation from an initial state into a final
+state. We have **three possible outcomes**:
+
+1. **Commit**: yee
+2. Rollback or other faults before commit: we have to **undo** the transaction
+3. If we encounter a fault after the transaction we may have to **redo** it
+
+In **case of faults**, we can have two behaviours:
+
+- If failure occurs **between commit and buffer flush**, to ensure durability the
+  reliability manager has to **redo (roll-forward) all the updates**
+- If a transaction **had not committed at failure time**, the reliability manager
+  has to **undo any effect of that transaction to preserve atomicity**
+
+A **transaction log** keeps track of the various transaction happening in the DBMS.
+It is a **sequential file made of records** describing the actions carried out by
+the various transactions. The log records on **stable memory** in the form of **state
+transitions** the actions carried out by the various transactions:
+
+- `UPDATE(U)`: both before and after state are stored
+- `INSERT`: only after state is saved
+- `DELETE`: only before state is saved
+ 
+ 
