@@ -296,4 +296,36 @@ collision: `r1(x) - r2(x) - w1(x) - w2(x)`.
 
 Update locks are requested by using `SELECT FOR UPDATE` SQL statement.
 
+##### Hierarchical locking
+
+Hierarchical locking makes **locks have more granularity** than locking or not the
+entire table. The objective is **locking as less as possible** to increase
+concurrency. A possible hierarchy can be: table, page, tuple, value.
+
+To implement hierarchical locking we need to **introduce new locks that express
+the intention of locking at higher/lower granularity**:
+
+1. **ISL**: intention of locking a subelement in shared mode.
+2. **IXL**: intention of locking a subelement in exclusive mode.
+3. **SIXL**: lock the current element in shared mode with intention of locking
+   a subelement in exclusive mode (union of SL and IXL).
+
+With new locks, we have a new granting table:
+
+| Request | Free | ISL | IXL | SL  | SIXL | XL  |
+|:-------:|:----:|:---:|:---:|:---:|:----:|:---:|
+| ISL     | OK   | OK  | OK  | OK  | OK   | KO  |
+| IXL     | OK   | OK  | OK  | KO  | KO   | KO  |
+| SL      | OK   | OK  | KO  | OK  | KO   | KO  |
+| SIXL    | OK   | OK  | KO  | KO  | KO   | KO  |
+| XL      | OK   | KO  | KO  | KO  | KO   | KO  |
+
+Locks are **requested starting from the root and going down the hierarchy. Locks
+are released starting from the locked resource going up the hierarchy**.
+
+- To **request an SL or ISL** locks on a non-root element, a transaction **must
+  hold an equally or more restrictive lock (ISL or IXL) on its parent**. 
+- To **request an IXL, XL or SIXL** lock on a non-root element, a transaction **must
+  hold an equally or more restrictive lock (SIXL or IXL) on its parent**.
+
 
