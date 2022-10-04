@@ -722,4 +722,131 @@ error-based methods and finally sorted to build the final classifier.
 Clustering algorithms **group a collection of data points according to some
 distance measure**. Data points in the same cluster should have small distance
 from one another, while points in different clusters should be at a large
-distance from each other.
+distance from each other. The quality of clustering depends on both the
+similarity measure, its implementation and its ability to discover some or all
+the hidden patterns.
+
+The data structure we will work with is the usual. We will be also working with
+a distance/similarity matrix.
+
+### Introduction
+
+#### Distance measures
+
+Given a space and a set of points on a space, a distance $d(x,y)$ maps two
+points to a real number and satisfies three axioms:
+
+1. $d(x,y)\geq 0$
+2. $d(x,y) = 0 \iff x = y$
+3. Is symmetric
+4. $d(x,y) \leq d(x,z) + d(z,y)$
+
+**Jaccard distance**: measures how dissimilar two sets are. Variables need to be
+binary variables.
+
+$$
+d(x,y) = 1 - J(x,y) = 1 - \frac{|x\cap y|}{|x\cup y|}
+$$
+
+It can also be interpreted as the percentage of identical attributes.
+
+**Hamming distance** between two vectors is the number of components in which
+they differ. Given $p$ variables and $m$ matching components
+
+$$
+d(x,y) = \frac{p-m}{p}
+$$
+
+**Cosine similarity** is computed as:
+
+$$
+s(x,y) = \frac{\sum_1^n x_i y_i}{\sqrt{\sum_i^n x_i^2}\sqrt{\sum_i^n y_i^2}}
+$$
+
+The **cosine distance** is defined as $d(x,y) = 1- s(x,y)$ while the angular
+cosine distance is computed as $d(x,y) = c\times \frac{arccos(s(x,y))}{\pi}$
+with $c=1$  if the vectors may contain positive and negative values and $c=2$ if
+the vectors contain only positive values.
+
+The **edit distance** between two strings is the smallest number of insertions
+and deletions of single characters that will transform the first into the
+second. The edit distance can be computed as the LCS of the two strings as such
+
+$$
+d(x,y) = |x| + |y| - 2|LCS|
+$$
+
+#### Normalization
+
+To measure similarity between points, we need to use **compatible scales**. This
+means that normalization is a must. We have have different normalizers at our
+disposal. 
+
+#### The curse of dimensionality
+
+In **high dimensions, almost all pairs of points are equally far away from one
+another**. This means that any two vectors are almost orthogonal.
+
+### Hierarchical clustering
+
+Hierarchical clustering is, by far, one of the most common clustering
+techniques. It **produces a dendrogram** (hierarchy) of **nested clusters** that can be
+analyzed and visualized.
+
+#### Agglomerative (bottom-up)
+
+First we consider **one cluster for each item**. At **each step we merge the most
+similar clusters until we generate one cluster**.
+
+This approach is the most popular technique because it is **unbiased** (does not
+favour any shape). It is, however, the **most expensive**:
+
+- Space is $\mathcal{O}(n^2)$ since it uses a proximity matrix
+- Time is $\mathcal{O}(n^3)$ since we need to update $n$ times the $n^2$
+  proximity matrix
+
+The complexity can be reduced to $\mathcal{O}(n^2\log(n)$ for clever
+implementations.
+
+#### Distance between clusters
+
+Previously we defined a distance between two points. However, how can we measure
+the distance between two clusters? We have **different standard methods**:
+
+1. **Single linkage**: we can take the minimum distance of the points between the two
+   clusters
+2. **Complete linkage**: like single, however we take the max
+3. **Mean or centroid distance**: we calculate the centroid for each cluster and
+   measure the distance between centroids
+4. **Group average**: we use the average between an element in one cluster and an
+   element in the other.
+
+#### Determining the number of clusters
+
+Hierarchical clustering generates $n$ partition of the data. We need some
+quality measures to determine the actual number of clusters.
+
+**Cohesion** measures how closely related are objects in a cluster:
+
+$$
+WSS(C) = \sum_{i=1}^k \sum_{x_j \in C_i} d(x_j, \mu_i)^2
+$$
+
+**Sepration** measures how well separated a cluster is from other cluster.
+
+$$
+BSS(C) = \sum_{i=1}^k |C_i|d(\mu, \mu_i)^2
+$$
+
+Where $\mu$ is the centroid of the whole dataset while $\mu_i$ is the centroid
+of cluster $C_i$.
+
+We can then **plot the WSS and BSS for every clustering and look for knee/elbow in
+the plot** that shows a significant variation of the evaluation metric.
+Knees/elbows do not tell the whole story, **sometimes evaluating the plot of the
+data points can be more effective**.
+
+If a cluster is in an euclidean space, we can identify it using its centroid or
+its convex hull. In case of non-euclidean spaces we can define a distance an use
+a medoid (an existing point data we take as representative that minimizes the
+sum of distances to all other points in the cluster). 
