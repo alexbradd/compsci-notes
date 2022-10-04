@@ -496,7 +496,7 @@ contents of the page to disk**.
 3. **Pre-fetching**: anticipate loading of pages that are likely to be read
 4. **Pre-flushing**: anticipate writing of de-allocated pages
 
-### Failure handling
+#### Failure handling
 
 A transaction is an atomic transformation from an initial state into a final
 state. We have **three possible outcomes**:
@@ -521,4 +521,173 @@ transitions** the actions carried out by the various transactions:
 - `INSERT`: only after state is saved
 - `DELETE`: only before state is saved
  
- 
+We can use the log to apply the following transformations:
+
+1. `UNDO T`: sets the state to the before state
+2. `REDO T`: sets the state to the after state
+
+Both **operations are idempotent**. This is necessary since the manager could
+undo/redo operations twice.
+
+The log contains **different type of records** depending on the type of operation it
+records:
+
+- Transactional commands: `B(T), C(T), A(T)`
+- `UPDATE`, `INSERT` and `DELETE`: `U(T, O, BS, AS)`, `I(T,O,AS)`, `D(T,O,BS)`
+- Recovery actions: `DUMP`, `CKPT(T1,..., TN)`
+
+Where `Ti` is the transaction identifier, `O` is the object identifier and
+`BS`/`AS` are respectively the before and after state.
+
+The **log management rules** ensure that transactions implement **write operations in
+a reliable way**:
+
+- A **commit record** is always **written synchronously**
+- (**Write-ahead log**) The before part of the record must be written before
+  carrying out the action.
+- (**Commit rule**) The after state part of the record must be written in the log
+  before carrying out the commit
+
+Since **database writes are async**, different implementations are possible with
+different impacts on recovery.
+
+- If we **write** onto the database **before commit**, a **`REDO` is not necessary** since
+  the state of the database reflects that of the log.
+- If we **write** onto the database **after commit**, the **`UNDO` is not necessary** and it
+  **doesn't require writing the before-states** of objects on the db in order to
+  **abort**.
+- If we **write** onto the database **arbitrarily**, we can **better optimize buffer
+  management** however in the general case **we need both `REDO` and `UNDO`**
+
+We have **different types of failure** depending on the type of memory it fails
+
+1. **Soft failure**: we lose the content of the **main memory**.
+   - Requires a **warm restart**. We use the log to replay transactions
+2. **Hard failure**: we lose part of the **secondary memory**.
+   - Requires a **cold restart**. We use a dump to restore the database and the log
+     to replay transactions.
+3. **Disaster**: we lose **stable memory**. Not discussed.
+
+##### Checkpoints
+
+Periodically, the reliability manager identifies **consistent time points**:
+
+- All **transactions that committed are flushed to disk**
+- All **active transaction are recorded in the log**
+
+The aim is to **record which transactions are still active** at a given point in
+time.
+
+We have different methods for implementing a checkpoint. A general one is as
+follows:
+
+- Acceptance of **commit/abort is suspended**
+- All **dirty pages** modified by committed transactions are **`force`d to disk**
+- The **identifiers of the transactions still in progress are recorded** in the
+  `CKPT` record in the log. **While this record is being made no transaction can
+  start**.
+
+##### Dumps
+
+Dumps are simpler than checkpoints, and are a **complete backup copy of the
+database**. The **availability** of that copy is **recorded** in the log. The contents of
+the dump are stored in stable memory.
+
+##### Warm restart
+
+It is a warm restart and consists in a loss of memory buffer pages. It requires
+replaying transactional operations and resolving eventual problematic
+situations. Log records are **read starting from the last checkpoint** and
+**transactions are divided into two sets**:
+
+1. `UNDO` set: transactions to be undone. This set consists of **transactions that
+   were active at checkpoints** plus those that have been **started but not
+   finished**.
+2. `REDO` set: transactions to be redone. This set consists of **transactions that
+   have been committed**.
+
+The algorithm is as follows:
+
+1. Starting from `HEAD` **find the last checkpoint**
+2. **Construct the two sets** reading from checkpoint to `HEAD`
+3. **Return to the first operation of the oldest active transaction while
+   `UNDO`ing**
+4. **Execute `REDO`** actions until the top of log.
+
+##### Cold restart
+
+It is a loss of secondary memory devices. Data needs to be **restored starting
+from the last dump**. The **operations recorded** onto the log until failure are
+**executed**. Then a **warm restart is executed**.
+
+## Triggers
+
+The fundamentals have been already discussed in the DB1 course.
+
+A trigger can have 2 **execution modes**:
+
+1. **Before**: the action of the trigger is executed before the **database 
+   change** (if the condition holds). This type of **triggers cannot update the
+   database directly, but can affect the transition variables in row-level
+   granularity**.
+2. **After**: the action of the trigger is **executed after the modification** of the
+   database.
+
+We have also two different **granularity modes**:
+
+1. **Row-level** (`for each row`): The trigger is considered and possibly
+   executed **once for each tuple affected by the activating statement**.
+2. **Statement-level** (`for each statement`): The trigger is considered and
+   possibly executed **once for each activating statement, independently of the
+   number of affected tuples** in the target table.
+
+**Special variables** denoting the before and after state of the modification are
+**made available in trigger definition**:
+
+- For `for each row` trigger we have `old` and `new` representing the tuple
+  values respectively before and after modification
+- For `for each statement` we have `old table` and `new table` working similarly
+  as seen with row-level granularity
+
+Variables `old` and `old table` are undefined for triggers activated by
+`INSERT`. Dually, `new` and `new table` are unavailable for `DELETE`.
+
+In SQL99, if multiple events are associated with the same event, an **execution
+sequence is prescribed**:
+
+1. `BEFORE` statement level triggers
+2. `BEFORE` row level triggers
+3. Modification is applied and integrity is checked
+4. `AFTER` row level triggers
+5. `AFTER` statement level triggers
+
+If there are **several triggers in the same category**, the execution order is
+**system dependant** (based on definition time or alphabetical order).
+
+### Cascade and recursive cascading
+
+The action of a trigger can cause another trigger to fire. We say that we are:
+
+1. **Cascading:** when the action of **`T1` triggers `T2`**
+2. **Recursive cascading**: when a **statement `S` on table `T` start a cascade of
+   triggers that generates the same event `S`** on `T`
+
+To guarantee the proper functionality of our database, we need to enforce some
+rules.
+
+#### Termination
+
+**Termination**: for **any initial state** and **any sequence of modification**, a **final
+state is always produced**.
+
+The simplest check exploits the **triggering graph**:
+
+- A node $i$ for each trigger
+- An arc from a node to another if the execution of the trigger associated with
+  the first node may activate the second one 
+
+The graph is build with a simple syntactic analysis. If the graph is **acyclic**,
+the system is **guaranteed to terminate**. If a **cycle exists**, **triggers may not
+terminate (acyclicity is sufficient for termination)**.
+
+Most systems set a maximum of 64 cascades.
