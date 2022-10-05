@@ -389,7 +389,7 @@ expanded into `expansion`.
 
 
 **Macros are expanded recursively**, so we can have looping macros. Therefore the
-macro system is turing complete.
+macro system is Turing complete.
 
 ```scheme
 (define-syntax my-let*
@@ -401,3 +401,35 @@ macro system is turing complete.
         (my-let* rest istr ...)) val))))
 ```
 
+Scheme macros are **hygienic**, this means that symbols in their definition are
+actually replaced with special unique symbols, meaning **it is impossible to have
+name clashes** once the marco is expanded.
+
+### Continuations
+
+A continuation is an **abstract representation of the control state of the
+program**. The **current continuation** is the continuation that, from the perspective
+of running code, **would be derived from the current point in a program execution**.
+
+Scheme natively supports continuations: **`call-with-current-continuation` (or
+`call/cc`) accepts a procedure with one argument, to which it passes the current
+continuation implemented as a closure**.
+
+The **argument of the lambda** in `call/cc` is called an **escape procedure**. The
+escape can be **called with an argument that becomes the result of `call/cc`**. This
+means that the escape procedure abandons its own continuation and reinstates the
+continuation of `call/cc`.
+
+```scheme
+(+ 3
+  (call/cc
+    (lambda (exit)
+      (for-each (lambda (x)
+                  (when (negative? x)
+                    (exit x)))
+                '(54 0 37 -3 245 19))
+      10)))
+```
+
+An escape procedure has **unlimited extend**: if stored, it **can be called after the
+continuation has been invoked**.
