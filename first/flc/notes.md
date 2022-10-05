@@ -358,3 +358,142 @@ presence of regexp in the rules may give rise to specific ambiguity forms.
 ## Finite state automata
 
 Basics about FSA have been done in API.
+
+The syntax diagram of the automaton is the dual form of the normal
+state-transition graph: we transform nodes into arcs into nodes and viceversa.
+
+An automaton may contain useless parts, which do not give any contribution
+process and can be eliminated:
+
+1. A state is accessible (reachable) from another state if there is a
+   computation that moves the automaton from one state to the other
+2. A state is postacessible (defined) if some  final state can be reached from
+   it
+3. A state is useful if it is both accessible and postaccessible
+4. An automaton in in clean form if every state is useful
+
+Every automaton has an equivalent clean form. To reduce an automaton we first
+identify all useless states, then strip the off the automaton with all their
+incoming and outgoing arcs.
+
+For every finite language there exists one and only one deterministic finite
+state recognizer that has the smallest possible number of states, which is
+called the minimal automaton. To reduce an automaton to its minimal form we need
+to introduce undistinguishability:
+
+- A state $p$ is undistinguishable from a state $q$ if an only if for every
+  input string $x$ either both the next states $\delta(p,x),\delta(q,x)$ are
+  final or neither one is.
+- A state $p$ i distinguishable from $q$ if and only if either:
+  - $p$ is final and $q$ is not (or viceversa)
+  - $\delta(p,a)$ is distinguishable from $\delta(q,a)$
+
+Two undistinguishable states can be merged and thus the number of states of the
+automaton can be reduces, without changing the recognized language.
+Undistinguishability is a binary relation and is an equivalence relation.
+
+It is possible to prove that the minimal deterministic automaton is unique. This
+cannot be done for the non-deterministic one. The uniqueness of the minimal form
+offers a way to check whether two deterministic finite state automata are
+equivalent.
+
+### Generalized automaton
+
+Assume the that the initial and final states are unique and do not have incoming
+or outgoing arcs. We can construct the generalized finite automaton, an
+automaton where its arcs may be labeled with regular expressions, not only
+individual characters.
+
+We can eliminate one by one all internal nodes (nodes that are neither the start
+or a terminal node) and add one arc labeled by a regex. At the end only the
+starting and terminal node with only one arc from the one to the other. The
+regex that labels such arc generates the complete language recognized by the
+original automaton.
+
+### From non-deterministic to deterministic
+
+For efficiency, usually the final version of a finite automaton ought to be in
+deterministic form. Every non-deterministic automaton can always be transformed
+into an equivalent deterministic one. Consequently, every right-linear grammar
+has a non-ambiguous equivalent.
+
+The algorithm is structured into two phases:
+
+1. Elimination of spontaneous moves
+2. Replacement of non-deterministic moves by changing the automaton state set
+
+### From regex to a FSA
+
+There are a few algorithms to transform a regex into an automaton. We will
+present two: Thompson and Berry-Sethi.
+
+#### Thompson method
+
+We first subdivide the regex into subexpressions, until we reach the atomic
+constituents. Then we construct the subexpression recognizer and connects them.
+The result is a non-deterministic automaton with spontaneous moves.
+
+#### Berry-Sethi method
+
+It constructs a deterministic recognizer without spontaneous moves, but of size
+often larger that the Thompson one.
+
+We need the following definitions (local states). Given a language $L$ over 
+$\Sigma$:
+
+1. Start set, or initials; $Ini(L)=\{a\in\Sigma| a\Sigma^\star\cap L\neq\emptyset\}$
+   - $Ini(\emptyset) = \emptyset$
+   - $Ini(\epsilon) = \emptyset$
+   - $Ini(a) = \{a\} \,\forall a$
+   - $Ini(e\cup e') = Ini(e) \cup Ini(e')$
+   - $Ini(e.e') = Null(e) \:?\: Ini(e) \cup Ini(e') : Ini(e)$
+   - $Ini(e^\star) = Ini(e^+) = Ini(e)$
+2. End set, or finals: $Fin(L)=\{a\in\Sigma| \Sigma^\star a\cap L\neq\emptyset\}$
+   - $Fin(\emptyset) = \emptyset$
+   - $Fin(\epsilon) = \emptyset$
+   - $Fin(a) = \{a\} \,\forall a$
+   - $Fin(e\cup e') = Fin(e) \cup Fin(e')$
+   - $Fin(e.e') = Null(e') \:?\: Fin(e) \cup Fin(e') : Fin(e')$
+   - $Fin(e^\star) = Fin(e^+) = Fin(e)$
+3. Adjacency set, or digrams: $Dig(L)=\{x\in\Sigma^2| \Sigma^\star x \Sigma^\star\cap L\neq\emptyset\}$
+   - $Dig(\emptyset) = \emptyset$
+   - $Dig(\epsilon) = \emptyset$
+   - $Dig(a) = \emptyset \,\forall a$
+   - $Dig(e\cup e') = Dig(e) \cup Dig(e')$
+   - $Dig(e.e') = Dig(e) \cup Dig(e') \cup Fin(e).Ini(e')$
+   - $Dig(e^\star) = Dig(e^+) = Dig(e) \cup Fin(e).Ini(e)$
+4. Null: $Null(e) = true \iff \epsilon\in L(e)$
+   - $Null(\emptyset) = \text{false}$
+   - $Null(\epsilon) = \text{true}$
+   - $Null(a) = \text{false} \,\forall a$
+   - $Null(e \cup e') = Null(e) \lor Null(e')$
+   - $Null(e.e') = Null(e) \land Null(e')$
+   - $Null(e^\star) = \text{true}$
+   - $Null(e^+) = Null(e)$
+
+First we start by linearizing the regex $e$ into $e_\#$: we numerate each
+generator such that each terminal appears only once in the expression. Let us
+consider these regex terminated by $\dashv$. We define the set $Fol(c_\#)$ in
+this way $Fol(a_i) = \{b_j | a_i b_j \in Dig(e_\#\dashv)$. $Fol$ is just a
+different way of expressing $Dig$.
+
+A machine executable algorithm for constructing the FSA is the following:
+
+```
+q0 = Ini(e#, -|)
+Q = { q0 }
+transitions = {}
+while (exists q in Q such that q is unmarked) do
+  mark_as_visited(q)
+  for each (c in alphabet) do
+    q' = merge_all(Fol(c#) where c# in alphabet# such that c# in q)
+    if q.empty() then
+      if !Q.contains(q') then
+        unmark(q')
+        Q = merge(Q, {q'})
+      end
+      transitions = merge(transitions, { q ->(c) q' }
+    end
+  end
+end
+```
