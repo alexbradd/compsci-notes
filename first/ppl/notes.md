@@ -433,3 +433,108 @@ continuation of `call/cc`.
 
 An escape procedure has **unlimited extend**: if stored, it **can be called after the
 continuation has been invoked**.
+
+We have two methods of implementing `call/cc`:
+
+- **Garbage collected**: we handle function invocation via heap
+  - We do not use the stack at all: **call frames are allocated on the heap**.
+    Frames that are not used anymore are reclaimed by the GC. With this strategy
+    `call/cc` simply saves the frame pointer of the current frame.
+  - **Slows down all function calling**.
+- **Stack strategy**: we use the stack as usual
+  - When a `call/cc` is used, we create a **continuation object in the heap** by
+    **copying the current stack**. When we call `call/cc` we need to **reinstate the
+    saved stack, discarding the current one**.
+  - It is **zero-overhead**: if we do not use `call/cc` we do not pay is cost
+  - **The `call/cc` operation, however is very slow**.
+
+## Playing around: implementing exceptions
+
+Most scheme dialects have their exception systems. We will try to roll our own.
+
+```scheme
+(define *handlers* (list))
+(define (push-handler proc)
+  (set! *handlers* (cons proc *handlers*)))
+(define (pop-handler)
+  (let ((h (car *handlers*)))
+    (set! *handlers* (cdr *handlers))
+    h))
+(define (throw x)
+  (if (pair? *handlers*)
+    ((pop-handler) x)
+    (apply error x)))
+
+(define-syntax try
+  (syntax-rules (catch)
+    ((_ exp1 ... (catch what hand ...))
+     (call/cc (lambda (exit)
+                (push-handler (lambda (x)
+                                (if (equal? x what)
+                                  (exit (begin hand ...))
+                                  (throw x))))
+                (let ((res (begin exp1 ...)))
+                  (pop-handler)
+                  res))))))
+```
+
+### Object orientation
+
+Quoting Alan Kay, the inventor of the term and Smalltalk:
+
+> OOP to me means only messaging, local retention and protection and hiding
+> of state-process, and extreme late-binding of all things. It can be done in
+> Smalltalk and in Lisp. There are possibly other systems in which this is
+> possible, but I’m not aware of them.
+>
+> Actually I made up the term "object-oriented", and I can tell you I did not
+> have C++ in mind.
+
+The classical interpretation of OOP from C++ are based on the Simula programming
+language. Objective-C is a OO language that uses Smalltalk's concepts.
+
+#### Closures
+
+We can use closures to implement some basic OOP. We **define a procedure** which
+assumes the **role of a class**. This procedure, when called, **returns closure that
+works like an object**. **Access to the state is implemented through messages** to a
+function that works like a dispatcher.
+
+```scheme
+(define (make-object)
+  (let ((my-var 0))
+    (define (my-add x)
+      (set! my-var (+ my-var x))
+      my-var)
+    (define (get-my-var) my-var)
+    (define (my-display)
+      (newline)
+      (display "my-var is: ")
+      (display my-var)
+      (newline))
+    (lambda (message . args)
+      (apply (case message
+                ((my-add) my-add)
+                (else (error "Unknown method!")))
+        args))))
+```
+
+**Inheritance** can be achieved by **delegation**.
+
+```scheme
+(define (make-son)
+  (let ((parent (make-object))
+        (name "an object"))
+    (define (hello) "hi!")
+    (define (my-display x)
+      (display "My name is: ")
+      (display name)
+      (display " and")
+      (parent 'my-display))
+    (lambda (message . args)
+      (case message
+        ((hello)  (apply hello args))
+        ((my-display) (apply my-add args))
+        (else (apply parent (cons message args)))))))
+```
+
