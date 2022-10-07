@@ -691,3 +691,27 @@ the system is **guaranteed to terminate**. If a **cycle exists**, **triggers may
 terminate (acyclicity is sufficient for termination)**.
 
 Most systems set a maximum of 64 cascades.
+
+### Materialized views
+
+When a view is mentioned in a `SELECT` query, the processor rewrites the query
+language using the view definition, so that the actually executed query only
+uses the base tables. When **queries to a view are more frequent than the updates
+on the base tables that change the view content**, then **view materialization** can
+be used. Materialization consists in **storing the results of the query that
+defines the view in separate table**.
+
+Some DBMSs support the `CREATE MATERIALIZED VIEW` **command** that does this
+automatically. **As an alternative** we can implement **the materialization by means
+of triggers**.
+
+### Design principles
+
+- Use trigger to guarantee that when a specific operation is performed, related
+  actions are performed.
+- Do not use triggers to duplicate features of the DBMS.
+- Keep triggers small.
+- Use triggers only for global, centralized operations.
+- Avoid recursive triggers, unless absolutely necessary.
+- Use them with parsimony, as they are executed every user interaction.
+
