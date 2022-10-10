@@ -832,7 +832,7 @@ $$
 WSS(C) = \sum_{i=1}^k \sum_{x_j \in C_i} d(x_j, \mu_i)^2
 $$
 
-**Sepration** measures how well separated a cluster is from other cluster.
+**Separation** measures how well separated a cluster is from other cluster.
 
 $$
 BSS(C) = \sum_{i=1}^k |C_i|d(\mu, \mu_i)^2
@@ -850,3 +850,153 @@ If a cluster is in an euclidean space, we can identify it using its centroid or
 its convex hull. In case of non-euclidean spaces we can define a distance an use
 a medoid (an existing point data we take as representative that minimizes the
 sum of distances to all other points in the cluster). 
+
+### Representative based clustering
+
+The hypothesis is that **there exists a point that summarizes the cluster**. A
+common choice for such a point is the one that is the mean of the points in the
+cluster.
+
+#### K-Means
+
+It is a **greedy, iterative** and stochastic approach to find a clustering that
+**minimizes the SSE objective**:
+
+$$
+SSE(C) = \sum_{i=1}^k \sum_{x_j \in C_i} ||x_j - \mu_i||^2
+$$
+
+For each iteration:
+
+1. We **calculate the centroid of the previous iteration's cluster**. If we are at
+   the **first iteration**, we **pick two random points**. 
+2. If the **previous centroid is not the calculated one**, we **reassign** the centroid.
+   **If it is, we stop iterating**.
+3. We **assign the points to the clusters**.
+
+It is a greedy algorithm, this means that **it can converge to a local optimal
+instead of a globally optimal solution**.
+
+Cluster assignment takes $\mathcal{O}(nkd)$ time since for $n$ points, it
+computes its distance to each of the $k$ clusters, which takes $d$ operations
+in $d$ dimensions. The centroid re-computation step takes $\mathcal{O}(nd)$ time.
+Assuming $t$ iterations, **the total time is $\mathcal{O}(tnkd)$**.
+
+In terms of **IO**, it requires **$\mathcal{O}(t)$ full database scans**.
+
+**Centroid initialization** is the **most crucial steps** of the algorithm since it can
+wildly affect the final result. We usually have 3 approaches:
+
+1. **Pick points as far away from one other**
+2. **Pick the first points at random**. While there are fewer than $k$ points add
+   the point whose minimum distance from the selected points is as large as
+   possible.
+3. **Cluster a sample of the data using an optimal approach, e.g. hierarchical
+   clustering, into $k$ cluster**. Then **pick the point closer to the centroid** of
+   the cluster, for each cluster.
+
+If there are $k$ "real" clusters, then the chance of selecting one centroid from
+each cluster is small. This means that selecting an optimal initial centroid is
+very difficult.
+
+Some **preprocessing we can do to improve data quality is normalizing data and
+removing outliers**. While **after** clustering we can:
+
+1. **Eliminate small clusters** (outliers)
+2. **Split loose clusters** (clusters with high SSE)
+3. **Merge clusters that are close and have low SSE**
+
+This post-processing **can also be done during the clustering process**.
+
+K-Means can have some **problems** when:
+
+1. Clusters **differ in size and density**.
+2. Clusters **have non-globular shapes**.
+3. Data contains **outliers**.
+
+K-Means requires that we specify the number of cluster beforehand. One way to
+find is to do a knee/elbow analysis.
+
+#### Mean-shift
+
+It is an iterative, non-parametric and versatile algorithm. It **searches for the
+mode (point of highest density) of a data distribution**.
+
+It is not really a clustering algorithm. **It is an algorithm to estimate the
+distribution of a set of points**. We start from a certain point and **define a
+region of interest**. We **compute the mean of the points in the region and we move
+the center of the region in the new region**. We **repeat** this process **until center
+of the region and center of mass of the points coincide**. The found point can be
+used as a representative.
+
+To define a **cluster**, we **execute the algorithm from different points in space**.
+The **points touched by trajectories that lead to the same mode** (attraction basin)
+should be in the **same cluster**.
+
+The algorithm **doesn't need the number of clusters** and **doesn't assume anything
+about the shape of the clusters**. Mean-shift is also **robust w.r.t
+initializations**, while K-Means is not. Classical mean-shift, however, is **more
+computationally expensive** ($\mathcal{O}(Tn^2)$ with $T$ iterations).
+
+#### Expectation maximization
+
+K-Means assigns each point to only one cluster. The approach can be **extended by
+considering soft-assignment of points to cluster, so that each point has a
+probability of belonging to each cluster**. We assume that **each cluster $C_i$ is
+characterized by a multivariate gaussian distribution** and thus defined by a mean
+vector $\mu_i$ and covariance matrix $\Sigma_i$. A **clustering is then defined by
+a vector of parameters $\theta$** defined as $\theta = \{\mu_i, \Sigma_i, P(C_i)\}$
+Where $P(C_i)$ are the priori probabilities of all the clusters $C_i$. The **goal
+is to choose $\theta$ that maximizes likelihood**, that is
+
+$$
+\theta^\star = arg max_\theta P(D|\theta)
+$$
+
+The **general idea** of the algorithm is this:
+
+1. Start with an **initial estimate** of $\theta$
+2. **Iteratively re-score patterns against the mixture density** produced by $\theta$
+3. The **re-scored patterns** are used to **update $\theta$**
+4. **Patterns** are belonging to the **same cluster if they are placed by their
+   scores in a particular component**.
+
+### Density based clustering
+
+Representative clustering methods are suitable for finding ellipsoid-shaped
+clusters, or at best convex shapes. For **non convex clusters**, these methods have
+**trouble**. Density-based clustering methods can mine such non-convex clusters.
+
+#### DBSCAN
+
+Let us introduce some definitions:
+
+1. The **neighbourhood within a radius $\epsilon$** of a given object is called the
+   **$\epsilon$-neighbourhood** of the object. 
+2. A **core point** contains at **least `minpts` objects in its $\epsilon$-neighbourhood**. 
+3. A **border point** is **not a core point**, but **inside the neighborhood of a core point**.
+4. A **noise point** is **neither** a **core** nor **border point**.
+
+**Density** corresponds to **having at least `minpts` points within a radius $\epsilon$**.
+A **border point has fewer than `minpts` within $\epsilon$, but is in the
+neighborhood of a core point**.
+
+1. **Directly density reachable:** an object $x$ is directly density reachable from
+   object $y$ **if $x$ is within the $\epsilon$-neighbourhood of $y$ and $y$ is a
+   core object**
+2. **Density reachable:** an object is density-reachable from object $y$ **if there is
+   a chain of objects $x_1, \ldots, x_n$ where $x_1 = x$ and $x_n = y$ such that
+   $x_i$ is directly density reachable from $x_{i-1}$**
+3. **Density connected:** An object $p$ is density connected to $q$ w.r.t
+   $\epsilon$ and `minpts` **if there is an object $o$ such that both $p$ and $q$
+   are density reachable from $o$**
+4. **Density based cluster:** a density based cluster is defined as a maximal set of
+   density connected points.
+
+DBSCAN needs to compute the $\epsilon$-neighborhood for each point. If the
+**dimensionality is not too high** this can be done efficiently using a spatial
+index structure in **$\mathcal{O}(n\log(n))$**. If the **dimensionality is high**, we
+need **$\mathcal{O}(n^2)$**. Once the $\epsilon$ neighborhood has been computed, the
+algorithm **needs only a single pass over all the points to find the density
+connected clusters**. Overall, the **average complexity is $\mathcal{O}(n\log(n))$**
+and the **worst is $\mathcal{O}(n^2)$**.
