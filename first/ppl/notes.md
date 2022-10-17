@@ -8,7 +8,7 @@ new constructs and an OO language.
 
 Like LISP, it uses s-expressions:
 
-```scheme
+```racket
 (= x (+ y (* 3 x) z)) ; comment
 ```
 
@@ -44,7 +44,7 @@ expressions. The evaluation of `(e1 e2 e3)` is as follows:
 Like other functional languages, lambdas are present. Procedures are still
 values, hence functions are first-class citizens.
 
-```scheme
+```racket
 (lambda (x y)
   (+ (* x x) (* y y)))
 ```
@@ -54,7 +54,7 @@ values, hence functions are first-class citizens.
 `let` binds new variables. It takes a list of 2 element lists containing name
 value.
 
-```scheme
+```racket
 (let ((x 1)
       (y 2)))
 ```
@@ -64,7 +64,7 @@ Scoping is present and is static (not dynamic like in traditional LISP).
 `let` binds variables parallely, `let*` does so sequentially. If mutual
 recursion is needed, `letrec` and `letrec*`.
 
-```scheme
+```racket
 (let ((x 1)
       (y 2)
       (let ((x y) ; swaps x and y
@@ -83,7 +83,7 @@ recursion is needed, `letrec` and `letrec*`.
 
 Consider the following:
 
-```scheme
+```racket
 (let ((a 1))
   (let ((f (lambda ()
               (display a))))
@@ -108,7 +108,7 @@ Not everything is a procedure or value: e.g. `if` is a syntactic form. Unlike
 functions, `if` does not evaluate all its arguments. Similarly, `lambda` also is
 a syntactic form. **We can define new syntax using macros**.
 
-```scheme
+```racket
 (if <condition> <then> <else>)
 (when <condition> <then>)
 (unless <condition> <else>)
@@ -126,7 +126,7 @@ evaluation, `quasiquote` and `unquote` are used for partial evaluation:
 1. `quasiquote` blocks external evaluation
 2. `unqoute` forces evaluation
 
-```scheme
+```racket
 (quote <expr>)
 ('<expr>) ; shorthand for quote
 `(1 ,(+ 1 1) 3) ; shorthand for quasiquote-unqoute
@@ -138,7 +138,7 @@ evaluation, `quasiquote` and `unquote` are used for partial evaluation:
 `eval` is function that takes a code and interprets it. It is **effectively the 
 opposite of `quote`**. _Note: `eval` is considered dangerous, never use it_
 
-```scheme
+```racket
 (eval '(+ 1 2 3)) ; outputs 6
 ```
 
@@ -148,7 +148,7 @@ If we are writing procedural code, we can use the `begin` construct. It
 evaluates vevery operation in order and the return value is the last one of the
 block
 
-```scheme
+```racket
 (begin
   (op1 ...)
   (op2 ...)
@@ -160,7 +160,7 @@ block
 
 `define` cretes top-leve bindings. Defining a procedure is done via `define`
 
-```scheme
+```racket
 (define <name> <what>)
 
 (define x 12)
@@ -180,7 +180,7 @@ while the second `cdr` (Content of the Data Register)**.
 
 A **pair** is expressed in scheme as `(x . y)`. We can thus write a list as:
 
-```scheme
+```racket
 (1 . (2 . (3 . ())))
 () ; the empty list, also called nil
 ```
@@ -195,7 +195,7 @@ and `vector` for vectors.
 **Procedure bodies and parameter lists are plain lists. This is used to implement
 procedures with a variable number of arguments**.
 
-```scheme
+```racket
 (define (f x y) (...)) ; we are defining a function with 2 parameters
 (define (f x . y) (...)) ; we are defining a function with a variable number of args
 ;          ~~~~~ -> we have the first argument boud to x and all the othes to y
@@ -207,7 +207,7 @@ procedures with a variable number of arguments**.
 
 `apply` can be used to apply a procedure to a list of elements.
 
-```scheme
+```racket
 (apply + '(1 2 3 4)) ; => 10
 ```
 
@@ -215,7 +215,7 @@ procedures with a variable number of arguments**.
 
 One non-idimoatic way of looping is using a named `let`:
 
-```scheme
+```racket
 (let ((x 0))
   (let label ()
     (when (< x 10)
@@ -227,7 +227,7 @@ One non-idimoatic way of looping is using a named `let`:
 
 We can make things better by better utilizing the named `let`:
 
-```scheme
+```racket
 (let label ((x 0))
   (when (< x 10)
         (display x)
@@ -238,7 +238,7 @@ We can make things better by better utilizing the named `let`:
 
 Every scheme implementation is required to be tail-recursive.
 
-```scheme
+```racket
 (define (factorial n)
   (define (fact-rec x acc)
     (if (= x 0)
@@ -249,7 +249,7 @@ Every scheme implementation is required to be tail-recursive.
 
 For each has a peculiar syntax:
 
-```scheme
+```racket
 (for-each 
   (lambda (x)
     (display x)
@@ -275,7 +275,7 @@ The longer the name, the more demanding the evaluation of the predicate.
 `case` is like a switch, while `cond` is a generalized if (if-elif chain). The
 predicate used by `case` is `eqv?`
 
-```scheme
+```racket
 (case (car '(c d))
   ((a e i o u) 'vowel)
   ((w y) 'semivowel)
@@ -310,7 +310,7 @@ In scheme we can create structs (like in C). Constructor, predicate for checking
 type and accessors (for mutable fields also setters) are created automatically
 on delcaration.
 
-```scheme
+```racket
 (struct being (
   name            ; by default fields are immutable
   (age #:mutable) ; if we want to make them mutable we have to specify
@@ -326,7 +326,7 @@ on delcaration.
 
 Structs can inherit from other structs:
 
-```scheme
+```racket
 (struct may-being being
   ((alive? #:mutable)))
 (define (kill! x)
@@ -371,7 +371,7 @@ Macros are defined through `define-syntax` and `syntax-rules`. `syntax-rules`
 are pairs of `(pattern expansion)`: `pattern` is matched by the compiler and
 expanded into `expansion`.
 
-```scheme
+```racket
 (define-syntax while
   (syntax-rules ()          ; other keywords
     ((_ condition b1 ...)   ; _ is a shorthand for the keyword
@@ -391,7 +391,7 @@ expanded into `expansion`.
 **Macros are expanded recursively**, so we can have looping macros. Therefore the
 macro system is Turing complete.
 
-```scheme
+```racket
 (define-syntax my-let*
   (syntax-rules ()
     ((_ ((var val)) istr ...)
@@ -420,7 +420,7 @@ escape can be **called with an argument that becomes the result of `call/cc`**. 
 means that the escape procedure abandons its own continuation and reinstates the
 continuation of `call/cc`.
 
-```scheme
+```racket
 (+ 3
   (call/cc
     (lambda (exit)
@@ -452,7 +452,7 @@ We have two methods of implementing `call/cc`:
 
 Most scheme dialects have their exception systems. We will try to roll our own.
 
-```scheme
+```racket
 (define *handlers* (list))
 (define (push-handler proc)
   (set! *handlers* (cons proc *handlers*)))
@@ -500,7 +500,7 @@ assumes the **role of a class**. This procedure, when called, **returns closure 
 works like an object**. **Access to the state is implemented through messages** to a
 function that works like a dispatcher.
 
-```scheme
+```racket
 (define (make-object)
   (let ((my-var 0))
     (define (my-add x)
@@ -521,7 +521,7 @@ function that works like a dispatcher.
 
 **Inheritance** can be achieved by **delegation**.
 
-```scheme
+```racket
 (define (make-son)
   (let ((parent (make-object))
         (name "an object"))
@@ -538,3 +538,171 @@ function that works like a dispatcher.
         (else (apply parent (cons message args)))))))
 ```
 
+#### Prototypes
+
+Take the concepts form Self: **there are no classes, new objects are obtained by
+cloning and modifying existing objects** (it inspired javascript). We will
+implement this model on top of scheme using **hash tables**.
+
+```racket
+(define new-object make-hash)
+(define clone hash-copy)
+
+; We could use functions, however we would need to pass `msg` already quoted
+(define-syntax !! ;;; setter
+  (syntax-rules ()
+    ((_ object msg new-eval)
+     (hash-set! object 'msg new-eval))))
+(define-syntax ?? ;;; getter
+  (syntax-rules ()
+    ((_ object msg)
+     hash-ref object 'msg)))
+(define-syntax -> ;;; send message
+  (syntax-rules ()
+    ((_ object msg arg ...)
+     ((hash-ref object 'msg) object arg ...)))) ;;; notice the first argument to
+                                                ;;; the method call
+
+;;; Example
+(define Pino (new-object))
+(!! Pino name "Pino")
+(!! Pino hello
+  (lambda (self x) ;;; defining a method. Notice the first argument
+    (display (?? self name))
+    (display (": hi, "))
+    (display (?? x name))
+    (display "!")
+    (newline)))
+```
+
+**Inheritance is not typical** of systems like this. It can be achieved by
+**delegation**.
+
+```racket
+(define (deep-clone obj) ;;; Recursively clone an object
+  (if (not (hash-ref obj '<<parent>> #f))
+    (clone obj)
+    (let* ((cl (clone obj))
+           (par (?? cl <<parent>>)))
+      (!! cl <<parent>> (deep-clone (par))))))
+(define (son-of parent) ;;; creates a new object that is the son of a given
+                        ;;; parent
+  (let ((o (new-object)))
+    (!! o <<parent>> (deep-clone parent))
+    o))
+
+(define (dispatch object msg)
+  (if (eq? object 'unknown)
+    (error "Unknown message msg")
+    (let ((slot (hash-ref object msg 'unknown)))
+      (if (eq? slot 'unknown)
+        (dispatch (hash-ref object '<<parent>> 'unknown) msg)
+        slot))))
+(define-syntax ??
+  (syntax-rules ()
+    ((_ object msg)
+     (dispatch object 'msg))))
+(define-syntax ->
+  (syntax-rules ()
+    ((_object msg arg ...)
+     ((dispatch object 'msg) object arg ...))))
+```
+## Haskell
+
+**Mathematical functions do not have side-effects: the result depends entirely on
+the arguments**. This is called **referential transparency**.
+
+Scheme was mainly functional as some function have side-effects (`set!`).
+**Haskell**, instead, is **completely pure** and manages state and side-effects in a
+different way.
+
+### Evaluation
+
+**In a system without side-effects, the evaluation order of parameters does not
+matter**.
+
+**Two evaluations of an expression differ in the order in which function
+applications are evaluated**. A **function application ready to be performed** is
+called a reducible expression (**redex**).
+
+Some strategies are:
+
+1. **Innermost**: when there is more than one redex, **the leftmost one that does not
+   contain other redexes is evaluated**.
+
+   With this strategy, **arguments of functions are always evaluated before
+   evaluating the function itself**. This corresponds to **call-by-value**. It is the
+   **faster** approach.
+2. **Outermost**: dual to innermost, **we start with the redex that is not contained
+   inside any other redex**.
+
+   With this strategy, **functions are always applied before their arguments**. This
+   corresponds to **call-by-name**.
+
+   **If there is an evaluation for an expression that terminates, call-by-name
+   terminates and produces the same result** (Church-Rosser confluence).
+
+**Call-by-need** is a **memoized version of call-by-name** where, if the function
+argument is evaluated, that value is stored for subsequent uses. In a pure
+(side-effect-free) setting, this produces the same result as call-by-name and it
+is faster.
+
+One way to **overcome non-termination** of possible evaluations is to **use thunks**. We
+can use a **`force` operation to evaluate it**. There is already an implementation
+of this strategy in racket based on `delay` and `force`. We will re-implement a
+version of it.
+
+```racket
+(struct promise
+  (proc   ;;; thunk
+   value? ;;; already evaluated?
+   ) #:mutable)
+
+(define-syntax delay
+  (syntax-rules ()
+    ((_ (expr ...))
+     (promise (lambda () (expr ...)) #f)))) ; we created a thunk
+(define (force promise)
+  (cond
+    ((not (promise? prom)) prom)
+    ((promise-value? prom) (promise-proc prom))
+    (else
+      (set-promise-proc! prom ((promise-proc prom)))
+      (set-promise-value?! prom #t)
+      (promise-proc prom))))
+```
+
+**In Haskell call-by-need is the default**. If we need call-by-value, we need to
+force evaluation (we'll see how).
+
+### Currying
+
+In Haskell **every function has one argument**. Functions with **multiple arguments
+are curried**. This means that we turn `f: N x N -> N` into `f: N -> (N -> N)`
+(parenthesis can be omitted since `->` is right associative).
+
+To illustrate how it works let us look at this scheme example:
+
+```racket
+(define (sum-square x)
+  (lambda (y)
+    (+ (* x x) (* y y))))
+(define ((sum-square x) y)
+  (+ (* x x) (* y y)))
+
+(display ((sum-square 3) 5)) ;;; -> 34
+```
+
+This make partial application free.
+
+### Function definition
+
+Functions are **declared through a sequences of equations**. This is also an example
+of **pattern matching**: **arguments are matched with the right parts of equations,
+top to bottom. If a match succeeds, that definitions body is called**.
+
+```haskell
+length :: [Integer] -> Integer
+length []     = 0
+length (x:xs) = 1 + length xs
+```
