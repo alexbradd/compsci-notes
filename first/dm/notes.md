@@ -1000,3 +1000,40 @@ need **$\mathcal{O}(n^2)$**. Once the $\epsilon$ neighborhood has been computed,
 algorithm **needs only a single pass over all the points to find the density
 connected clusters**. Overall, the **average complexity is $\mathcal{O}(n\log(n))$**
 and the **worst is $\mathcal{O}(n^2)$**.
+
+#### HDBSCAN
+
+**Extends DBSCAN by converting it into a hierarchical clustering algorithm and then
+using a technique to extract a flat clustering based in the stability of
+clusters**.
+
+It defines the **core distance** of a point as **the maximum distance of a point to
+its k-th nearest neighbour ($core_k(x)$)**. Thus, **points in high density areas
+will have low core distance**, while **points in low density areas will have a high
+core distance**. This provides a local inexpensive estimate of density.
+
+The **new distance metric** is defined as such:
+
+$$
+d_{mreach-k}(a,b) = max \{core_k(a), core_k(b), d(a,b)\}
+$$
+
+Using the core distance and the original distance metrics $d$, **this distance
+keeps dense areas with lower core distance at the same distance while pushing
+away sparser points**. Using the distances, we **compute the minimal weight 
+spanning tree.** This spanning tree is like a **dendrogram**. 
+
+We now need to **condense** the tree into clusters. We **navigate the hierarchy from
+the top to bottom and at each split we check the size of the merged clusters**. If
+a cluster has **fewer points than the threshold**, then **the smaller clusters are
+eliminated, otherwise both clusters are maintained**. At which point a point $p$
+"fell out of the cluster" and **at what point that happened is stored in
+$\lambda_p$**.
+
+Once the condensed dendrogram has been calculated, we **want to select what
+persists and have a longer lifetime since short lived clusters probably
+represent artifacts**.
+
+In the end, we can **assign to each point a probability of belonging to a cluster
+based on its $\lambda_p$**.
+
