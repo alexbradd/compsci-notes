@@ -1037,3 +1037,102 @@ represent artifacts**.
 In the end, we can **assign to each point a probability of belonging to a cluster
 based on its $\lambda_p$**.
 
+### Silhouette Analysis
+
+See python notebook `SilhouetteAnalysis`.
+
+## Linear regression
+
+Regression tries to **compute a function that predicts the value of some variables
+based on the others**.
+
+When we work with regression, we need to **think also about model usage**, and not
+only about model building. How do we **evaluate a model**? Given $N$ examples,
+**linear regression computes a model $y = w_0 + w_1 x$ so that for each point
+$y_i = w_0 + w_1 x_i + \epsilon_i$ we evaluate the model by computing the
+residual sum of squares:**
+
+$$
+RSS(w_0, w_1) = \sum_{i=1}^N \epsilon^2_i
+$$
+
+The goal of linear regression is thus to **find the weights that minimizes said
+$RSS$**.
+
+The best way to compute the minimal values of $RSS$ is to use the **gradient of
+$RSS$. To get some values we use gradient descent**:
+
+$$
+\begin{aligned}
+  & \text{while not converged} \\
+  & \quad \vec{w^{(t+1)}} = \vec{w^{(t)}} - \eta \nabla RSS(\vec{w^{(t)}})
+\end{aligned}
+$$
+
+Usually **$\eta$ changes over iterations**.
+
+### Multiple linear regression
+
+Given $D$ input variables, we assume that the **output $y$ can be computed as**:
+
+$$
+y = w_0 + \sum_{j=1}^D w_j x_j + \epsilon
+$$
+
+The model cost is computed using the **residual sum of squares $RSS$ as**:
+
+$$
+RSS(w) = \sum_{i=1}^N (y_1 - w_0 - \sum_{j=1}^D w_j x_{i,j})^2
+$$
+
+Some other measures are:
+
+1. **Total sum of squares**: $TSS= \sum_{i=1}^N (y_i - \bar{y})^2$
+2. **Coefficient of determination**: measures **how well the regression line
+   approximates the real data points**. When it is **1, the regression line
+   perfectly fits the data**.
+
+   $$
+   R^2 = 1- \frac{RSS}{TSS}
+   $$
+
+In general, given a set of input variables $x$, a set of $N$ examples $x_i, y_j$
+and a set of $D$ features $h_j$ computed from the input variables $x_i$,
+**multiple linear regression assumes a model**:
+
+$$
+y_i = \sum_{j=0}^D w_j h_j(\vec{x_i}) + \epsilon_i
+$$
+
+Where $h_j(\cdot)$ identifies variables derived from the original inputs.
+
+**MLR aims at minimizing $RSS(\vec{w})$**:
+
+$$
+RSS(\vec{w}) = \sum_{I=0}^N (y_i - \sum_{j=0}^D w_j h_j (\vec{x_i}))^2
+$$
+
+For this purpose we can apply **gradient descent**:
+
+$$
+\begin{aligned}
+  & t = 0 \\
+  & \text{init } w^{(0)} \\
+  & \text{while not converged} \\
+  & \quad \text{for }(j = 0; \, j \leq D; \, j = j + 1) \\
+  & \quad \quad \Delta w_j = -2 {\textstyle\sum_{i=1}^N} h_j(\vec{x_i})(y_i - \hat{y_i}(\vec{w^{(t)}})) \\
+  & \quad \quad w_j^{(t+1)} = w_j^{(t)} - \eta \Delta w_j \\
+  & \quad t = t + 1 \\
+\end{aligned}
+$$
+
+### Model evaluation
+
+**Models should be evaluated using data that have not been used to build the model
+itself**. The available data should be split between training and test. **Generally
+we reserve**:
+
+- **$1/2$ for each**
+- **$2/3$ for training and $1/3$ for testing**
+
+For small or unbalanced datasets, samples might not be representative.
