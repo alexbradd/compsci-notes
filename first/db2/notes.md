@@ -715,3 +715,193 @@ of triggers**.
 - Avoid recursive triggers, unless absolutely necessary.
 - Use them with parsimony, as they are executed every user interaction.
 
+## Ranking queries
+
+The field that studies **optimization based on different criteria** is called
+**multi-objective optimization**. The general formulation is: **given $N$ objects
+described by $d$ attributes, and some notion of "goodness" of an object, find
+the $k$ best objects**.
+
+We have **2 main approaches**: **ranking** (top $k$ objects according to a score),
+**skyline** (set of non-dominated objects).
+
+We will use a **metric approach to ranking**: we find a **ranking whose total distance
+to the initial rankings is minimized**. Several **distances** between ranking are
+defined e.g.:
+
+1. **Kendall tau**: the number of exchanges in a bubble sort to convert $R_1$ to
+   $R_2$
+2. **Spearman's footrule**: adds up the distance between the ranks of the same item
+   in the two rankings
+
+Finding an **exact solutions for Kendall-tau is NP-complete**, while finding a
+**solutions for Spearman is polynomial**. In addition to being more efficient,
+Spearman admits efficient approximations (e.g. median ranking)
+
+### Combining opaque rankings
+
+Uses only the position of the elements in the ranking, no other associated
+scores.
+
+#### MedRank
+
+It is based on the notion of median and provides an **approximation of Spearman's
+optimal aggregation**.
+
+- **Input**: $k$, ranked lists $R_1 \ldots R_m$ of $N$ elements
+- **Output**: the top $k$ elements according to median ranking:
+
+  Use sorted access in each list, one element at a time, until there are $k$
+  elements that occur in more than $m/2$ lists. There are the to $k$ elements.
+
+**MedRank is not optimal, however it is instance optimal**: among the algorithms
+that accesses the lists in sorted order, this is the best possible algorithm on
+every input instance.
+
+##### Optimality vs instance optimality
+
+An algorithm is said to be optimal if its execution cost is never worse than any
+other algorithm on any input.
+
+Instance optimality is a form of optimality aimed at when standard optimality is
+unachievable: algorithm $A^\star$ is instance-optimal w.r.t a family $A$ and $I$
+problem instances for the cost metric $c$ if there exists $k_1, k_2$ such that 
+
+$$
+\forall A'\in A, I'\in I \, c(A^\star, I') \leq k_1 \cdot c(A', I') + k_2
+$$
+
+This means that if $A^\star$ is instance-optimal, then any algorithm can improve
+the cost by only a constant factor $r$ called the optimality ratio of $A^\star$.
+
+Instance optimality is a much stronger condition than optimality in the average
+or worst cases.
+
+### Top-K queries
+
+The aim is to **retrieve only the $k$ best answers from a potentially large result
+set**. We need an ability to rank objects based on a metric.
+
+#### Naive approach
+
+Assume a scoring **function $S$ that assigns to each tuple $t$ a numerical score
+for ranking tuples**. We use the most straightforward version for computing the
+result.
+
+- **Input**: cardinality $k$, dataset $R$, scoring function $S$
+- **Output**: the $k$ highest-scored tuples w.r.t $S$
+  1. For all tuples $t$ in $R$: compute $S(t)$
+  2. Sort tuples based on their scores
+  3. Return the first $k$ highest scored tuples
+
+**This approach is very expensive for large datasets**. Even worse, if more than one
+relation is involved we need to join all tuples.
+
+#### SQL
+
+We need two abilities: **ordering and limiting**. Ordering is done by `order by`,
+while limiting is done by `fetch first k rows only` (not in standard until 2008,
+each DBMS has its own way).
+
+Calculating **order is done by assigning weights to various metrics to normalize
+values**.
+
+```sql
+-- 1
+SELECT * FROM UsedCars WHERE Vehicle = 'Audi/A4' and Price <= 21000
+ORDER BY 0.8*Price + 0.2*Miles
+
+-- 2
+SELECT * FROM UsedCars WHERE Vehicle = 'Audi/A4'
+ORDER BY 0.8*Price + 0.2*Miles
+```
+
+`order by` is not perfect. It can be subject to 2 problems:
+
+1. **Near-miss**: some relevant information is lost (first query)
+2. **Information overload**. (second query)
+
+#### Evaluation
+
+We have many scenarios possible. Let us consider two aspects to consider: query
+type and access paths. The simplest case is a top-k selection with only 1
+relation:
+
+- If input is sorted according to $S$: we read only the first $k$ tuples
+- If tuples are not sorted, if $k$ is not too large, we can perform a in-memory
+  sort ($\mathcal{O}(n\log(k))$ cost)
+
+#### K-Nearest neighbour
+
+Let us consider **distances** rather than scores. The model is now:
+
+- A **$m$-dimensional space** of ranking attributes $A = (A_1, \ldots, A_n)$
+- A **relation $R(A_1, \ldots, A_n, B_1, \ldots, B_m)$** where $B_x$ are other
+  attributes
+- A **target point** $q \in A$
+- A **function $d: A \times A \to \mathbb{R}$** measuring the distance between two
+  points of the attribute space
+
+Under such model a **top-k query is transformed into a so called k-nearest
+neighbours query**: given a point $q$, a relation $R$, $k\geq 1$ and a distance
+$d$, determine the $k$ tuples un $R$ that are closest to $q$ according to $d$.
+
+Some commonly used distances are **Lp-norms**: 
+
+$$ L_p(t,q) = (\sum_{i=1}^m |t_i - q_i|^p)^{1/p} $$
+
+Some relevant special cases are:
+
+1. **Euclidean**: $L_2(t,q) = \sqrt{\sum_{i=1}^m |t_i - q_i|^2}$
+2. **Manhattan**: $L_1(t,q) = \sum_{i=1}^m |t_i - q_i|$
+3. **Chebyshev**: $L_\infty(t,q) = \max_i \{|t_i - q_i|\}$
+
+The use of weights stretches some coordinates (e.g 
+$L_2(t,q,W) = \sqrt{\sum_{i=1}^m w_i|t_i - q_i|^2}$.
+
+#### Top-K join query
+
+In a top-k join query we have $n>1$ input relations and a scoring function $S$
+defined on the result of the join:
+
+```sql
+SELECT        A1, A2, ...
+FROM          R1, R2, ...
+WHERE         ...
+ORDER BY      S(p1, p2, ...) [DESC]
+FETCH FIRST   k ROWS ONLY
+```
+
+`p1, p2, ...` are scoring criteria, or preferences.
+
+**All the joins are on a common key attribute**. This is the simplest case to deal
+with and is the basis for more general cases.
+
+Top-k join queries are **used in mainly two scenarios**:
+
+- **There is an index for retrieving tuples according to each preference**.
+- The relation is spread over several sites, each providing information only on
+  part of the objects (the **"meta-search-engine" scenario**).
+
+Each of this scenarios **assumes** that:
+
+1. Each input list **supports sorted access** (each access returns the id of the next
+   best object)
+2. Each input list **supports random access** (each access returns the partial score
+   of an object given its id)
+3. The **id of an object is the same across all inputs**
+4. Each **input consists of the same set of objects**
+
+Each object $o$ returned by $L_j$ has an **associated partial score** $p_j(o) \in [0;1]$
+**The hypercube $[0;1]^m$ is called the score space. The point $p(o)$ is the map
+of object $o$ into the score space.** The **global score** $S(o)$ is **computed by means
+of a scoring function that combines in some way the local scores of $o$**. Some
+common scoring functions are:
+
+1. Sum
+2. Weighted sum
+3. Minimum
+4. Maximum
+
+We define iso-score curves in the score space as a set of points that have the
+same global score.
