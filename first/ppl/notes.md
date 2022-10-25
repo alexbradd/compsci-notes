@@ -31,7 +31,7 @@ Basic types:
 5. Vectors: `#(1 2 3 4)`
 6. Strings: `"aaa"`
 7. Pairs and lists: `(1 2 #\a)`
-   - Lists are the basis of the language: everthing is a list (LISP), even the
+   - Lists are the basis of the language: everything is a list (LISP), even the
      program themselves.
 
 Every program is an _expression_: evaluation of expressions produces a value
@@ -706,3 +706,183 @@ length :: [Integer] -> Integer
 length []     = 0
 length (x:xs) = 1 + length xs
 ```
+
+### Type system
+
+Haskell is **statically typed** with **type inference**: every well-typed expression is
+guaranteed to have a unique principal type and can be inferred automatically. It
+uses a **variant of the Hindley-Milner** type system (also used in other ML variants
+like `F#`).
+
+In Haskell is possible to do **parametric polymorphism by declaring type
+variables**:
+
+```haskell
+-- `a` is a type variable, `[a]` indicates a list of type `a` for any `a`
+length :: [a] -> Integer
+```
+
+#### User-defined types
+
+New types are introduced using data declarations.
+
+```haskell
+-- This is like a tagged union type in C
+data Bool = False | True
+```
+
+In the above, **`Bool` id the type constructor, while `False` and `True` data
+constructors. These two constructors live in different namespaces so it is
+possible to use the same name for both**:
+
+
+```haskell
+-- This is like a struct in C
+data Point a = Point a a
+```
+
+If we apply a **data constructor we obtain a value** (`Point 2.3 5.7`) while with a
+**type constructor we obtain a type** (`Point Float`).
+
+#### Recursive types
+
+Of course we can define recursive types. One example is the following:
+
+```haskell
+data Tree a = Leaf a
+            | Branch (Tree a) (Tree a)
+-- data constructor Branch has type Branch :: Tree a -> Tree a -> Three a
+
+aTree :: Tree Char
+aTree = Branch (Leaf 'a')
+               (Branch (Leaf 'b') (Leaf 'c'))
+
+-- example of a function working with Tree
+fringe :: Tree a -> [a]
+fringe (Leaf x)     = [x]
+fringe (Branch l r) = fringe l ++ fringe r -- (++) is list concatenation
+```
+
+Lists are an example of recursive types. Using a scheme-like notation, they can
+be defined like:
+
+```haskell
+data List a = Null 
+            | Cons a (List a)
+```
+
+Haskell has special syntax for lists: `[]` is both a data and type constructor,
+while `:` is an infix data constructor.
+
+```haskell
+-- Pseudo-haskell
+data [a] = []
+         | a : [a]
+```
+
+#### Fields
+
+**Product types (like `Point`) are like structs in C or in Scheme. The access is
+positional via pattern-matching**:
+
+```haskell
+pointX Point x _ = x
+pointY Point _ y = y
+```
+
+There is also a **C-like syntax to have named fields with auto-generated
+accessors**:
+
+```haskell
+data Point = Point { pointX, pointY :: Float }
+```
+
+#### Synonyms
+
+Synonyms are defined with `type`. They are usually used for shortness or
+readability.
+
+```haskell
+type String = [Char]
+type Assoc a b = [(a,b)]
+```
+
+### Function composition and `$`
+
+`(.)` is mathematical function composition: `(f.g)(x) = f(g(x))`. `$` (apply
+operator) is an operator for avoiding some parenthesis, e.g 
+`(10 *)(5 + 3) = (10 *) $ 5 + 3`.
+
+### Infinite computations
+
+**Call-by-need is very convenient for dealing with infinite computations that
+provide data**.
+
+```haskell
+ones = 1 : ones -- infinite list of ones
+
+numsFrom n = n : numsFrom (n + 1) -- equivalent to the [n..] notation
+squares = map (^2) (numsFrom 0)
+
+firstFiveSquares = take 5 squares -- perfectly legal to take a finite slice
+```
+
+**List comprehensions are here**. The syntax is inspired by that of the mathematical
+set theory:
+
+```haskell
+l = [(x, y) | x <- [1,2], y <- "ciao"]
+-- l = [(1, 'c'), (1, 'i'), (1, 'a'), (1, 'o'),
+--      (2, 'c'), (2, 'i'), (2, 'a'), (2, 'o')]
+
+fib = 1:1:[a + b | (a, b) -> zip fib (tail fib)]
+```
+
+### Error
+
+Bottom ($\bot$), is defined as `bot`. **All errors have value `bot`, a value
+shared by all types**. `error :: String -> a` is an outlier because it is
+polymorphic in the output. The reason is that it returns `bot`.
+
+### Pattern matching
+
+We have already seen pattern matching: **it goes top-down, left-to-right**. Patterns
+**may have boolean guards**.
+
+```haskell
+sign x | x > 0  = 1
+       | x == 0 = 0
+       | x < 0  = -1
+```
+
+**Patterns have to be linear: each identifier has to be unique**.
+
+```haskell
+f (x:x:xs) = undefined          -- IMPOSSIBLE
+f (x:y:xs) | x == y = undefined -- POSSIBLE
+```
+
+Another way of doing pattern matching is by using `case`:
+
+```haskell
+take m ys = case (m, ys) of
+              (0, _)    -> []
+              (_, [])   -> []
+              (n, x:xs) -> x : take (n - 1) xs
+
+-- equivalent to:
+take 0 _      = []
+take _ []     = []
+take n (x:xs) = x : take (n - 1) xs
+```
+
+### If-then-else
+
+**If-then-else is also present**: `if condition then then-clause else else-clause`.
+N.B: with call-by-need we can define `if` as a function:
+
+```haskell
+if True  x _ = x
+if False _ y = y
+```
+
