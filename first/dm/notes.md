@@ -1136,3 +1136,131 @@ we reserve**:
 - **$2/3$ for training and $1/3$ for testing**
 
 For small or unbalanced datasets, samples might not be representative.
+
+#### Cross validation
+
+The **most robust way to evaluate your model**. Two steps:
+
+1. **Data is split into $k$ subsets of equal size**
+2. **Each subset** in turn is **used for testing and the remainder for training**.
+
+This is called **$k$-fold cross-validation** and **avoids overlapping test sets**.
+Often the subsets are **stratified** before cross validation is performed.
+
+The **standard is stratified ten-fold cross-validation** (ten has been observed
+empirically to be the best value). Stratification reduces the estimate's
+variance. To reduce even more the variance we can repeat cross validation
+multiple times (e.g 5x2 or 10x10).
+
+### Overfitting
+
+Overfitting is defined as a very good performance on the training set but
+terrible performance on the test set. The opposite of overfitting is
+underfitting.
+
+In linear regression, usually **having too small degree leads to underfitting,
+while too high degree to overfitting**. Overfitting is **also associated to large
+weights estimates**. To prevent it we can add to $RSS$ a **term to penalize large
+weights** to avoid overfitting. We call this procedure **regularization** and we have
+two ways of regularizing:
+
+1. **Ridge regression** ($L_2$):
+
+   $$ RSS(\vec{w}) + \alpha \|\vec{w}\|_2^2 $$
+
+2. **Lasso regression** ($L_1$): usually the preferred method.
+
+   $$ RSS(\vec{w}) + \alpha \|\vec{w}\|_1 $$
+
+**Lasso tends to zero out less important features and produces sparser solutions**.
+
+#### Choosing $\alpha$
+
+To select the best value of $\alpha$ we **cannot use the test set since it is
+going to be used for evaluating the final model**. We need to **reserve part of the
+training data to evaluate possible candidate values of $\alpha$ and to select
+the best one**. 
+
+If we have **enough data, we can extract a validation set from the training data 
+which will be used to select $\alpha$**. **If we don't** have enough data, we should
+select $\alpha$ by **applying k-fold cross-validation over the training data
+choosing the $\alpha$ corresponding to the lowest average cost over the k-folds**.
+
+## Classification
+
+Given an unlabeled dataset, we need a way to decide the class of an element.
+
+### Logistic regression
+
+**Similar to linear regression, however we use the line not to predict the value,
+but to draw a divider between two classes**.
+
+We define a **score function** similar to the one used in linear regression. Then
+the **label is determined by the sign of the score value**.
+
+$$
+\begin{gathered}
+  Score(\vec{x_i}) = \sum_{j=0}^D w_j h_j (\vec{x_i}) \\
+  \hat{y_i} = sign(Score(\vec{x_i}))
+\end{gathered}
+$$
+
+Logistical regression **computes the probability of assigning a class to an
+example**: $P(y_i|\vec{x_i})$. For this reason, logistic regression **assumes that**:
+
+$$
+\begin{gathered}
+  P(\hat{y_i} = 1|\vec{x_i}) = \frac{1}{1+e^{Score(\vec{x_i})}} \\
+  P(\hat{y_i} = 1|\vec{x_i}, \vec{w}) = \frac{1}{1+e^{\vec{w}h(\vec{x_i})}}
+\end{gathered}
+$$
+
+In the second one we use $h$ for all the feature transformation.
+
+It then **searches for the weight vector that corresponds to the highest
+likelihood** $l(\vec{w}) = \prod_{i=0}^N P(y_i|\vec{x_i}, \vec{w})$. For this
+purpose, **it performs a gradient ascent on the log likelihood function**
+$ll(\vec{w}) = \ln l(\vec{w})$.
+
+To classify an example $x$:
+
+1. We **select the class with the highest probability** $P(Y=y|x)$;
+2. **Or we check if the ratio of probabilities is greater than one**:
+
+   $$
+   \frac{P(y=1|\vec{x})}{P(y=-1|\vec{x})} = e^{\vec{w}h(\vec{x})} > 1
+   $$
+
+   Choosing the positive class if it is, otherwise, the negative class.
+
+**Equivalently** we can check if the **natural log** is greater than 0. This means **we
+can obtain a classification that assigns $Y=-1$ by checking that
+$\sum_{i=0}^D w_i h_i(x) < 0$ and $Y=1$ otherwise**.
+
+The **logistic curve fits better 0/1 data than linear** and results in a better
+decision boundary. **Error is monotonic in distance** from boundary. Moreover, the
+boundary in the linear case is more sensitive to outliers, while logistic is
+not.
+
+#### Overfitting and regularization
+
+Like in the linear case, **$L_1$ and $L_2$ can reduce overfitting and produce
+sparse solution**. Overfitting is associated with large weights to limit
+overfitting.
+
+- **$L_1$ uses the sum of absolute values**, which penalizes large weights and at
+  the same time promotes sparse solutions
+
+  $$ l(\vec{w}) - \alpha \|\vec{w}\|_1 $$
+
+- **$L_2$ uses the sum of squares**, which penalizes large weights
+
+  $$ l(\vec{w}) - \alpha \|\vec{w}\|_2^2 $$
+
+We of course need to choose a suitable $\alpha$.
+
+#### Cross-validation
+
+We can use **cross-validation on classification like we did previously**. We
+**calculate predictions on data points in each fold**. The **final performance** is
+**computed using the predictions computed on all the folds**.
