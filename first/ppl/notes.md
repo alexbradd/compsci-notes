@@ -735,7 +735,6 @@ In the above, **`Bool` id the type constructor, while `False` and `True` data
 constructors. These two constructors live in different namespaces so it is
 possible to use the same name for both**:
 
-
 ```haskell
 -- This is like a struct in C
 data Point a = Point a a
@@ -885,4 +884,113 @@ N.B: with call-by-need we can define `if` as a function:
 if True  x _ = x
 if False _ y = y
 ```
+### `let` and `where`
 
+`let` is similar to Scheme's `letrec*`. `where` is similar but reversed:
+
+```haskell
+let x = 3
+    y = 12
+in x + y
+
+powerset :: [a] -> [[a]]
+powerset set = powerset' set [[]] where
+  powerset' [] out = out
+  powerset' (e:set) out = powset' set (out ++ [e:x | x <- out])
+```
+
+### Call-by-need and strictness
+
+**In scheme**, we saw that **fold-left** is very **efficient** as it is **naturally tail
+recursive**. **In Haskell this does not hold true: due to call by need it is very
+memory intensive**.
+
+```haskell
+foldl f z []     = z
+foldl f z (x:xs) = foldl f (f z x) xs
+```
+
+Most of Haskell code uses `foldr` and this is one of the reasons.
+
+There are **various ways to enforce strictness** in Haskell:
+
+1. In **data types**: `data Complex = Complex !Float !Float`. It tells the compiler
+   to **never store unevaluated expression inside those fields**. There are
+   **extensions for using `!` also for function parameters**.
+   2. We can force evaluation of a function using `seq:: a -> t -> t`. **The
+   semantics of `seq` are the following: `seq x y` returns `y` only if `x`
+   terminates**.
+
+   We can define a strict version of `foldl`:
+
+   ```haskell
+   foldl' f z []     = z
+   foldl' f z (x:xs) = let z' = f z x
+                       in seq z' (fold' f z' xs)
+   ```
+
+   **There is a convenient strict variant of `$` called `$!`**.
+
+### Modules
+
+Simple module, with `import`, `export` and namespaces.
+
+```haskell
+module Test where -- export everything
+...
+
+module Tree (Tree(Leaf, Branch), fringe) where
+...
+
+module Main (main) where
+import Tree (Tree(Leaf,Branch))
+main = print (Branch (Leaf 'a') (Leaf 'b'))
+```
+
+### Type classes
+
+Type classes are the mechanism for providing **ad hoc polymorphism** (aka
+overloading).
+
+Let us consider a function like `elem`. What should be its type?
+
+```haskell
+x `elem` []     = False
+x `elem` (y:ys) = x == y || (x `elem` ys)
+```
+
+**We need to express the fact that `==` is defined for all types acceptable by the
+function**. We can use the **type class `Eq`** and declare a type to be an instance of
+said class. If a **type is instance of a class it means it implements all
+functions of said class**.
+
+```haskell
+class Eq a where
+  (==) :: a -> a -> Bool
+...
+
+elem :: (Eq a) => a -> [a] -> Bool
+...
+```
+
+`(Eq a)` is called a **constraint** on type `a`.
+
+To define an instance for a class we use the following syntax:
+
+```haskell
+-- we added a constraint on the instance: we can check equality of `Tree a` only
+-- if `a` implements `Eq`
+instance (Eq a) => Eq (Tree a) where
+  Leaf a == Leaf b = a == b
+  (Branch l1 r1) == (Branch l2 r2) = (l1 == l2) && (r1 == r2)
+  _ == _ = False
+```
+
+The **implementation** of functions **in classes are called methods**.
+
+There is **inheritance (multiple) between classes** (e.g. `Ord`):
+
+```haskell
+class (Eq a) => Ord a where
+  ...
+```
