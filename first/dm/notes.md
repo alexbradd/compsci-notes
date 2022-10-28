@@ -1264,3 +1264,131 @@ We of course need to choose a suitable $\alpha$.
 We can use **cross-validation on classification like we did previously**. We
 **calculate predictions on data points in each fold**. The **final performance** is
 **computed using the predictions computed on all the folds**.
+
+#### Multiclass classification
+
+Logistic regression assumes that there are only two classes of values. What if
+we have more? We use **one-versus-the-rest evaluation**: for each class, we create
+one classifiers that predicts the target class against all the others.
+
+One alternative approach is to **change the model itself to be multiclass**. The
+optimisation routine **minimizes loss or maximizes likelihood over the multiple
+classes at once**.
+
+Multinomial logistic regression uses the following function
+
+$$
+P(Y_i = j) = \frac{e^{\vec{w_j}h(\vec{x_i})}}{\sum_j e^{\vec{w_j}h(\vec{x_i})}}
+$$
+
+### Classification metrics
+
+#### Confusion matrix
+
+Focuses on the predictive capability of a model:
+
+| Actual class | Predicted class | -     |
+|:------------:|:---------------:|:-----:|
+| -            | Yes             | No    |
+| Yes          | `#TP`           | `#FN` |
+| No           | `#FP`           | `#TN` |
+
+$$ Accuracy = \frac{TP+TN}{TP+TN+FP+FN} $$
+
+Note that **often accuracy can be misleading**. **We can also use the cost of
+misclassification in place of the cardinalities**.
+
+#### Precision and recall
+
+- **Precision**: percentage of **items classified as positive that are actually
+  positive**
+
+  $$ p = \frac{TP}{TP+FP} $$
+
+- **Recall**: percentage of **positive examples tat are classified as positive**
+
+  $$ r = \frac{TP}{TP+FN} $$
+
+The **higher the precision, the lower the FPs**, the **higher the recall, the lower
+the FNs**.
+
+We define the **F1-measure** as:
+
+$$ F1-measure = \frac{2rp}{r+p} $$
+
+The **higher the F1, the lower both the FPs and FNs**.
+
+#### Sensitivity and specificity
+
+- Sensitivity **evaluates the ability to correctly identify the elements of the
+  positive class** and it is computed as the true positive rate (TPR)
+
+  $$ TPR = \frac{TP}{TP + FN} $$
+
+- Specificity **estimates the probability to correctly identify the elements of the
+  negative class** and it is computed as the true negative rate (TNR)
+
+  $$ TNR = \frac{TN}{TN + FP} $$
+
+### Comparing two models
+
+How can we evaluate the performance of two models and say whether the difference
+between the two was (or not) due to random fluctuations?
+
+**We apply the t-test, compute the p-value and compare it to a threshold**.
+
+We call the test **paired if we compute the mean/variance of the models on the
+same dataset**, while **unpaired if we use different datasets**.
+
+#### Multiple observations
+
+Say we perform a statistical test and we **repeat the test on twenty different
+observations**. What is **the chance that at least on of the observations will
+receive a p-value less than our threshold**?
+
+The **Bonferroni correction** is a correction that calculates the **probability of
+making one mistake** as $p-value / \#tests$
+
+### Probabilistic classifiers
+
+In logistic regression, we set the threshold for classification to 0.5. However
+**we can move the threshold a higher/lower**. By modifying the threshold,
+**we are modifying the precision and recall of the model**:
+
+- If we **increase** the threshold we are **increasing precision, but reducing recall**
+  (more false negatives)
+- If we **decrease** the threshold we are **decreasing precision, but increasing recall**
+  (more false positives)
+
+#### Precision-recall curve
+
+The **relation** between precision-recall is **a curve**. Different classifiers have
+different curves. The **ideal classifier is the one that has always precision to
+one**.
+
+To choose between classifiers, we choose the that has a better F1 measure or
+that has the curve nearer to one.
+
+#### ROC curves
+
+Another tool is the analysis of the ROC curve of the classifier. The **ROC plot is
+the plot of the true positive rate against the false positive rate**.
+
+$$
+\begin{gathered}
+  TPR = \frac{TP}{TP+FN} \\
+  FPR = \frac{FP}{TN+FP}
+\end{gathered}
+$$
+
+The **performance** of a single classifier is represented as **a point on the curve**.
+To **compute the curve**, we **simply change the threshold by some quantum and
+calculate the point**.
+
+Together with the curve a **diagonal line** is plotted. It **represents the
+performance of a random guess**. **Below this line, prediction is opposite of the
+true class**. The **better** the classifier performs, **the closer the curve is to the
+$(0;1)$ point**; the **worse** it performs the **closer to the polar opposite** it goes.
+
+We can **evaluate two models by comparing the area under the ROC curve**. The one
+**closer to 1 is the better**.
