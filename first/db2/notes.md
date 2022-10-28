@@ -905,3 +905,162 @@ common scoring functions are:
 
 We define iso-score curves in the score space as a set of points that have the
 same global score.
+
+##### Scoring function: `MAX`
+
+We use the **$B_0$ algorithm**.
+
+- **Input**: integer $k \geq 1$, ranked lists $R_1, \ldots, R_m$
+- **Output**: the top-k objects according to the $max$ scoring function
+  1. Make $k$ sorted accesses on each list and store objects and partial scores
+     in a buffer $B$
+  2. For each object $B$, compute the $max$ of its available partial scores
+  3. Return the $k$ objects with maximum score
+
+We **do not need to obtain missing partial scores** and we **do not execute any random
+access**.
+
+##### Fagin's algorithm
+
+**Works with any monotone function**.
+
+- **Input**: integer $k \geq 1$, a monotone function $S$ combining ranked lists 
+  $R_1, \ldots, R_m$
+- **Output**: the top-k `<object,score>` pairs
+  1. Extract the same number of objects by sorted accesses  in each list until
+     there are at least $k$ objects in common
+  2. For each extracted object, compute its overall score by making random
+     accesses wherever needed
+  3. Among these, output the $k$ objects with the best overall score
+
+Complexity **is sublinear in the number $N$ of objects**:
+$\mathcal{O}(N^{(m-1)/m}k^{1/m})$.
+
+The drawback of this approach is that the **scoring function is not exploited**. Plus
+**memory requirements can become prohibitive**.
+
+###### Threshold algorithm
+
+- **Input**: integer $k \geq 1$, a monotone function $S$ combining ranked lists 
+  $R_1, \ldots, R_m$
+- **Output**: the top-k `<object,score>` pairs
+  1. Do sorted accesses in parallel in each list $R_i$
+  2. For each object $o$, do random accesses in the other lists $R_j$, thus
+     extracting score $s_j$.
+  3. Compute the overall score $S(s_1, \ldots, s_m)$. If the value is among the
+     $k$ highest seen so far, remember $o$
+  4. Let $s_{Li}$ be the last score seen under sorted access for $R_i$
+  5. Define threshold $T=S(s_{L1}, \ldots, s_{Lm})$
+  6. If the score of the $k$-th object is worse than $T$, go to (1)
+  7. Return the current top-k objects
+
+**TA is instance optimal** among all algorithms that use **random and sorted accesses**.
+An improvement over FA is that the **stopping criterion depends on the scoring
+function**.
+
+In general, TA performs much better than FA, since it can adapt to the specific
+scoring function. **In order to characterize the performance of TA, we consider
+the middleware-cost:**
+
+$$ c = SA \cdot c_{SA} + RA \cdot c_{RA} $$
+
+Where:
+
+- $SA$ ($RA$) is the **total number of sorted (random) accesses**
+- $c_{SA}$ ($c_{RA}$) is the **unitary (base) cost of a sorted (random) access**
+
+In a basic setting, $c_{SA} = c_{RA} = 1$. In other cases, **costs may differ**:
+
+- For web sources, usually $c_{RA} > c_{SA}$ with the limit case where 
+  $c_{RA} = \infty$ (random access is impossible)
+- Some sources might not be accessible through sorted access ($c_{SA} = \infty$)
+
+##### NRA algorithm
+
+No Random Access (NRA) **applies when random accesses cannot be executed**.
+
+It **returns the top-k objects, but their scores might be uncertain**. The idea is
+to maintain for each object $o$ retrieved by sorted access lower and upper
+bounds $S^-(o), S^+(o)$ on its score. NRA uses a buffer with unlimited capacity,
+which is kept sorted according to decreasing lower bound values.
+
+Algorithm:
+
+1. Make a sorted access to each list
+2. Store in $B$ each retrieved object $o$ and maintain the bounds a threshold
+   $\tau$
+3. Repeat step 1 as long as
+    
+   $$ S^-(B[k]) < \max \{\max\{S^+(B[i]), i > k\}, S(\tau)\} $$
+
+**NRA is instance optimal**. Its **cost does not grow monotonically with $k$**: i.e it
+**might be cheaper to look for the top-$k$ objects rather than for the
+top-$(k-1)$**.
+
+### Skyline queries
+
+Skyline queries work **based on the concept of dominance** between different
+objects: a **tuple $t$ dominates $s$** ($t \prec s$) iff:
+
+- $\forall 1 \leq i \leq m \, t[A_i] \leq s[A_i]$
+- $\exists 1 \leq j \leq m : t[A_i] < s[A_j]$
+
+**Typically lower values are considered better**. The **skyline of a relation is the 
+set of its non-dominated tuples**.
+
+**A tuple $t$ is said to be in the skyline iff it is the top-1 result w.r.t at
+least one monotone scoring function** (i.e the skyline is the set of potentially
+optimal tuples).
+
+#### SQL
+
+Only a proposed syntax is available:
+
+```sql
+SELECT ... FROM ... WHERE ...
+GROUP BY ... HAVING ...
+SKYLINE OF [DISTINCT] d1 [MIN | MAX | DIFF],
+                      ...
+ORDER BY ...
+```
+
+#### Block Nested Loop
+
+We can implement a skyline **naively** using **nested queries**:
+
+```sql
+SELECT * FROM Hotels h WHERE city = 'Paris' AND NOT EXISTS (
+  SELECT * FROM Hotels h1
+  WHERE h1.city = h.city and
+    h1.distance <= h.distance and
+    ...)
+```
+
+However this query is **very slow (quadratic complexity)**.
+
+The algorithm is schematized as follows:
+
+```txt
+def bnl(D):
+  W <- empty_set
+  for each p in D do:
+    if (p is not dominated by any point in W) then:
+      W <- W - p.dominated_points
+      W <- W + {p}
+  return W
+```
+
+#### Sort-Filter-Skyline
+
+We improve BNL by **pre-sorting**: if the input is sorted, later tuples cannot
+dominate any previous tuple. **However, complexity remains still quadratic**.
+
+```txt
+def sfs(D, sort_fn):
+  S <- sort(D, sort_fn)
+  W <- empty_set
+  for each p in D do:
+    if (p is not dominated by any point in W) then:
+      W <- W + {p}
+  return W
+```
