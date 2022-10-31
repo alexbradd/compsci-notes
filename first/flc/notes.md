@@ -610,3 +610,59 @@ or leftmost:
   Constructs a tree **from leaves to root through reductions**.
 - **Top-down analysis**: leftmost derivation in direct order.
   Construct the tree **from root to leaves through expansions**.
+
+### Network of FSA
+
+Suppose the grammar $G$ is in **extended form**. Each non-terminal has one rule
+where the rhs is a regular expression. The regexp defines a regular language,
+therefore **there is a finite automaton $M_a$ that recognizes said regexp**. A
+**transition of $M_a$ labeled with a non-terminal $B$ is interpreted as a call to
+the automaton $M_b$**.
+
+Lets establish some **definitions** and terminology:
+
+- **Machines**: the finite state automata of the non-terminals of $G$
+- **Automaton**: the PDA that analyzes $L(G)$
+- **Network**: the set of all the machines $G$
+- $S\to\sigma, A\to\alpha, B\to\beta, \ldots$: grammar rules
+- $R_S, R_A, R_B, \ldots$: **regular languages** over the alphabets
+- $M_S, M_A, M_B, \ldots$: **DFSA** recognizing $R_S, R_A, R_B, \ldots$
+- $\mathcal{M} = \{M_S, M_A, M_B, \ldots\}$: **machine network**
+
+Let us suppose that **all machine states are distinct**. Let $R(M_a, q)$ the regular
+language accepted by $M_a$ starting from $q$, the final language (in general
+context free)
+
+$$
+L(M_a, q) = \{ y\in\Sigma^\star | \exists\eta : \eta\in R(M_a, q) \land \eta\overset{\star}{\implies}_G y\}
+$$
+
+We set an additional constraint to the machines of the network, so that the
+**initial state $0_a$ of a machine $A$ is never reentered after the start of the
+computation**. This constraint is easily fulfilled, however this means that
+machines are no longer minimal.
+
+### Overview of top-down analysis
+
+Using the framework set up in the previous section, we can implement top-down
+analysis as the emulation of the different DFSA: **each transition acts as a
+"function call" to different automatons**.
+
+When the finite automaton has a **bifurcation state**, to decide which direction to
+take, **we must watch all the symbols that appear on the arcs that leave the
+state, included the final "darts" of the machine**.
+
+Top-down analysis **does not work if the symbol sets on the arcs that leave the
+same state (guide-sets) are not disjoint**.
+
+## Bottom-up analysis
+
+We will now explain bottom-up analysis, otherwise called $ELR(k)$ where $k$
+is the lookahead set and we will consider equal to 1.
+
+For the analysis we need to add the **follow-sets** (often called lookahead set) for
+the non-terminals. The follow set **allows us to decide when to**:
+
+1. Go on with the analysis and run an automaton transition (**shift** move)
+2. Recognize a non-terminal and build a sub-tree (**reduce** move)
+
