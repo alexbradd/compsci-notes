@@ -994,3 +994,115 @@ There is **inheritance (multiple) between classes** (e.g. `Ord`):
 class (Eq a) => Ord a where
   ...
 ```
+
+**Some classes can be auto-implemented** by the compiler using the `deriving`
+keyword:
+
+```haskell
+data Tree a = Leaf a | Tree a a
+              deriving (Show,Eq)
+```
+
+### IO
+
+**IO cannot be referentially transparent since it is based on state change**. This
+means that if we perform a sequence of operations, they must be performed in
+order.
+
+We introduce the **IO action**. IO is an **instance of the monad class**.
+
+```haskell
+getChar :: IO Char
+putChar :: Char -> IO ()
+```
+
+`main` is the default entry point of a program. For **working with actions we have
+some special syntax at our disposal**:
+
+- `do` starts a block or ordered operations
+- `<-` is used to obtain a value from an action
+
+```haskell
+main :: IO ()
+main = do 
+  putStr "Say something: "
+  thing <- getLine
+  putStrLn $ "You said \"" ++ thing ++ "\"."
+```
+
+Example of program that reads a file and prints its contents:
+
+```haskell
+import System.IO
+import System.Environment
+
+main = do
+  args <- getArgs
+  handle <- openFile (head args) ReadMode
+  contents <- hGetContents handle -- note: hGetContents lazily reads the file
+  putStr contents
+  hClose handle
+```
+
+#### Exceptions
+
+**Haskell code can raise exceptions but to catch them we need an IO action**.
+There are **different ways** of handling exceptions, the simplest one is `handle`
+
+```haskell
+handle :: Exception e => (e -> IO a) -> IO a -> IO a
+
+-- usage
+main = handle handler readfile
+       where handler e
+          | isDoesNotExistsError e = putStrLn "File does not exists"
+          | otherwise = putStrLn "Something has gone wrong"
+```
+
+### Maps and arrays
+
+Some useful data structures are **arrays and hash-tables**. However, the way of
+interacting with said structures is imperative (there are libraries for using
+this style). The standard Haskell way is to use **immutable versions of this
+structures**: updates to them copy the structure, not change it.
+
+```haskell
+import Data.Map
+import Data.Array
+
+exmap = let m = fromList [("nose", 1), ("emerald", 27)]
+            n = insert "rug" 98 m
+            o = insert "nose" 9 n
+        in (m ! "emerald", n ! "rug", o ! "nose")
+-- exmap -> (27, 98, 9)
+
+exarr = let m = listArray (1,3) ["alpha", "beta", "gamma"] -- (1,3) is the range of indexes
+            n = m // [(2,"Beta")]                          -- `//` executes a list of updates
+            o = n // [(1,"Alpha"), (3,"Gamma")] 
+        in (m ! 1, n ! 2, o ! 1)
+-- exarr -> ("alpha", "Beta", "Alpha")
+```
+
+### Towards monads
+
+We saw that IO is a type construct instance of Monad. In recent versions of GHC
+the **Monad class needs the introduction of: Foldable, Functor and Applicative** 
+($Functor \contains Applicative \contains Monad$).
+
+#### Foldable
+
+Used for folding. It **requires only the definition of** `foldr` (`foldl` can be
+derived from `foldr`). The basic idea is to **apply a function `f` to all the
+elements in a container, starting from a value `z`**.
+
+##### Maybe
+
+The Maybe type is **like the Optional java type**: it has two values `Just v` and
+`Nothing`. It is a **simple example of an instance of Foldable**.
+
+```haskell
+instance Foldable Maybe where
+  foldr _ z Nothing  = z
+  foldr f z (Just x) = f x z
+```
+
