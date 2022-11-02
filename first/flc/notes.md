@@ -511,7 +511,7 @@ For this algorithm to work **the starting automaton must be deterministic**.
 Since $REG$ is closed for complement, **we can prove that it is also closed w.r.t
 the other set operation** since they can be reduced to union and complement:
 
-- $L \cap L' = \neg(\neg L \cup \neg L'$
+- $L \cap L' = \neg(\neg L \cup \neg L')$
 - $L \setminus L' = L \cap \neg L'$
 
 ### Cartesian product
@@ -666,3 +666,135 @@ the non-terminals. The follow set **allows us to decide when to**:
 1. Go on with the analysis and run an automaton transition (**shift** move)
 2. Recognize a non-terminal and build a sub-tree (**reduce** move)
 
+The **systematic way** to construct an ELR syntax analyzer is the following:
+
+1. **Construction of the pilot graph**. The pilot drives the PDA. In **each
+   macro-state** (m-state) the pilot **incorporates all the information about any
+   possible phrase that reaches the m-state**. Each m-state contains
+   machine-state with lookahead.
+2. The **m-states are used to build a few analysis threads in the stack**: each
+   **correspond to possible derivations** (computations of the machine network or
+   patch with $\epsilon$-arcs at each machine change, labeled with the scanned
+   string).
+3. **Verification of determinism** on the pilot graph. These conflicts can occur:
+   - A **shift-reduce conflict** signifies that both a shift and a reduction are
+     possible in a parser configuration
+   - A **reduce-reduce conflict** signifies that two or more reductions are similarly
+     possible
+   - A **convergence conflict** occurs when two different parser computations that
+     share a lookahead token lead to the same machine state.
+4. If the determinism test is passed, the PDA can analyze the string
+   deterministically
+
+### Definitions
+
+- **Initials**: similar to Berry-Sethi, is the set of characters found starting from
+  state $q_a$ of machine $M_A$ of the net $\mathcal{M}$.
+
+  It can be defined by three cases:
+
+  1. $a\in Ini(q_a)$ if exists $q_A \overset{a}{\to} r_A$
+  2. $a\in Ini(q_a)$ if exists $q_A \overset{B}{\to} r_A$ and $a\in Ini(0_B)$
+  3. $a\in Ini(q_a)$ if exists $q_A \overset{B}{\to} r_A$ and $L(0_B)$ is
+     nullable and $a\in Ini(r_A)$
+- **Item**: $\langle q_B, a \rangle \in Q \times(\Sigma\cup\{\dashv\})$ where $a$ is
+  valid lookahead for for the current machine $M_B$ in state $q_B$.
+
+  Two or more items with the same state can be grouped into one item. An item
+  with a machine final state is said to be a reduction item.
+
+  When parsing start, the first item of the axiomatic machine is encoded as
+  $\langle 0_S,\dashv\rangle$
+- **Closure**: A function that computes a kind of closure of a set $C$ of items with
+  lookahead:
+
+  $$
+  \begin{aligned}
+    closure(C) & = C \\
+    \langle 0_B, b\rangle\in closure(C) & \text{ if }
+      \begin{cases}
+        \exists \langle q,a \rangle\in C & \text{ and} \\
+        \exists q \overset{B}{\to} r \in \mathcal{M} & \text{ and} \\
+        b\in Ini(L(r) \cdot a)
+      \end{cases}
+  \end{aligned}
+  $$
+
+- **Shift**: corresponds to a transition in a machine $Y$
+  - If $X=c$ is a terminal symbol, then shift is a PDA move that reads a char
+    $c$ of the input
+  - If $X$ is a non terminal symbol, then shift is a PDA $\epsilon$-move after a
+    reduction $z\to X$ and it does not read any input
+  
+  $$
+  \begin{cases}
+    \vartheta(\langle p_A, \rho\rangle, X) = \langle q_A, \rho \rangle & \quad \text{ if } p_A \overset{X}{\to} q_A \text{ exists} \\
+    \emptyset & \quad \text{ otherwise}
+  \end{cases}
+  $$
+
+- **Macro-state**: a set of items
+- **The pilot**: a DFA defined by
+  - The set $R$ of m-states
+  - The pilot alphabet is the union $\Sigma \cup V$ of the terminal and
+    non-terminal alphabets (also named grammar symbols)
+  - The initial m-state, $I_0$, is the set $I_0 = closure(\langle 0_S, \dashv\rangle)$
+  - The m-state set $R$ and the state transition function $\vartheta$ are
+    computed starting from $I_0$
+
+### Algorithm
+
+```txt
+def construct_pilot():
+  R' := {I0}
+  do
+    R := R'
+    for each (m-state in R and symbol X in the pilot alphabet) do
+      I' := closure(theta(I, X))
+      if (I' is not empty set) then
+        add_arc(theta, I -> I', X)
+        if (I' not in R) then
+          add_m_state(I', R')
+        end
+      end
+    end
+  while (R /= R')
+```
+
+### Classification for m-states and pilot moves
+
+- **Base**: all the non-initial candidates of an m-state
+- **Closure**: all the initial candidates of an m-state 
+- **Kernel**: the projection on the first component of every candidate
+
+  $$ I_{\textit{kernel}} = \{q \in Q | \langle q, \pi\rangle\in I\} $$
+
+  If two m-states have the same kernel, they are called kernel-equivalent.
+
+A pilot m-state $I$ has MTP (**multiple-transition property**) if it **includes two
+candidates $\langle q, \pi\rangle$ and $\langle r,\rho\rangle$, $q\neq r$,
+such that for some grammar symbol both transitions $\delta(q,X), \delta(r,X)$
+are defined**. 
+
+The m-state $I$ and transition $\vartheta(I, X)$ are said to be **convergent if 
+$\delta(q,X) = \delta(r,X)$**. 
+
+A convergent transition has a **convergence conflict if 
+$\pi\cap\rho\neq\emptyset$**.
+
+### ELR(1) condition
+
+An EBNF grammar meets the ELR(1) condition if it satisfies the following the
+following requirements:
+
+1. Every m-state $I$ satisfies **both** the next clauses:
+   - **no shift-reduce conflict**: for all candidates $\langle q,\pi\rangle\in I$ 
+     such that $q$ is final and for all arcs $I\overset{a}{\to} I'$ it must hold
+     $a\notin\pi$.
+   - **no reduce-reduce conflict**: for all candidates 
+     $\langle q,\pi\rangle , \langle r,\rho\rangle\in I$ such that $q,r$ are
+     final it must hold $\pi\cap\rho = \emptyset$.
+2. **No transition** of the pilot graph has a **convergence conflict**.
+
+If the grammar is **purely BNF**, then the previous condition is referred to as
+**LR(1)** instead of ELR(1). **Convergence conflicts never occur in the BNF grammars**.
