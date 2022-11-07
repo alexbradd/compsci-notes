@@ -798,3 +798,244 @@ following requirements:
 
 If the grammar is **purely BNF**, then the previous condition is referred to as
 **LR(1)** instead of ELR(1). **Convergence conflicts never occur in the BNF grammars**.
+
+### How the PDA works under the control of the pilot
+
+1. The PDA **scans a string and executes a sequence of shift and reduction moves**.
+2. The PDA **pushes groups of items and starts from those in the initial pilot
+   m-state**.
+3. Each **m-state** item becomes a **3-tuple called a stack candiate** by **adding** to
+   it a **backward-directed pointer** that helps to **reconstruct the different
+   analysis threads constructed in parallel**. The **set of stack candidates
+   equivalent to an m-state is called a stack m-state (sms)**.
+4. The PDA **decides whether to scan or reduce** basing on the look-ahead in the 
+   pilot
+5. If the condition ELR(1) is satisfied (all parts), then the PDA is 
+   deterministic.
+
+The **stack is** made as follows: $J_0 a_1 J_1 a_2 \ldots a_k J_k$. The **current sms
+is the top of the stack and determines the next move**: either a **shift** tat scans
+the next token or a **reduction of a stack segment (handle)** to one of the final
+states in the current sms. This method leaves the **problem of finding the length
+of the stack handle**: that is why each stack candidate has a **pointer** (equivalent
+to an **integer $\#i$ indicating the index of the previous candidate** in the
+previous sms). The **pointer chain** is **followed backwards until $\bot$** is
+encountered.
+
+More formally, we can define an **algorithm for parsing**:
+
+1. **Initialization** - The initial stack **contains the initial sms** equivalent to the
+   initial m-state
+2. **Shift move** - Let the top sms be $J$ and $I$ its relative m-state, let the
+   current token be $a \in\Sigma$. Assume $\exists \vartheta(I,a) = I'$. A shift
+   does the following:
+   - **Push $a$ onto the stack** and **gets the next token**
+   - **Push on the stack $J'$ the sms** equivalent to $I'$
+3. **Reduction move (not initial)** - Let us assume that after inspecting the
+   topmost sms the pilot makes a reduction. **From the top a chain starts which
+   links each candidate to its predecessor. The chain ends when we encounter a
+   candidate with a $\bot$ pointer**.
+
+   Considering $k$ the top and $h$ as the end of chain, the reduction move 
+   proceeds as follows:
+   - We grow the syntax tree by reducing $a_{h+1} a_{h+2}\ldots a_k \to A$
+   - We pop $J_k a_k J_{k-1} a_{k-1} \ldots J_{h+1} a_{h+1}$
+   - We execute a non-terminal shift move $\vartheta(J_h, A)$
+4. **Initial state reduction move** - It differs from the previous case in the
+   **chosen state, which is final and initial**. The parser grows the forest by
+   reducing $\epsilon\to A$ and performs a non-terminal shift on the top
+   of stack $\vartheta(J_k, A)$
+5. **Non-terminal shift move** - The same as the aforementioned shift move, except
+   that the symbol is a non-terminal. We do the same things except **we do not
+   read the next input token**.
+6. **Acceptance** - The parser **accepts and halts when the stack contains only $J_0$**,
+   the **move is the non-terminal shift defined by $\vartheta(J_0, S)$ and the
+   current token is $\dashv$**.
+
+### Complexity 
+
+When analyzing a string of length $n$, the **number of elements on the stack is at
+most $n+1$**. To count the PDA moves we consider:
+
+- $n_t$ the number of terminal shifts
+- $n_n$ the number of non-terminal shifts
+- $n_r$ the number of reductions
+
+It holds that **$n_t = n$ and that $n_n = n_r$. Thus the total number of PDA moves
+is $n_t + n_n + n_r = n + 2n_r$**. Furthermore:
+
+- The **number of reductions with one or more terminal** (e.g $A\to aB$) is **at most
+  $n$**
+- The **number of null or copy reductions** is **linearly bounded** by $n$
+- The **number of reductions without terminals** is **linearly bounded** by $n$
+
+Thus both the **time** and **space** complexity are **$\mathcal{O}(n)$**.
+
+### Implementing the PDA with a vectored stack
+
+In an implementation of the PDA with some **programming language**, we can always
+**mine the stack elements underneath the top one and directly look deep inside the
+stack**. Thus, the **third field of a stack item can be an integer that directly
+points back to the position of the stack element where the analysis thread
+begins**. This modification makes the **stack alphabet infinite** and implies that out
+automata is no longer a simple PDA.
+
+Such modification is possible in every analyzer of practical interest and is
+not costly.
+
+## Top-down analysis
+
+We can think of top-down analysis as a **set of syntactic procedures**, one
+**equivalent to one automaton of the EBNF machine net**, that **invoke each other
+(even recursively)**. A parser that operates in this way operates by **recursive
+descent**.
+
+If we want such a parser to be **deterministic**, however, we need to **impose some
+further conditions on the machine net**.
+
+By applying some modification, we can also **derive the ELL parser from the ELR
+one for the same grammar**.
+
+### ELL(1) condition
+
+Recall the MTP property outlined previously. **We say that an m-state has the
+single-transition property (STP) if MTP does not hold**.
+
+We can say that a machine net **meets the ELL(1) condition if all the following
+clauses are respected**:
+
+1. There are **no left-recursive derivations**
+2. The net **meets the ELR(1) condition**
+3. The net **has STP**
+
+### Derivations of ELL(1) parsers
+
+We can **start from an already constructed ELR(1) parser** and **apply the extra
+restrictions** of the ELL(1) condition to simplify the pilot.
+
+#### Pilot compaction
+
+Thanks to STP, we **can reduce the number of m-states downto the number of
+machine net states**. 
+
+Recall the relation kernel equivalency introduced before. We
+can say that **kernel-equivalency is an equivalence relation between various
+m-states**. It can be proven that **under STP**, **kernel-equivalent states can be
+coalesced into a single state** without affecting the power of the parser.
+
+#### Candidate pointers removal
+
+Thanks to STP, **convergent transitions are not possible anymore**. This means that
+**we can eliminate stack pointers from our stack since we need to carry out only
+one analysis thread**. This also means that **we can delete from each sms all
+candidates relative to unfollowed analysis threads**.
+
+#### Stack contractions and predictive parser
+
+As we modeled our parser before, with syntactic procedure, **we can restructure
+completely how our pilot uses the stack**:
+
+- Since only **one thread is followed**, we need to **only store the sequences of
+  machines invoked and the current state of the current machine** (the one at the top
+  of stack) is in
+- **Each machine before the current one** is in a **"suspended state"**. For each of
+  these machines, **we need to store also the return state** from where the
+  computation will resume after the current machine has finished.
+
+From these considerations, we **adjust the compacted pilot graph to be isomorph to
+the machine net to obtain the control-flow graph** of the parser
+
+1. Every **m-node** that contains **many candidates** is **split in as many nodes**
+2. **Kernel equivalent nodes are coalesced** into a single node and the lookahead
+   sets merged
+3. We create new arcs, called **call arcs**, which **represent transfer of control
+   from one machine to another**.
+
+   Each call arc is **labeled with a set of terminals, the guide set**, which will
+   determine the parser decision to transfer control to the called machine.
+
+The **guide set** of a call arc $Gui(q_A \to 0_{A1})$ is **defined as follows**:
+
+1. For every arc $q_a \overset{\gamma_1}{\to} 0_{A1}$ associated with
+   non-terminal shift arc $q_a \overset{A1}{\to} r_A$, a terminal $b$ is in the
+   guide set $\gamma_1$ **iff one of the follwing is true**
+   
+   $$
+   \begin{aligned}
+    & b \in Ini(L(0_{A1}) \\
+    & A_1 \text{ is nullable } \land b\in Ini(L(r_a)) \\
+    & A_1, L(r_a) \text{ both nullable } \land b\in\pi_{r_a} \\
+    & \exists (0_{A1} \overset{\gamma_1}{\to} 0_{A2})\in \mathcal{F} \land b\in\gamma_2
+   \end{aligned}
+   $$
+
+2. For every **terminal shift arc** $p \overset{a}{\to} q$ we set $Gui(\cdot) = \{a\}$
+3. For every **dart that tags a final node** containing candidate $\langle f_A, \pi\rangle$
+   ($f_A$ final) we set $Gui(\cdot) = \pi)$.
+
+The **essential property of guide sets** is the following:
+
+1. **For every node $q$** of the graph of a grammar that satisfies the ELL(1)
+   condition, **the guide-sets of any two arc originating from $q$ are disjoint**.
+2. If the **guide sets of control-flow graph are disjoint**, then the machine net
+   **satisfies the ELL(1) condition**.
+
+### Construction of an ELL(1) by means of recursive procedures
+
+In this construction **each machine becomes a procedure without parameters**. Then
+we can map pilot moves to actions as follows:
+
+1. Call move: procedure call
+2. Scan move: call `next` (reads and returns the next character)
+3. Return move: returns from procedure
+
+The **parser control graph, then becomes the control graph of the procedure**. We
+use the guides sets and the look-ahead sets (in this case also called prospect
+sets) to choose the next move. The analysis starts by calling the axiomatic
+procedure.
+
+### Direct construction of the PCFG (control-flow graph)
+
+We do not need to first construct the ELR parser and then simplify it to ELL, we
+can **just build the PCFG directly from the machine net**.
+
+1. **Prospect states**: we can reuse the same rules as the look-ahead sets of the
+   ELR. Alternatively, we can use the following equations to compute the sets
+   for each state, even non-final:
+   - For an initial state:
+
+     $$
+     \pi_{0_A} = \pi_{0_A} \bigcup_{q_i \overset{A}{\to} r_i} (Ini(L(r_i)) \cup \textbf{ if } \mathit{Nullable}(L(r_i)) \textbf{ then } \pi_{q_i} \textbf{ else } \emptyset)
+     $$
+
+   - For any other state:
+   
+     $$
+     \pi_q = \bigcup_{q_i \overset{X_i}{\to} r_i} \pi_{p_i}
+     $$
+2. **Guide sets**: we use the prospect sets previously calculated:
+   - For a call arc (image because I do not want to write latex for this
+     abomination):
+
+     ![Guide set equation for call arcs](./img/guideset-call-arc.png)
+
+   - For final darts and terminal shifts we have respectively:
+    
+     $$
+     \begin{aligned}
+       & Gui(f_A \to) = \pi_{f_A} \\
+       & Gui(q_A \overset{a}{\to} r_A) = \{a\}
+     \end{aligned}
+     $$
+   - Initially all guide sets are empty
+
+### Increasing look-ahead
+
+**If the ELL(1) condition is not verified**, we could try to modify the grammar and
+make it compliant. However this approach is very costly and not always possible.
+An alternative approach is to **use a longer look-ahead**, like ELL(2).
+
+With $k > 1$ things are an extensions of $k = 1$: **the analyzer looks at $k$
+consecutive characters (or tokens) in the input; if the guide set of length $k$
+on alternate moves are disjoint, then the ELL(k) condition is satisfied and
+analysis is possible**.
