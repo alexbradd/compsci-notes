@@ -1105,4 +1105,126 @@ instance Foldable Maybe where
   foldr _ z Nothing  = z
   foldr f z (Just x) = f x z
 ```
+#### Functor
 
+Functor is the **class of all the types that offer a map operation**. The map
+operation of functors is called `fmap :: (a -> b) -> f a -> f b` (just like
+`map`). Defining a mapping for containers is quite natural.
+
+```haskell
+instance Functor Maybe where
+  fmap _ Nothing  = Nothing
+  fmap f (Just a) = Just (f a)
+```
+
+**Well defined functors should obey the following rules** (not checked by compiler,
+but necessary to have it make sense):
+
+1. `fmap id = id`
+2. `fmap (f . g) = fmap f . fmap g` (homomorphism)
+
+#### Applicative functors
+
+Applicative functors are an **extension of functors**. The definition of the class
+is peculiar:
+
+```haskell
+class (Functor f) => Applicative f where
+  pure  :: a -> f a
+  (<*>) :: f (a -> b) -> f a -> f b -- called apply
+```
+
+If `f` is a container, the ideas are not too complex:
+
+1. **`pure` takes a value and returns an `f` containing it**
+2. **`<*>` is like `fmap`**, but instead of taking a function, **it takes an `f`
+   containing functions**, to apply it to a suitable container of the same kind
+
+Maybe is an applicative functor, the instance definition is trivial. **Lists are
+also functors**. Lets see if they are **also applicative**.
+
+```haskell
+concat :: Foldable t => t [a] -> [a]
+concat l = foldr (++) [] l -- [[1,2], [3], [4,5]] => [1,2,3,4,5]
+
+concatMap :: Foldable t => (a -> [b]) -> t a -> [b]
+concatMap f l = concat $ map f l
+
+instance Applicative [] where
+  pure x    = [x]
+  fs <*> xs = concatMap (\f -> map f xs) fs
+
+-- Example of apply:
+-- [(+1), (*2)] <*> [1,2,3] => [2,3,4,2,4,6]
+```
+
+### Monads
+
+Monads are **an algebraic data structure used to represent computations**, we will
+often call these computations actions. Monads allow the programmer to **chain
+actions together to build an ordered sequence, in which each action is decorated
+with additional processing rules provided by the monad and permed automatically**.
+
+Monads can also be used to make imperative programming easier in a pure
+functional language.
+
+```haskell
+class Applicative m => Moand m where
+  -- Most important operation: bind. Sequentially composes two actions, passing
+  -- any value produced by the first as an argument to the second
+  (>>=) :: m a -> (a -> m b) -> m b
+
+  -- Called then. Sequentially composes two actions, discarding any value
+  -- produced by the first
+  (>>) :: m a -> m b -> m b
+  m >> k = m >>= \_ -> k
+
+  -- Injects a value into the monadic type
+  return :: a -> m a
+  return = pure
+
+  -- Fail with a message
+  fail :: String -> m a
+  fail s = error s
+```
+
+Let us look at a simple monad instance:
+
+```haskell
+instance Monad Maybe where
+  (Just x) >>= k   = k x
+  Nothing  >>= _   = Nothing
+  fail _           = Nothing
+```
+
+#### Monadic laws
+
+1. `return` is the **identity element**:
+  
+   ```txt
+   (return x) >>= f  <=>  f x
+   m >>= return      <=>  m
+   ```
+
+2. **Bind is associative**:
+
+   ```txt
+   (m >>= f) >>= g   <=>   m >>= (\x -> (f x >>= g))
+   ```
+
+Note: **monads are analogous to monoids** with `return = 1` and `>>= = '='`.
+
+#### The `do` notation
+
+The `do` notation is used as **syntactic sugar to hide `>>=` and `>>`**. The
+translation of `do` is dictated by these two rules:
+
+1. `do e1 ; e2        <=>   e1 >> e2`
+2. `do p <- e1 ; e2   <=>   e1 >>= \p -> e2`
+
+#### The list monad
+
+The **list type is an instance of the monad class**: it involves **joining together a
+set of calculations for each value in the list**. `bind` is defined as
+`concatMap`. The **underlying idea** is to represent **non-deterministic computation**
+with a set of possible results.
