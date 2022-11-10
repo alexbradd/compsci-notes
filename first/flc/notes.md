@@ -705,8 +705,12 @@ The **systematic way** to construct an ELR syntax analyzer is the following:
 
   When parsing start, the first item of the axiomatic machine is encoded as
   $\langle 0_S,\dashv\rangle$
-- **Closure**: A function that computes a kind of closure of a set $C$ of items with
-  lookahead:
+- **Closure**: A function that computes the set of the machines that are reached
+  from a given state q through one or more invocations, without any intervening 
+  state transition. For each reachable machine $M_B$, represented by the 
+  initial state $0_B$, the function returns also any input character $b$ that can
+  legally occur when the machine terminates; such a character is part of the 
+  look-ahead set.
 
   $$
   \begin{aligned}
@@ -763,8 +767,8 @@ def construct_pilot():
 
 ### Classification for m-states and pilot moves
 
-- **Base**: all the non-initial candidates of an m-state
-- **Closure**: all the initial candidates of an m-state 
+- **Base set**: all the non-initial candidates of an m-state
+- **Closure set**: all the initial candidates of an m-state 
 - **Kernel**: the projection on the first component of every candidate
 
   $$ I_{\textit{kernel}} = \{q \in Q | \langle q, \pi\rangle\in I\} $$
