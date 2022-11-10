@@ -1392,3 +1392,104 @@ $(0;1)$ point**; the **worse** it performs the **closer to the polar opposite** 
 
 We can **evaluate two models by comparing the area under the ROC curve**. The one
 **closer to 1 is the better**.
+
+### Naive Bayes
+
+It starts from **Bayes's theorem**:
+
+$$
+P(C|A) = \frac{P(A|C)P(C)}{P(A)}
+$$
+
+Our **class will be $C$**, while the **attributes will be $A$**.
+
+An **example** is usually represented as a **tuple of attributes**. Given the target $y$
+(identifying the class values for the instance) we are **looking for the class
+with the highest probability for $x$**.
+
+$$ 
+\begin{aligned}
+  class & = \mathrm{arg max}_y P(y|\vec{x}) \\
+  P(y|\vec{x}) & = \frac{P(\vec{x}|y)P(y)}{P(\vec{x}) \\
+    & = \frac{P(x_1|y)\cdot P(x_n|y)P(y)}{P(\vec{x}) \\
+\end{aligned}
+$$
+
+Naive Bayes classifiers **assume that attributes are statistically independent**.
+Thus the evidence splits into independent parts.
+
+Since this is a **probabilistic classifier**, all our **discourse about threshold
+still holds**.
+
+1. **Training**:
+   - Count the **frequency of tuples** $(x_i, y)$ for **each attribute and class**
+   - Use the counts to **compute estimates of the class probability** $P(y)$ and the
+     **conditional probability** $P(x_i | y)$
+2. **Testing**:
+   - Given an example $x$, we **compute the most likely class**.
+
+We are assuming **that attributes are equally important** and that they are
+**statistically independent**. The **independence assumption is almost never correct**.
+
+If an **attribute value does not occur** with every class value, the **corresponding
+probability will be zero and posteriori-probability will also be zero**. A typical
+remedy to this problem is to **add $1$ for every $(x_i, y)$ attribute value-class
+pair**. This process is called **smoothing** and the **$1$ is the Laplace estimator**. We
+are **not obligated to use 1**. If prior knowledge is available, we can add weights
+to the various estimators (all weights must sum to 1).
+
+If we have a **missing value**:
+
+- During **training**, the **instance is not included in the frequency count** for
+  attribute value-class combinations
+- During **testing**, the **attribute will be omitted from calculation**
+
+#### Numeric attributes in naive Bayes
+
+What if some (or all) the attributes are numeric? We have two options: **we
+discretive the data to make it either binary or discrete**. To compute the
+probability density for each class **we assume that the attributes have a gaussian
+probability distribution**. We then we use the **mean and standard deviation to compute
+the probabilities**.
+
+### Bayesian belief networks
+
+Naive Bayes works surprisingly well, even if the independence assumption is
+violated. This happens because classification doesn't require accurate estimates
+as long as maximum probability is assigned to the correct class.
+
+Bayesian belief networks **provides a way to represent relationships among a set
+of random variables**. Relations are represented as **graphs**: **attributes** are **nodes**
+and **relations** are **edges**. The graph must be **acyclic**.
+
+**Each node is associated with a probability table**. If a **node $X$ does not have
+any parents, then the tables contains only prior probabilities**. If a **node
+has parents, the table contains the conditional probability 
+$P(X|Y_1, \ldots, Y_k)$**.
+
+Values of variables can be known or unknown. We can **estimate probabilities over
+unknown variables given known values**. In general the **inference is NP-complete**,
+but we can approximate with methods like Monte Carlo.
+
+### K-nearest neighbour
+
+To classify an example $x$, **we select the $k$ data points of the training set
+that are "most similar" to $x$**. Then we **assign the most frequent class among the
+$k$ selected**.
+
+This is an example of **instance-based learning**: it stores the training records
+only, **no model is computed**. It **uses the training records to predict an unknown
+class label**. It is the simplest form of learning. 
+
+The only thing we need to choose is the $k$: **if $k$ is too small**, classification
+might be **sensitive to noise points**; **if $k$ is too large**, neighbourhood may
+**include quite dissimilar examples**.
+
+The **similarity measure** used are **the same ones we used for clustering**. Like
+clustering, we also need to apply normalization when needed.
+
+To make k-nearest neighbour efficient, we **need to use some intelligent data
+structures**:
+
+1. **KD-trees**
+2. **Ball-trees**
