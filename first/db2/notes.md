@@ -1064,3 +1064,225 @@ def sfs(D, sort_fn):
       W <- W + {p}
   return W
 ```
+
+## JPA
+
+Working directly with JDBC can lead to a lot of boilerplate code. JPA solves the
+repetitiveness of interacting directly with JDBC by creating some **useful
+abstractions**.
+
+### Object relational mapping
+
+Defines a **mapping between SQL entities and Java objects**. The main way to do
+it is using **annotations**. The problem of **"impedance mismatch"** occurs when **one
+model cannot be cleanly mapped onto another one**. A **mediator** (JPA in this case),
+is **needed to manage the transformation of one into the other**.
+
+| Object model             | Relational model            |
+|:------------------------:|:---------------------------:|
+| Classes, objects         | Tables, rows                |
+| Attributes, properties   | Columns                     |
+| Identity                 | Primary key                 |
+| Refrences                | Foreign key                 |
+| Inheritance/Polymorphism | NA                          |
+| Methods                  | Stored procedures, triggers |
+
+JPA works with POJOs in a non-intrusive way. A query framework is provided
+instead of raw SQL.
+
+Main concepts:
+
+1. **Entity**: a Java **bean** representing a collection of **persistent objects mapped
+   onto a relational table**
+2. **Persistence unit**: the set of **all classes that are persistently mapped to one
+   database**
+3. **Persistence context**: the set of **all managed objects of the entities defined
+   in the persistence unit**
+4. **Managed entity**: an **entity part of persistence context** for which the **changes
+   of the state are tracked**
+5. **Entity manager**: the **interface for interacting with a persistence context**
+6. **Client**: a component that can interact with a persistence context indirectly
+   through an entity manager
+
+We will write the client and interact only with the entity manager.
+
+#### Entity manager
+
+1. `void persist(Object entity)`: persists an entity instance in the database
+2. `<T> T find(Class<T> entityClass, Object primaryKey)`: finds an entity
+   instance by its primary key
+3. `void remove(Object entity)`: Removes an entity instance
+4. `void refresh(Object entity)`: Synchronizes the entity instance with the 
+   database
+5. `void flush()`: Writes the state immediately
+
+#### Entities
+
+An entity is a **POJO** that gets **associated to a tuple in a database**. The
+persistent counterpart of an entity has a life longer than that of the
+application. The **entity class must have a mapping to the table it represents**. An
+entity **can enter in a managed state**, where **all modifications to the state are
+tracked** and automatically written to the database.
+
+```java
+@Entity
+public class Employee {
+  @Id private int id; // defines the primary key
+  private String name;
+  private long salary;
+  // constructors, getter and setter boilerplate
+}
+```
+
+Entities must be `public`/`protected` and not `final`; no method or persistent
+instance variables may be final; **if an instance is to be passed by value as a
+detached object, `Serializable` must be implemented**.
+
+**Primary keys** are identified by `@Id`, if they are **complex objects** we use
+**`@EmbeddedId` and `@IdClass`**. Identifiers **can be generated automatically** by the
+framework using `@GeneratedValue` in addition to `@Id` with **different
+strategies**:
+
+1. `AUTO`: the framework decides
+2. `TABLE`: generated according to a generato table
+3. `SEQUENCE`: if the underlying db supports sequences, it uses that
+4. `IDENTITY`: if the underlying db supports primary key identity columns, the
+   provide will use that
+
+Properties can be **annotated with type information** to better map Java types to db
+types (e.g `@Temporal()` or `@LOB`).
+
+We can also specify **fetch policy** (lazy ore eager). The **lazy** policy makes the
+**attribute values remain empty when the object is retrieved and populated only
+when said property is accessed**.
+
+By default, **entities are mapped to tables with the same name and their fields to
+columns with the same names**. We can **override** said defaults with:
+`@Table(name="")` and `@Column(name="")`. Some annotations have also attributes
+for generating the database schema from the entity class (e.g `nullable`).
+Entities can also have **attributes that are not persisted** (`@Transient`).
+
+##### Relationships
+
+Relationships in the OM have 4 characteristics:
+
+1. **Directionality**: each entity has a reference to another entity
+   (unidirectional) or both entities have references to each other
+   (bidirectional).
+2. **Role**: Based on directionality, an entity can be either the source or the
+   target.
+3. **Cardinality**
+4. **Ownership**: In the database relationships are implemented by a foreign key
+   column that refers to the key of the referenced table (join column). The
+   entity that will have FK is the oner of the relationship. 
+
+An example of a bidirectional 1:N.
+
+```java
+@Entity
+public class Emplyee {
+  @Id private int id;
+  @ManyToOne
+  @JoinColumn(name="dept_fk")
+  private Department dept;
+  // ...
+}
+
+@Entity
+public class Department {
+  @Id private int id;
+  @OneToMany(mappedBy="dept") // mappedBy takes the name of the parameter that
+                              // holds the reference.
+  private Collection<Employee> employees;
+  // ...
+}
+```
+The purpose of the `mappedBy` is to **instruct JPA to not use a bridge table like
+in a N:M relationship as the relationship is already being mapped by a FK in
+the opposite entity of the relationship**. Generally, `mappedBy` **indicates to
+JPA that the current entity is the owned side** of the relationship and that the
+owner FK resides in the indicated property of the owner class. `mappedBy` is
+used to specify **bidirectional relationships**.
+
+Example of 1:1 relationship. The owner can be both entities. We decide.
+
+```java
+@Entity
+public class Employee {
+  @Id private int id;
+  @OneToOne // owner
+  private ParkingSpace parkingSpace
+  // ...
+}
+
+@Entity
+public class ParkingSpace {
+  @Id ptivate int id;
+  @OneToOne(mappedBy="parkingSpace") // owned. mappedBy necessary only if the
+                                    // relationship is bidirectional
+  private Employee employee;
+  // ...
+}
+```
+
+Example of N:M relationship. Like in the 1:1 case, we can use either entity as
+the owner. Many-to-many mappings are implemented by means of a join table.
+
+```java
+@Entity
+public class Employee {
+  @Id private int id;
+  @ManyToMany // owner
+  private Collection<Project> projects;
+  // ...
+}
+
+@Entity
+public class Project {
+  @id private int id;
+  @ManyToMay(mappedBy="projects")
+  private Collection<Employee> employees;
+  // ...
+}
+```
+
+The **name and column names of the join table** can be specified with the
+**`@JoinTable` annotation**.
+
+```java
+@Entity
+public class Employee {
+  @Id private int id;
+  @ManyToMany
+  @JoinTable(
+    name="EMP_PROJ",
+    joinColumns=@JoinColumn(name="EMP_ID"),
+    inverseJoinColumns=@JoinColumn(name="PROJ_ID"))
+  private Collection<Project> projects;
+  // ...
+}
+```
+
+When using **relationships**, we can specify the **fetch mode**. By **default**, a **single
+valued relationship is fetched eagerly**, while a **collection-valued relationship is
+lazy**. In case of **bidirectional relationships**, **one side can be lazy while the
+other eager**. The **lazy** fetch mode is considered more of an **hint**, while the **eager**
+one is **always respected**.
+
+By **default**, every **operation applies only to the entity supplied as an argument
+to the operation**. The **`cascade` attribute of relationship attributes is used to
+define when operations should be automatically cascaded across relationships**.
+**Cascade** settings are **unidirectional**.
+
+For `**OneToOne` and `OneToMany`** JPA supports an **additional cascade mode**:
+`orphanRemoval`. It is **appropriate for parent-child relationships** (e.g 
+weak entities). It causes the **child entity to be removed when the relation is
+broken either by**:
+
+1. **Removing the parent**
+2. Setting to **`null` the attribute that holds the related entity**
+3. In the `**OneToMany` case**: by **removing the child from the parent's collection**.
+
+Note: normal cascading is not invoked for `setParent(null)`, unlike
+`orpahnRemoval`.
+
