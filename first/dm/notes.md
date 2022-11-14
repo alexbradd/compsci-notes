@@ -1606,3 +1606,188 @@ There are several possible stopping criteria, some are:
 First we **sort all the numerical values, including the class labels**. Then, we
 **check all the feasible cut points and choose the one with the best information
 gain**.
+
+We **do not need to sort all values for each node we traverse**. The **sort order of
+the children of a node can be derived from that of the parent**. Thus we **reduce
+the complexity** of the derivation to **$\mathcal{O}(n)$**.
+
+#### Binary vs multiway splits
+
+Splitting on a nominal attribute exhausts all information in that attribute. **A
+nominal attribute is tested at most once** on any path in the tree. **Numerical
+attributes may be tested several times**, thus the **tree** can become **hard to read
+and interpret**. Two possible solutions:
+
+1. **Pre-discretize**
+2. Use **multi-way splits** instead of binary ones
+
+#### Generalization and overfitting in trees
+
+**Too many branches may indicate overfitting** and reflect anomalies due to noise or
+outliers. This results in poor accuracy for unseen samples. Two approaches to
+**avoid overfitting** are:
+
+1. **Prepruning**: **We halt the construction early**. We **do not split** a node if this
+   would result in the **goodness measure falling below a threshold**. It is
+   difficult to choose an appropriate threshold.
+2. **Postpruning**: We **remove branches from a fully-grown tree**. We have two pruning
+   operations:
+    - **Subtree raising**
+    - **Subtree replacement**: considers **replacing a subtree only after considering
+      all its subtrees**
+
+   Some **possible strategies** for choosing when to act are:
+   - **Error rate estimation**: we prune **only if it reduces the estimated error**.
+     Since error on the training data is not a useful estimator, a **holdout set
+     must be kept for pruning**.
+   - Significance testing
+   - MDL principle
+
+#### Model trees and regression
+
+Decision trees can also **be used to predict the value of a numerical target
+variable**. **Regression and model trees** work similarly to decision trees: **they
+search for the best split that minimizes an impurity measure**.
+
+1. **Regression trees**: prediction is computed as the **average of numerical target
+   variable in the subspace**
+2. **Model trees**: leaves use a **linear model to predict the target value in the
+   subspace**.
+
+As **impurity** measure, we are going to use the **standard deviation reduction**.
+
+$$ SDR = \sigma(D) - \sum_i \frac{D_i|}{|D|}\sigma(D_i) $$
+
+Where $D$ is the original data, $D_I$ are the partitions and $\sigma$ is the
+standard deviation of the target.
+
+#### Decision stumps
+
+The **simplest decision trees** possible and also the main building blocks for
+boosting methods. They are **a root and leaves**.
+
+1. For categorical attributes:
+   - We use one branch for each attribute value
+   - We use one branch for one value and one branch for all the others
+   - Missing values sometimes are treated as a special value
+2. For numerical attributes: two leaves defined by a threshold value selected
+   based on some criterion
+
+## Ensemble methods
+
+We **generate a set of classifiers** from the training data. We can then **predict
+class labels of previously unseen cases by aggregating predictions made by
+multiple classifiers**. We use **majority vote** for classification and average for
+regression.
+
+Mathematically, having multiple independent classifiers is advantageous since
+**the probability that the majority of the classifiers is wrong is lower than that
+of one wrong prediction by one of the single classifiers**.
+
+But how do we create multiple independent classifiers for the same dataset?
+
+### Bagging (Bootstrap aggregation)
+
+Given a dataset $D$, we are going to **generate $k$ training datasets $D_i$ using
+bootstrap** (random sampling with replacement). We then **compute $k$ models $M_i$
+using each of the $D_i$**.
+
+For **prediction**, each classifier **$M_i$ computes its prediction for $x$**. The
+__bagged classifier $M^*$__ returns the class predicted by the **majority of the
+models**. When class values are -1 and 1, the output of the ensemble can be
+computed as
+
+$$ M^* = sign(\sum_{t=1}^k M_i(x)) $$
+
+**Models may be weighted** differently based on their estimated performance.
+
+Bagging can **also be applied to regression** by simply **averaging** the output of the
+models.
+
+Bagging works because **it reduces variance by voting/averaging**. In some
+pathological situations the overall error might increase.
+
+We say that a **classifier is unstable when small changes to the datasets lead to
+great changes to the model**. If the algorithm is **unstable**, **bagging almost always
+improves performance**. Bagging stable classifiers is unproductive.
+
+> Example of unstable classifiers: decision/regression trees, linear regression,
+> neural networks.
+>
+> KNN is an example of stable classifier.
+
+#### Random forests
+
+To **improve performance** of decision tree, we can use a **forest of uncorrelated
+trees** to have a greater variance reduction. Random forests are **ensembles of
+unpruned decision tree learners with randomized selection of features at each
+split**. Each tree depends on the values of a random vector sampled independently
+and with the same distribution for all trees in the forest. **Using a random
+selection of features to split each node yields error rates that are more
+robust with respect to noise**.
+
+Since we are using **bootstrapping** to train our model, we **use only a subset
+of the complete data** to train each classifier. This means that **we can reuse
+the data points** that haven't been used in training this model **as testing**.
+
+Random forests are **easy to use** (they require only two parameters, the number of
+trees and the %variables for split) and they have **high accuracy**. We can also
+**avoid overfitting if we use a large number of trees**.
+
+#### Boosting
+
+The idea is to **create a model and check where we made some mistakes, we then
+create a new model focused on correcting the mistakes of other models**.
+
+**AdaBoost** computes a **strong classifier as a combination of weak classifiers**:
+
+$$ H(x) = sign(\sum_{t=1}^T \alpha_t h_t(x)) $$
+
+Where $h_t$ is the output of the $t^\text{th}$ weak classifier. $\alpha_t$ is a
+weight assigned based on its estimated error.
+
+$$ \alpha_t = \frac{1}{2}\ln (\frac{1-\epsilon_t}{\epsilon_t}) $$
+
+Boosting works like this:
+
+1. **Weights are assigned** to each training example
+2. A series of **$k$ classifiers is iteratively learned**
+3. **After** a classifier $M_i$ is learned, the **weights are updated**
+4. The **next classifier** $M_{i+1}$ will **focus on the training tuples that were
+   misclassified** by $M_i$
+5. The __final $M^*$ is a weighted sum__ of all the outputs
+
+The **starting base classifier should not be too complex** and their **error should
+not become too large too quickly**. **Boosting tends to overfit the data**.
+
+#### Gradient tree boosting
+
+We build a **sequence of tree predictors** by repeating three simple steps:
+
+1. Learn a **basic** predictor
+2. Compute the **gradient of a loss function** with respect to the predictor
+3. Compute a **model to predict the residual**
+4. **Update the predictor** with the new model
+5. Goto **2**
+
+The **depth of the trees control the maximum allowed level of interaction between
+variables**, e.g with decision stumps we allow no interaction. Empirically we saw
+that **trees should have between 4 and 8 leaves**. Using **small learning rates
+results in drastic improvements in the generalization, at the cost of more
+computational power**.
+
+##### eXtreme Gradient Boosting
+
+Efficient and scalable implementation of gradient boosting for classification
+and regression trees. Deals only with numerical values.
+
+##### LightGBM
+
+It employs a different notion of complexity: we specify the number of leaves of a
+tree.
+
+#### Stacking generalization
+
+Suppose we have **several models that all solve the same problem**. **Stacking enables
+us to combine them**. **Stacking generalization puts another model on top of the
+other models that learns when to use which classifier**.
