@@ -3,7 +3,7 @@
 ## Introduction
 
 Data mining emerged in the late 80s due to an explosive growth of data and a
-pressing need for the automated analysis of massive data. 
+pressing need for the automated analysis of massive data.
 
 Big Data is a term that gets thrown around a lot: it indicates gigantic
 quantities of data being collected. The quantity of data is so large that:
@@ -15,7 +15,7 @@ quantities of data being collected. The quantity of data is so large that:
 
 _"A computer program is said to learn from experience $E$ with respect to some
 class of task $T$ and a performance measure $P$, if its performance at tasks in
-$T$, as measured by $P$, improves because of experience $E$"_ 
+$T$, as measured by $P$, improves because of experience $E$"_
 
 Suppose we have the experience encoded as a dataset
 
@@ -82,7 +82,7 @@ principle). Preprocessing is a necessity since data in the real world is dirty:
 
 Sampling is the main technique for selection. It is often used both in a
 preliminary "investigation" and the final analysis. We also sample data because
-analysing all the set may be too time consuming. 
+analysing all the set may be too time consuming.
 
 A sample is **representative** if it has the same property (or interest) as the
 original set of data. A representative sample works almost as good as the full
@@ -156,7 +156,7 @@ We will usually see tables:
 3. **Concepts, target, dependent variables** are still columns, however are
    special because they can be learned
 
-Attributes can be: 
+Attributes can be:
 
 1. **Numerical**: numbers, or differences from a reference
 2. **Categorical**: values taken from a set:
@@ -391,7 +391,7 @@ Outliers are frequently filtered out, but **can be the focus of the analysis**.
 
 ### Normalization
 
-We might need to normalize attributes that have a very different scales. 
+We might need to normalize attributes that have a very different scales.
 
 Range normalization converts all values to the range $[0;1]$:
 
@@ -430,7 +430,7 @@ data.
 #### Principal Component Analysis (PCA)
 
 Typically applied to reduce the number of dimensions of data. The goal is to
-find a projection that captures the largest amount of variation in data. 
+find a projection that captures the largest amount of variation in data.
 
 Given $N$ data vectors from n-dimensions, we find $k<n$ orthogonal vectors (the
 principal components) that can be used to represent data.
@@ -451,7 +451,7 @@ reconstruct a good approximation of the original data.
 
 Data in high dimensions never fills the enter space and always lives within som
 lower dimensional manifold. t-SNE is used to map highdimensional data ino 2 or 3
-dimensions. 
+dimensions.
 
 Points from the original space are mapped onto "map points" in 2D/3D. Unlike
 PCA, the mapped points are not a linear combination of original attribute
@@ -615,7 +615,7 @@ large. **A single minsup may not be effective**.
 expected joint probability if they were statistically independent**:
 
 $$
-lift(X \implies Y) = \frac{sup(X\cup Y)}{sup(X)sup(Y)} = 
+lift(X \implies Y) = \frac{sup(X\cup Y)}{sup(X)sup(Y)} =
   \frac{conf(X\implies Y)}{sup(Y)}
 $$
 
@@ -626,7 +626,7 @@ expected considering the supports of its components.
 ### Summarizing itemsets
 
 **An itemset is called maximal if it has no frequent supersets**. The set of all
-maximal frequent itemsets is given as 
+maximal frequent itemsets is given as
 $M = \{X|X\in F \land \not\exists X\subseteq Y: Y \in F\}$. $M$ is a **condensed
 representation** of the set of all frequent itemsets, because **we can determine
 whether any itemset is frequent or not by using $M$**. However, we cannot use $M$
@@ -647,7 +647,7 @@ to define "topics". More formally: **we enumerate the complete bipartite subgrap
 $K_{s,t}$, which have $s$ nodes on the left and $t$ nodes on the right**. The left
 nodes link to the same node on the right, forming a fully connected bipartite
 graph. **Searching for such graph can be viewed as a frequent itemset mining
-problem**. 
+problem**.
 
 We can view **each node $i$** as a **set $S_i$ of nodes it points to**. $K_{s,t}$ would
 be a **set $Y$ of size $t$ that occurs in $s$ sets $S_i$**. Looking for $K_{s,t}$ is
@@ -780,7 +780,7 @@ $$
 
 To measure similarity between points, we need to use **compatible scales**. This
 means that normalization is a must. We have have different normalizers at our
-disposal. 
+disposal.
 
 #### The curse of dimensionality
 
@@ -849,7 +849,7 @@ data points can be more effective**.
 If a cluster is in an euclidean space, we can identify it using its centroid or
 its convex hull. In case of non-euclidean spaces we can define a distance an use
 a medoid (an existing point data we take as representative that minimizes the
-sum of distances to all other points in the cluster). 
+sum of distances to all other points in the cluster).
 
 ### Representative based clustering
 
@@ -869,7 +869,7 @@ $$
 For each iteration:
 
 1. We **calculate the centroid of the previous iteration's cluster**. If we are at
-   the **first iteration**, we **pick two random points**. 
+   the **first iteration**, we **pick two random points**.
 2. If the **previous centroid is not the calculated one**, we **reassign** the centroid.
    **If it is, we stop iterating**.
 3. We **assign the points to the clusters**.
@@ -972,8 +972,8 @@ clusters, or at best convex shapes. For **non convex clusters**, these methods h
 Let us introduce some definitions:
 
 1. The **neighbourhood within a radius $\epsilon$** of a given object is called the
-   **$\epsilon$-neighbourhood** of the object. 
-2. A **core point** contains at **least `minpts` objects in its $\epsilon$-neighbourhood**. 
+   **$\epsilon$-neighbourhood** of the object.
+2. A **core point** contains at **least `minpts` objects in its $\epsilon$-neighbourhood**.
 3. A **border point** is **not a core point**, but **inside the neighborhood of a core point**.
 4. A **noise point** is **neither** a **core** nor **border point**.
 
@@ -1020,8 +1020,8 @@ $$
 
 Using the core distance and the original distance metrics $d$, **this distance
 keeps dense areas with lower core distance at the same distance while pushing
-away sparser points**. Using the distances, we **compute the minimal weight 
-spanning tree.** This spanning tree is like a **dendrogram**. 
+away sparser points**. Using the distances, we **compute the minimal weight
+spanning tree.** This spanning tree is like a **dendrogram**.
 
 We now need to **condense** the tree into clusters. We **navigate the hierarchy from
 the top to bottom and at each split we check the size of the merged clusters**. If
@@ -1179,9 +1179,9 @@ two ways of regularizing:
 To select the best value of $\alpha$ we **cannot use the test set since it is
 going to be used for evaluating the final model**. We need to **reserve part of the
 training data to evaluate possible candidate values of $\alpha$ and to select
-the best one**. 
+the best one**.
 
-If we have **enough data, we can extract a validation set from the training data 
+If we have **enough data, we can extract a validation set from the training data
 which will be used to select $\alpha$**. **If we don't** have enough data, we should
 select $\alpha$ by **applying k-fold cross-validation over the training data
 choosing the $\alpha$ corresponding to the lowest average cost over the k-folds**.
@@ -1407,7 +1407,7 @@ An **example** is usually represented as a **tuple of attributes**. Given the ta
 (identifying the class values for the instance) we are **looking for the class
 with the highest probability for $x$**.
 
-$$ 
+$$
 \begin{aligned}
   class & = \mathrm{arg max}_y P(y|\vec{x}) \\
   P(y|\vec{x}) & = \frac{P(\vec{x}|y)P(y)}{P(\vec{x}) \\
@@ -1464,7 +1464,7 @@ and **relations** are **edges**. The graph must be **acyclic**.
 
 **Each node is associated with a probability table**. If a **node $X$ does not have
 any parents, then the tables contains only prior probabilities**. If a **node
-has parents, the table contains the conditional probability 
+has parents, the table contains the conditional probability
 $P(X|Y_1, \ldots, Y_k)$**.
 
 Values of variables can be known or unknown. We can **estimate probabilities over
@@ -1479,7 +1479,7 @@ $k$ selected**.
 
 This is an example of **instance-based learning**: it stores the training records
 only, **no model is computed**. It **uses the training records to predict an unknown
-class label**. It is the simplest form of learning. 
+class label**. It is the simplest form of learning.
 
 The only thing we need to choose is the $k$: **if $k$ is too small**, classification
 might be **sensitive to noise points**; **if $k$ is too large**, neighbourhood may
@@ -1491,5 +1491,118 @@ clustering, we also need to apply normalization when needed.
 To make k-nearest neighbour efficient, we **need to use some intelligent data
 structures**:
 
-1. **KD-trees**
-2. **Ball-trees**
+1. **KD-trees**: We **split the space hierarchy** using a **tree generated from the
+   data**. To **find the neighbour** of a specific example we can **navigate the tree**
+   using the example.
+
+   We **add the points iteratively to the tree**. **Each new point falls in a leaf and
+   splits** the region around it based on one of its attributes.
+
+   To **search** for the nearest neighbour, we **navigate the tree to reach the leaf
+   and check**. Then we **backtrack up the tree** to check **nearby regions until all
+   k-nearest neighbours are found**, i.e when the closest region is further than
+   the k-th closest point so far.
+
+   **Search complexity** depends on the **depth of the tree** ($\mathcal{O}(\log n)$).
+   **Occasional rebalancing** of the tree may be needed.
+2. **Ball-trees**: **same principle as KD-trees**, but it uses **hypershperes**. **Balls
+   may allow for a better fit to the data** and thus more efficient search.
+
+### Decision trees
+
+A decision tree is a **tree** where each **internal node is a test on an attribute**. A
+**branch represents an outcome** of the test. A **leaf** node represents a **class label**
+or class label distribution. At each node, **one attribute is chosen to separate
+training examples of different classes**. A **new case is classified by following a
+matching path to a leaf node**.
+
+We construct trees in **two steps**:
+
+1. **Top-down tree construction**: initially all the **training examples are at the
+   root**. The examples are **recursively partitioned by choosing one attribute
+   at a time**.
+2. **Bottom-up tree pruning**: we **remove subtrees or branches**, in a bottom-up
+   manner, to improve the estimated accuracy on new cases.
+
+#### Choosing a splitting attribute
+
+In what way can we split examples into areas that contain mainly examples of one
+class? At **each node**, **available attributes are evaluated** based on separating the
+classes of the training examples using either a **purity or impurity measure**.
+**Typical measures** used are the **information gain, information gain ration and the
+gini index**.
+
+##### Information gain
+
+Information is **measured in bits**:
+
+1. Given a **probability distribution**, the **info required to predict an event** is
+   the distribution's **entropy**
+2. **Entropy** gives us the information required in bits
+
+$$ \mathit{entropy}(p_1, \ldots, p_n) = -p_1\log_2 p_1 - \ldots - p_n\log_2 p_n $$
+
+The **information gain** is the **difference between the information before the split
+and the information after the split**. The **information after the split** on
+attribute $A$ is computed as the **weighted sum** of the entropies on each split.
+
+Since we are trying to bring order into the caos, **a good split is one that
+reduces entropy, therefore has the biggest gain**.
+
+##### Information gain ratio
+
+If we have **highly branching attributes** (e.g. ids, primary keys etc) we can break
+the simple information gain method. As a matter of fact, if we split by ID, we
+have maximal gain since we reduce the entropy to 0.
+
+Since basic **information gain favors attributes with many values**, we need to
+**correct the bias** towards said attributes. Information gain ratio does
+exactly that: it is large when data is evenly spread and small otherwise. It
+does this by **correcting the information gain by taking the intrinsic
+information of a split into account**. **Intrinsic information** computes the
+**entropy of a distribution of instances into branches**:
+
+$$ \mathit{IntrinsicInfo}(S,A)= -\sum\frac{|S_i|}{S}\log\frac{|S_i|}{S} $$
+
+We can say that the intrinsic information is the entropy of $A$, independent of
+the class.
+
+**Information gain ratio** normalizes information gain by:
+
+$$ \mathit{GainRation}(S,A) = \frac{Gain(S,A)}{IntrinsicInfo(S,A)} $$
+
+##### The Gini index
+
+The **Gini index** for a dataset $T$ contains examples that from $n$ classes is
+defined as:
+
+$$ \mathit{gini}(T) = 1-\sum_{j=1}^n p^2_j $$
+
+With $p_j$ the relative frequency of class $j$ in $T$.
+
+If a **dataset $D$ is split on $A$**, the gini index of said split is the **weighted
+sum of the singular gini indexes**. The **reduction of impourity** is defined as the
+**difference between the initial gini index and the gini index after the split**.
+
+The Gini coefficient **measures the inequality among values of a frequency
+distribution**.
+
+The attribute that provides the **largest reduction (or the smallest Gini of the
+split) is chosen to split the node**.
+
+Usually the gini index is used to generate **binary splits**.
+
+#### When do we stop?
+
+There are several possible stopping criteria, some are:
+
+1. All **samples for a given node belong to the same class**
+2. There are **no remaining attributes** for further partitioning
+3. There are **no samples left**
+4. There is **nothing to gain in splitting**
+
+#### Numerical attributes
+
+First we **sort all the numerical values, including the class labels**. Then, we
+**check all the feasible cut points and choose the one with the best information
+gain**.
