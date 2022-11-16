@@ -1228,3 +1228,73 @@ The **list type is an instance of the monad class**: it involves **joining toget
 set of calculations for each value in the list**. `bind` is defined as
 `concatMap`. The **underlying idea** is to represent **non-deterministic computation**
 with a set of possible results.
+
+Using the list monad, we can define **list comprehensions** as:
+
+```haskell
+[(x,y) | x <- [1,2,3], y <- [1,2,3]]
+--- equivalent to
+do x <- [1,2,3]
+   y <- [1,2,3]
+   return (x,y)
+```
+
+#### The State monad
+
+The `State` monad is a generic type that **manages state**.
+
+```haskell
+data State st a = State (st -> (st, a))
+```
+
+The constructor **takes a function** because the `State` takes two parameters and **we
+need unary type constructors**. The function **takes the current state, performs the
+computation and returns a tuple containing the new state and the result**.
+
+First we need to instance **Functor**:
+
+```haskell
+-- We apply `f` to the value of `a`
+instance Functor (State st) where
+  fmap f (State g) = State (\s -> let (s', x) = g s
+                                  in (s', f x))
+```
+
+Then instance **Applicative**:
+
+```haskell
+instance Applicative (State st) where
+  pure x = State (\t -> (t, x))
+
+  (State f) <*> (State g) =
+    State (\state -> let (s, f') = f state
+                         (s', x) = g s
+                     in (s', f' x))
+```
+
+The same approach can be used for the **monad** definition:
+
+```haskell
+instance Monad (State state) where
+  State f >>= g = State (\old ->
+                          let (new, value) = f old
+                              State f' = g value
+                          in f' new)
+```
+
+An important aspect of this monad is that **monadic code does not get evaluated to
+data, but to a function!** (Note that State is a function and bind is function
+composition). To **get a value out** of the `State` monad we can define:
+
+```haskell
+runStateM :: State state a -> state -> (state, a)
+runStateM (State f) st = f st
+```
+
+To actually use the state contained in our moand, we can define **some utilities
+to access it**:
+
+```haskell
+getState = State (\state -> (state, state))
+putState new = State (\_ -> (new, ()))
+```
