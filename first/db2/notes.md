@@ -1106,16 +1106,6 @@ Main concepts:
 
 We will write the client and interact only with the entity manager.
 
-#### Entity manager
-
-1. `void persist(Object entity)`: persists an entity instance in the database
-2. `<T> T find(Class<T> entityClass, Object primaryKey)`: finds an entity
-   instance by its primary key
-3. `void remove(Object entity)`: Removes an entity instance
-4. `void refresh(Object entity)`: Synchronizes the entity instance with the 
-   database
-5. `void flush()`: Writes the state immediately
-
 #### Entities
 
 An entity is a **POJO** that gets **associated to a tuple in a database**. The
@@ -1286,3 +1276,136 @@ broken either by**:
 Note: normal cascading is not invoked for `setParent(null)`, unlike
 `orpahnRemoval`.
 
+Adding an **attribute to a relation** can be done by adding some annotations on the
+owner's side:
+
+```java
+@Entity
+public class Order implements Serializable {
+  @Id @GeneratedValue(stategy = GenerationType.AUTO)
+  private int OrderId;
+  private int shippingFee;
+  private int totalCost;
+
+  @ManyToOne
+  @JoinColumn(name="customer")
+  private Customer  customer;
+
+  @ElementCollection(fetch = FetchType.EAGER)
+  @CollectionTable(name = "product_order", 
+                   join_columns = @JoinColumn(name = "orderId")) // tells JPA that we are mapping to a map
+  @MapKeyJoinColumn(name = "ProductId") // this is the map key
+  @Column(name = "quantity")
+  private Map<Product, Integer> products;
+
+  //...
+```
+
+We can also we an auxiliary weak entity with a composite key.
+
+#### Entity manager
+
+1. `void persist(Object entity)`: persists an entity instance in the database
+2. `<T> T find(Class<T> entityClass, Object primaryKey)`: finds an entity
+   instance by its primary key
+3. `void remove(Object entity)`: Removes an entity instance
+4. `void refresh(Object entity)`: Synchronizes the entity instance with the 
+   database
+5. `void flush()`: Writes the state immediately
+
+The entities only **become managed after an entity manager method is invoked**,
+otherwise they just plain Java objects.
+
+When a new entity object is **first instantiated**, it is in the **transient state**,
+since the Entity manager does not know it exists yet. An entity **becomes managed**
+when **`persist()` is first called**. **Persist can be called on an already managed
+entity** and it triggers the whole cascade process.
+
+`flush()` instructs the persistence manager to write changes as soon as possible 
+(as will be said in the next section, the persistence manager decides when to
+write to the database).
+
+**`remove()` breaks the association between the entity and the persistence
+context**. When the transaction associated with the entity manager's persistence
+context commits or the `flush()` method is called, **the tuple associated with the
+entity is scheduled for deletion**. The entity **exits the managed** state and
+re-becomes transient.
+
+##### Entity states
+
+1. **New**: basically transient
+2. **Managed**: the state is tracked by the Entity manager
+3. **Detached**: Has an identity potentially associated with a database tuple but
+   changes are not automatically propagated to database
+4. **Removed**: scheduled for deletion from the database
+5. **Deleted**: deleted from the database
+
+#### Persistence context
+
+It is the fundamental concept of JPA: it is a kind of **main memory database** that
+**holds the objects in the managed state**. A managed object is tracked, i.e all the
+modifications to its state are monitored for automatic alignment. This **binding
+exists only inside the persistence context**, once the object exits it, it
+returns to being a normal Java object.
+
+Database **writes are asynchronous and occur at points decided by the context**.
+For the writes to happen, the **Persistence context mush hook up to a
+transaction**.
+
+#### Transaction management
+
+In JPA we have different types of transactions:
+
+- **DBMS transaction**: low level SQL transaction
+- **Resource-local transaction**: created by JDBC commands
+- **Container**: defined by the Java Transaction Manager (JTA) interface and mapped
+  to JDBC. They can be managed by the application of by the container (EJB,
+  servlets or whatever)
+
+In **container-level transactions**, the **entity manager is itself managed** by the
+container. 
+
+```java
+@Stateless // annotation indicating that this is a EJB object
+public class EJBService {
+  @PersistenceContext(unitName = "MyPersistenceUnit")
+  private EntityManager em;
+  // ...
+```
+
+When using container managed transactions, **a new transaction is created when a
+business method that requires it is called and there is not yet an active
+transaction**. The transaction is **committed** when the **method that caused its
+creation terminates**.
+
+**Transaction propagation** is the process of **sharing a persistence context between
+multiple container managed entity managers**. Thanks to propagation, `methdodA()`
+of `ComponentA`  can call `methdoB()` to `ComponentB` and share the same
+transaction. **Propagation can be**:
+
+1. **"Vertical"** along the call stack: if `methodA()` calls `methodB()` by default
+   the latter executes in the same transaction as the former. Both the
+   transaction and persistence context are shared.
+2. **"Horizontal"**: if the EMs of the two components are defined on the same
+   Persistence unit, the calls to the methods of the different components share
+   the same persistence unit.
+
+How the transaction is shared during method calls is defined by
+`@TransactionAttribute(TransactionAttributeType.*)` annotation:
+
+- **`MANDATORY`**: a transaction is expected to have already been started and be
+  active when the method is called. If none is active, an exception is thrown.
+- **`REQUIRED`**: the **default**
+- **`REQUIRES_NEW`**: the method always creates a new transaction, if one already
+  exists it is suspended
+- **`SUPPORTS`**: the method does not access transactional resources, but tolerates
+  running one if it exists
+- **`NOT_SUPPORTED`**: the method will cause the container to suspend the current
+  transaction if one is active
+- **`NEVER`**: the method will cause the container to throw an exception if a
+  transaction is active
+
+### Thread safety
+
+The **injected EMs are thread safe** thanks to a series of methods (proxying and
+method call serialization).
