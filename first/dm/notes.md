@@ -1922,3 +1922,87 @@ This approach **reduces memory usage** and speeds up the process. Since it maps
 similar values close to each other, it **can also reveal some intrinsic property
 about the data**.
 
+## Optimization
+
+Given a certain domain and a target function, we need to **find the
+maximum/minimum**. If we **know the analytical form**, we can use **gradient
+ascent/descent**. If using gradient method, we need to be aware of the **possibility
+of finding a local optimum**. In that case we use a variant with "restarts".
+
+### Black box optimization
+
+If we **do not know the analytical form**, what can we do?
+
+#### Random search and hill climbing
+
+We **randomly generate values for the parameters and we keep comparing the results
+we get until we find the best solution**. We run until we found the best solution
+or we ran out of time. Random search **fails miserably if the search space is big**,
+however it is **independent of the difficulty of the optimization problem**.
+
+**Hill climbing** assumes that **small changes in the solution do not translate in big
+changes in the parameters**. We find a **solution by generating random values and
+then tweaking the parameters**, if this solution is better we move to these new
+parameters. We do this until we found the ideal solution or we run out of time.
+The algorithm is **greedy**, so it may converge to a local optimum.
+
+**Steepest ascent hill climbing** is a **variation** that **makes the algorithm more
+greedy**. Instead of just tweaking one time, we **build multiple variations and we
+choose the best one among all variations**. Like its simpler form, it is greedy.
+
+**Tabu search** is similar to steepest ascend hill climbing, however the algorithm
+is **able to exit out of local optima by allowing a worsening move if no
+improvement can be done**. In addition, a **list of prohibited location is
+maintained** to avoid going back to previously seen points.
+
+#### Population based methods
+
+The basic idea is to **evolve a population of candidate solutions using the
+concepts of survival of the fittest, variation and inheritance**. Such an
+algorithm follows the **following steps**:
+
+1. **Initialization**: randomly generates the initial population
+2. **Evaluation**: evaluates the population of candidate solutions using the given
+   fitness function
+3. **Selection**: selects promising solutions from the current population by making
+   more copies of better solutions at the expense of the worse ones.
+4. **Variation**: Processes selected solutions to generate new candidate solutions
+   that share similarities with selected solutions but are novel in some way
+5. **Replacement**: incorporates new candidate solutions into the original
+   population
+
+The **terminology** used is similar to **genetics**.
+
+##### Selection
+
+The selection step is usually done with a **tournament of size $k$**: we first
+randomly **pick $k$ solutions from the original population and then select the best
+solution** out of this subset. **Binary tournaments** ($k=2$) are the **most popular**.
+
+##### Variation
+
+While selection and generation weren't problem dependent, **variation is
+typically grounded in the underlying representation**.
+
+Variation operators **process selected promising solutions to generate new
+candidate solutions** that share features with selected solutions. We follow two
+principles: **variation** (introducing novelty) and **inheritance** (reusing the old).
+
+**Variation** is done by two operators:
+
+1. **Crossover**: combines bits and pieces of two operators
+   - The basic idea is to **randomly select one string position (crossing point)
+     and exchange all bits after this position**. We can also have multiple point
+     crossover.
+2. **Mutation**: makes small perturbations to promising solutions
+   - The simplest way to do mutation is **bit-flip mutation: flip every bit with a
+     specified probability. Usually one or few bits should be mutated**.
+
+##### Replacement
+
+The basic idea is that once we have a new population of **offspring of the same
+size** we **simply replace the old with the new**.
+
+Another method, called **elitism**, assumes that the **offspring is smaller than the
+original population**. In this case we **replace the worst performing strings of the
+original population**.
