@@ -135,7 +135,7 @@ evaluation, `quasiquote` and `unquote` are used for partial evaluation:
 
 ### Eval
 
-`eval` is function that takes a code and interprets it. It is **effectively the 
+`eval` is function that takes a code and interprets it. It is **effectively the
 opposite of `quote`**. _Note: `eval` is considered dangerous, never use it_
 
 ```racket
@@ -250,7 +250,7 @@ Every scheme implementation is required to be tail-recursive.
 For each has a peculiar syntax:
 
 ```racket
-(for-each 
+(for-each
   (lambda (x)
     (display x)
     (newline))
@@ -321,7 +321,7 @@ on delcaration.
 (being-name p)
 (being-age p)
 (being-show p) ; like a print
-(set-being-age! p 12) 
+(set-being-age! p 12)
 ```
 
 Structs can inherit from other structs:
@@ -382,7 +382,7 @@ expanded into `expansion`.
             b1 ...
             (loop)))))))
 ; Usage
-(while (condition) 
+(while (condition)
   (intr1)
   (istr2))
 ```
@@ -766,7 +766,7 @@ Lists are an example of recursive types. Using a scheme-like notation, they can
 be defined like:
 
 ```haskell
-data List a = Null 
+data List a = Null
             | Cons a (List a)
 ```
 
@@ -809,7 +809,7 @@ type Assoc a b = [(a,b)]
 ### Function composition and `$`
 
 `(.)` is mathematical function composition: `(f.g)(x) = f(g(x))`. `$` (apply
-operator) is an operator for avoiding some parenthesis, e.g 
+operator) is an operator for avoiding some parenthesis, e.g
 `(10 *)(5 + 3) = (10 *) $ 5 + 3`.
 
 ### Infinite computations
@@ -1024,7 +1024,7 @@ some special syntax at our disposal**:
 
 ```haskell
 main :: IO ()
-main = do 
+main = do
   putStr "Say something: "
   thing <- getLine
   putStrLn $ "You said \"" ++ thing ++ "\"."
@@ -1078,7 +1078,7 @@ exmap = let m = fromList [("nose", 1), ("emerald", 27)]
 
 exarr = let m = listArray (1,3) ["alpha", "beta", "gamma"] -- (1,3) is the range of indexes
             n = m // [(2,"Beta")]                          -- `//` executes a list of updates
-            o = n // [(1,"Alpha"), (3,"Gamma")] 
+            o = n // [(1,"Alpha"), (3,"Gamma")]
         in (m ! 1, n ! 2, o ! 1)
 -- exarr -> ("alpha", "Beta", "Alpha")
 ```
@@ -1086,7 +1086,7 @@ exarr = let m = listArray (1,3) ["alpha", "beta", "gamma"] -- (1,3) is the range
 ### Towards monads
 
 We saw that IO is a type construct instance of Monad. In recent versions of GHC
-the **Monad class needs the introduction of: Foldable, Functor and Applicative** 
+the **Monad class needs the introduction of: Foldable, Functor and Applicative**
 ($Functor \contains Applicative \contains Monad$).
 
 #### Foldable
@@ -1200,7 +1200,7 @@ instance Monad Maybe where
 #### Monadic laws
 
 1. `return` is the **identity element**:
-  
+
    ```txt
    (return x) >>= f  <=>  f x
    m >>= return      <=>  m
@@ -1298,3 +1298,157 @@ to access it**:
 getState = State (\state -> (state, state))
 putState new = State (\_ -> (new, ()))
 ```
+
+## Erlang
+
+It is a **concurrent-oriented** programming language where **distribution is almost
+transparent**. The core is **functional**, but **more pragmatic** than Haskell (not pure).
+It is **dynamic typed** with syntax similar to Prolog.
+
+The standard library (OTP) is built for distributed fault-tolerant applications
+and continuously running applications with code swap.
+
+It runs on a **VM**, BEAM. Like the JVM, we have more languages running in it,
+mainly Elixir.
+
+Not really mainstream, but still used in some big industrial applications.
+
+### The basics
+
+Variables start with an **upper case letter**. Variables can be **bound only once**.
+Once a variables has been bound its values cannot change.
+
+**Atoms are like symbols** in scheme. **Any character code is allowed in an atom**.
+**Singly quoted sequences of characters are atoms**. Unquoted **atoms must be
+lowercase**.
+
+**Tuples** are used to store a fixed number of items. There is also the **concept of
+record (a.k.a structs), but it is simply syntax sugar for tuples**.
+
+```erlang
+{x, y}.
+```
+
+**Lists are like in Haskell**. Main difference `|` is cons.
+
+```erlang
+[1, 2, 3].
+A ++ [4, 5].
+[0 | A].
+```
+
+Standard strings are a PITA. It is common to use libraries like `bitstrings` or
+`UTF`.
+
+**Comprehensions are more or less like Haskell**.
+
+```erlang
+[{X, Y} || X <- [-1, 0, 1], Y <- [one, two, three], X >= 0].
+```
+
+**Pattern matching** is more powerful than Haskell's (**no linearity**), based on
+Prolog's.
+
+```erlang
+A = 10. % succeds - binds A to 10
+{A, A, B} = {abc, abc, foo}. % succeds - binds A to abc and B to foo
+{A, A, B} = {abd, def, 123}. % fails
+[A, B | C] = [1, 2, 3, 4, 5, 6, 7]. % succeeds - binds A = 1, B = 2, C = [3,4,5,6,7]
+[H | T] = [abc]. % Succeeds - binds H = abc, T = []
+```
+
+**Maps** are first class. They are functional hash maps.
+
+```erlang
+Map = #{one => 1, "Two" => 2, 3 => three}.
+Map#{one := "I"}. % update/insert
+#{"Two" := V} = Map. % retrieves a value and puts it into V
+```
+
+**Function calls** are as expected: `module:func(args...)`. If the function is
+inside this module we can avoid the `module:`.
+
+Modules system is basic. Functions need to be exported to be available to the
+outside.
+
+```erlang
+-module(demo). % '-' denotes a prepocessor directive
+               % macro calls start with '?'
+-export([double/1]). % fname/n denotes a function called 'fname' with 'n' arguments
+
+double(X) -> times(X, 2).
+times(X, N) -> X * N.
+```
+
+Since it runs on a VM, we have shell `erl`, we can compile to bytecode with
+`erlc` while we run scripts with `erlscript`
+
+Built-in functions are in the `erlang` module.
+
+#### Function syntax
+
+A function is **defined as a series of clauses**. Clauses are **scanned from top to
+bottom**. When a match is found, all variables in the head are bound. **Variables
+are local to each clause**.
+
+**The body is separated by `,`. Clauses are separated by `;`. Definition is ended
+with `.`**.
+
+```erlang
+-module(mathStuff)
+-export([factorial/1, area/1])
+
+factorial(0) -> 1;
+factorial(N) -> N * factorial(N-1),
+
+area({square, Side}) -> Side * Side;
+area({circle, Radius}) -> 3.14 * Radius * Radius;
+area({triangle, A, B, C}) ->
+  S = (A + B + C)/2,
+  math:sqrt(S * (S - A) * (S -B) * (S - C));
+area(Other) -> {invalid_object, Other}.
+```
+
+`when` introduces a pattern guards. There is a **guard sub-language, because
+guards must be evaluated in constant time**.
+
+The `apply(Mod, Func, Args)` invokes `Mod:Func` with the given arguments. `Mod`
+and `Func` must be expressions that evaluate to atoms. The `?MODULE` macro
+expands to the current module name.
+
+#### Case and If
+
+```erlang
+case lists:member(a, X) of
+  true ->  ... ;
+  false -> ...
+end,
+
+if
+  integer(X) -> ... ;
+  tuple(X) -> ...   ;
+  true -> ...       % like an 'else'
+end,
+```
+
+**`case` executes pattern matching. `if` is an `if`. Main difference between the
+two is that `if` uses the guard language while `case` takes any predicate**.
+
+#### Lambdas and higher order functions
+
+**Syntax for lambdas** is like this: `Square = fun(X) -> X*X end.` We can use it
+like this: `Square(3).`. Lambdas can be passed to higher order functions, to
+pass standard non-lambda functions we need to prefix their name with `fun` and
+explicitly indicate the arity.
+
+```erlang
+Square = fun (X) -> X*X end.
+lists:map(Square, [1,2,3]). % returns [1,4,9]
+lists:foldr(fun my_function/2, 0, [1,2,3]).
+```
+
+### The actor model
+
+**Everything is an actor**: an independent unit of computation. **Actors are inherently
+concurrent and can only communicate through messages**. Actors can be **created
+dynamically**. There is no requirement on the order of received messages.
