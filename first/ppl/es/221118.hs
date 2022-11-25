@@ -39,7 +39,7 @@ data Logger a = Logger { getContent :: a
 instance (Eq a) => Eq (Logger a) where
   (Logger x _) == (Logger y _) = x == y
 instance (Show a) => Show (Logger a) where
-  show (Logger d l) =  show d ++ "\nLog:\n" ++ foldr (\line acc -> "\n\t" ++ line ++ acc) "" l
+  show (Logger d l) =  show d ++ "\nLog:" ++ foldr (\line acc -> "\n\t" ++ line ++ acc) "" l
 
 instance Functor Logger where
   fmap f (Logger d l) = Logger (f d) l
