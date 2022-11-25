@@ -1791,3 +1791,134 @@ tree.
 Suppose we have **several models that all solve the same problem**. **Stacking enables
 us to combine them**. **Stacking generalization puts another model on top of the
 other models that learns when to use which classifier**.
+
+## Text representation
+
+### Natural language processing
+
+**Natural text processing is hard** since natural languages are ambiguous, dependant
+on context and can depend on concepts not easily comprehensible for machines.
+
+The **previous method** for analyzing text was to **understand everything, from syntax
+to the meaning of each word**. This method is **nearly impossible** due to the nature
+of human languages. The **main problems** are:
+
+1. **Word-level ambiguity**: some words are both nouns and verbs
+2. **Syntactic ambiguity**
+3. **Presupposition**: relying on common knowledge and reasoning of a human
+   interlocutor
+
+### Information retrieval
+
+Since NLP is too difficult, it has never broken through until very lately.
+**Information retrieval is a much simpler task**: we need to **identify a document
+relevant to some query**.
+
+There **two modes of access**:
+
+1. **Pull mode**: typical of **search engines**, the uses takes initiative and needs ad
+   hoc information
+2. **Push mode**: typical of **recommender systems**, needs stable information about
+   what a client needs
+
+There are also **two possible modes of document selection**:
+
+1. **Document selection**: each **document is either relevant or not**
+2. **Document ranking**: documents are **ranked on the basis of their relevance with
+   respect to the user query**
+
+The **quality** of text retrieval systems is done through **3 metrics**:
+
+1. **Precision**: $\frac{Relevant\cap Retrieved}{Retrieved}
+2. **Recall**: $\frac{Relevant\cap Retrieved}{Relevant}
+3. **F-score**: $\frac{2precision * recall}{precision + recall}
+
+#### Document similarity
+
+To compute document similarity we need to **model** a document: we see a document as
+**a set of words**. We can then **create a table matching the presence (or frequency)
+of words to various documents**. It is a **very sparse** representation since
+documents often contain far fewer words than all the known vocabulary.
+
+Using **this representation our document can become a vector in feature space**.
+This space is very high dimensional and corresponds to all keywords. **Relevance
+is measured with an appropriate similarity measure defined over the vector
+space**.
+
+Let us start with a **simple similarity function**: $f(q, d) = \sum q_i d_i$ where
+$q_i$ and $d_i$ are the presence or absence of a keyword $i$. Of course it is
+**too simple since it doesn't consider how many times we match a word**.
+
+Let us **now consider the frequency of each word** (normalized by document length to
+avoid bias). Now, however, **we rank higher more frequent, and often less
+informative, words**.
+
+Let us introduce **inverse document frequency**: it **measures how much information
+the word provides**. This metric **penalizes words that occur frequently in many
+documents**:
+
+$$ IDF(w) = \log \frac{M}{k} $$
+
+Where $k$ is the number of documents in which $w$ appears and $M$ is the number
+of documents. **When a word is not in the set of documents, the formula leads to a
+division by zero, so usually we find $k + 1$ at the denominator**.
+
+We can combine **term frequency with inverse document frequency to build a
+representation of documents that we can use to compute document similarity or
+distance**. Given a document $d$ from a corpus containing $M$ documents, the
+**vector elements $d_i$ are computed as**:
+
+$$ d_i = f(w_i, d)\log\frac{M}{k_i} $$
+
+#### Preprocessing text data
+
+The preliminary step is **removing non-content related information** (e.g HTML),
+**lowercasing** everything and **remove punctuation**. Then we **remove stop-words**, i.e
+words that are too common and do not add nothing (e.g 'a', 'the'). Another thing
+we can do is **word stemming**: words with a common prefix get reduced to said
+prefix.
+
+### Word embedding
+
+The point of word embeddings is to improve the bag of words model by improving
+on the biggest weakness of the model: the lack of **usage of context information**.
+
+Embeddings are **dense representations of words** rather than documents. **We store
+each word as a point in continuous space**: a word will be represented by a **vector
+of fixed number of dimensions**. Embeddings are **generated from a huge corpus using
+supervised methods**.
+
+Embeddings can be viewed as a **multi-class classification problem with a massive
+parameter space**. One of the first ones was word2Vec, developed by google.
+
+Embeddings has some **useful properties**:
+
+1. Translation in the vector space is meaningful
+2. Semantics are additive
+3. Neighbours in space are semantically related
+4. Induces relationships between words such as part-of-speech, type-of and
+   geographic relationships
+5. Embeddings also place similar concepts close together. This is useful for
+   discovering implied (but unknown) properties.
+
+Embeddings work **very good if the vocabulary is fixed**. If we need to add a new
+word, we do not have an embedding for it. **Another approach, fasttext, splits
+words into character sequences and learning from the character n-grams. Then it
+combines the embeddings to form words**.
+
+The concept of embedding **can be extended to other data types**. The principle is
+the same, the model to create them are different.
+
+### Entity embeddings for categorical variables
+
+**One-hot encoding** is used to **preprocess categorical data** for algorithms that work
+on numerical values only. **It can generate a massive amount of variables**.
+Embeddings **can translate large sparse vectors into a lower dimensional space
+that preserves semantic relationship**: they map categorical variables into
+euclidean spaces. The **mapping is learned by a neural network using a supervised
+training process**.
+
+This approach **reduces memory usage** and speeds up the process. Since it maps
+similar values close to each other, it **can also reveal some intrinsic property
+about the data**.
+
