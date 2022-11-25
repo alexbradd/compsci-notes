@@ -74,7 +74,7 @@ transactions**. The class of view-serializable schedules is named VSR.
 
 Determining the view equivalence of a schedule is done in polynomial time.
 However we need to try all possible serial schedules, which are $n!$, thus VSR
-is a **NP-complete problem**. 
+is a **NP-complete problem**.
 
 #### Conflict serializability
 
@@ -175,7 +175,7 @@ In commercial systems, different isolation levels are allowed. In SQL99 we have:
 4. `SERIALIZABLE`: avoids all anomalies (2PL with predicate locks)
 
 Serializable transactions don't execute serially! The requirement is that the
-end result should be the same as if they executed serially. Locking introduces 
+end result should be the same as if they executed serially. Locking introduces
 synchronization problems:
 
 1. **Deadlocks**: two or more transactions in endless mutual wait
@@ -273,7 +273,7 @@ are 4 variants of the algorithm. They are all equivalent**.
 
 **The deadlock probability is much less than that of a conflict**. Considering a
 file with $n$ records and two transactions doing two accesses to their records
-the conflict is $\mathcal{O}(1/n)$ while deadlocks are $\mathcal{O}(1/n^2)$. 
+the conflict is $\mathcal{O}(1/n)$ while deadlocks are $\mathcal{O}(1/n^2)$.
 
 **The probability of a deadlock is linear in the number of transactions, but
 quadratic in record size, thus shorter transactions are healthier**.
@@ -324,7 +324,7 @@ Locks are **requested starting from the root and going down the hierarchy. Locks
 are released starting from the locked resource going up the hierarchy**.
 
 - To **request an SL or ISL** locks on a non-root element, a transaction **must
-  hold an equally or more restrictive lock (ISL or IXL) on its parent**. 
+  hold an equally or more restrictive lock (ISL or IXL) on its parent**.
 - To **request an IXL, XL or SIXL** lock on a non-root element, a transaction **must
   hold an equally or more restrictive lock (SIXL or IXL) on its parent**.
 
@@ -488,7 +488,7 @@ contents of the page to disk**.
      1. **Steal**: grab a victim page from an active transaction and flush it to
         disk.
      2. **No steal**: put the transaction in a waiting list until a page frees.
-     
+
 **Other** buffer management **policies** include:
 
 1. **Force**: pages are always transferred at commit
@@ -520,7 +520,7 @@ transitions** the actions carried out by the various transactions:
 - `UPDATE(U)`: both before and after state are stored
 - `INSERT`: only after state is saved
 - `DELETE`: only before state is saved
- 
+
 We can use the log to apply the following transformations:
 
 1. `UNDO T`: sets the state to the before state
@@ -626,7 +626,7 @@ The fundamentals have been already discussed in the DB1 course.
 
 A trigger can have 2 **execution modes**:
 
-1. **Before**: the action of the trigger is executed before the **database 
+1. **Before**: the action of the trigger is executed before the **database
    change** (if the condition holds). This type of **triggers cannot update the
    database directly, but can affect the transition variables in row-level
    granularity**.
@@ -684,7 +684,7 @@ The simplest check exploits the **triggering graph**:
 
 - A node $i$ for each trigger
 - An arc from a node to another if the execution of the trigger associated with
-  the first node may activate the second one 
+  the first node may activate the second one
 
 The graph is build with a simple syntactic analysis. If the graph is **acyclic**,
 the system is **guaranteed to terminate**. If a **cycle exists**, **triggers may not
@@ -765,7 +765,7 @@ other algorithm on any input.
 
 Instance optimality is a form of optimality aimed at when standard optimality is
 unachievable: algorithm $A^\star$ is instance-optimal w.r.t a family $A$ and $I$
-problem instances for the cost metric $c$ if there exists $k_1, k_2$ such that 
+problem instances for the cost metric $c$ if there exists $k_1, k_2$ such that
 
 $$
 \forall A'\in A, I'\in I \, c(A^\star, I') \leq k_1 \cdot c(A', I') + k_2
@@ -846,7 +846,7 @@ Under such model a **top-k query is transformed into a so called k-nearest
 neighbours query**: given a point $q$, a relation $R$, $k\geq 1$ and a distance
 $d$, determine the $k$ tuples un $R$ that are closest to $q$ according to $d$.
 
-Some commonly used distances are **Lp-norms**: 
+Some commonly used distances are **Lp-norms**:
 
 $$ L_p(t,q) = (\sum_{i=1}^m |t_i - q_i|^p)^{1/p} $$
 
@@ -856,7 +856,7 @@ Some relevant special cases are:
 2. **Manhattan**: $L_1(t,q) = \sum_{i=1}^m |t_i - q_i|$
 3. **Chebyshev**: $L_\infty(t,q) = \max_i \{|t_i - q_i|\}$
 
-The use of weights stretches some coordinates (e.g 
+The use of weights stretches some coordinates (e.g
 $L_2(t,q,W) = \sqrt{\sum_{i=1}^m w_i|t_i - q_i|^2}$.
 
 #### Top-K join query
@@ -924,7 +924,7 @@ access**.
 
 **Works with any monotone function**.
 
-- **Input**: integer $k \geq 1$, a monotone function $S$ combining ranked lists 
+- **Input**: integer $k \geq 1$, a monotone function $S$ combining ranked lists
   $R_1, \ldots, R_m$
 - **Output**: the top-k `<object,score>` pairs
   1. Extract the same number of objects by sorted accesses  in each list until
@@ -941,7 +941,7 @@ The drawback of this approach is that the **scoring function is not exploited**.
 
 ###### Threshold algorithm
 
-- **Input**: integer $k \geq 1$, a monotone function $S$ combining ranked lists 
+- **Input**: integer $k \geq 1$, a monotone function $S$ combining ranked lists
   $R_1, \ldots, R_m$
 - **Output**: the top-k `<object,score>` pairs
   1. Do sorted accesses in parallel in each list $R_i$
@@ -971,7 +971,7 @@ Where:
 
 In a basic setting, $c_{SA} = c_{RA} = 1$. In other cases, **costs may differ**:
 
-- For web sources, usually $c_{RA} > c_{SA}$ with the limit case where 
+- For web sources, usually $c_{RA} > c_{SA}$ with the limit case where
   $c_{RA} = \infty$ (random access is impossible)
 - Some sources might not be accessible through sorted access ($c_{SA} = \infty$)
 
@@ -990,7 +990,7 @@ Algorithm:
 2. Store in $B$ each retrieved object $o$ and maintain the bounds a threshold
    $\tau$
 3. Repeat step 1 as long as
-    
+
    $$ S^-(B[k]) < \max \{\max\{S^+(B[i]), i > k\}, S(\tau)\} $$
 
 **NRA is instance optimal**. Its **cost does not grow monotonically with $k$**: i.e it
@@ -1005,7 +1005,7 @@ objects: a **tuple $t$ dominates $s$** ($t \prec s$) iff:
 - $\forall 1 \leq i \leq m \, t[A_i] \leq s[A_i]$
 - $\exists 1 \leq j \leq m : t[A_i] < s[A_j]$
 
-**Typically lower values are considered better**. The **skyline of a relation is the 
+**Typically lower values are considered better**. The **skyline of a relation is the
 set of its non-dominated tuples**.
 
 **A tuple $t$ is said to be in the skyline iff it is the top-1 result w.r.t at
@@ -1164,7 +1164,7 @@ Relationships in the OM have 4 characteristics:
 3. **Cardinality**
 4. **Ownership**: In the database relationships are implemented by a foreign key
    column that refers to the key of the referenced table (join column). The
-   entity that will have FK is the oner of the relationship. 
+   entity that will have FK is the oner of the relationship.
 
 An example of a bidirectional 1:N.
 
@@ -1265,7 +1265,7 @@ define when operations should be automatically cascaded across relationships**.
 **Cascade** settings are **unidirectional**.
 
 For `**OneToOne` and `OneToMany`** JPA supports an **additional cascade mode**:
-`orphanRemoval`. It is **appropriate for parent-child relationships** (e.g 
+`orphanRemoval`. It is **appropriate for parent-child relationships** (e.g
 weak entities). It causes the **child entity to be removed when the relation is
 broken either by**:
 
@@ -1292,7 +1292,7 @@ public class Order implements Serializable {
   private Customer  customer;
 
   @ElementCollection(fetch = FetchType.EAGER)
-  @CollectionTable(name = "product_order", 
+  @CollectionTable(name = "product_order",
                    join_columns = @JoinColumn(name = "orderId")) // tells JPA that we are mapping to a map
   @MapKeyJoinColumn(name = "ProductId") // this is the map key
   @Column(name = "quantity")
@@ -1309,7 +1309,7 @@ We can also we an auxiliary weak entity with a composite key.
 2. `<T> T find(Class<T> entityClass, Object primaryKey)`: finds an entity
    instance by its primary key
 3. `void remove(Object entity)`: Removes an entity instance
-4. `void refresh(Object entity)`: Synchronizes the entity instance with the 
+4. `void refresh(Object entity)`: Synchronizes the entity instance with the
    database
 5. `void flush()`: Writes the state immediately
 
@@ -1321,7 +1321,7 @@ since the Entity manager does not know it exists yet. An entity **becomes manage
 when **`persist()` is first called**. **Persist can be called on an already managed
 entity** and it triggers the whole cascade process.
 
-`flush()` instructs the persistence manager to write changes as soon as possible 
+`flush()` instructs the persistence manager to write changes as soon as possible
 (as will be said in the next section, the persistence manager decides when to
 write to the database).
 
@@ -1363,7 +1363,7 @@ In JPA we have different types of transactions:
   servlets or whatever)
 
 In **container-level transactions**, the **entity manager is itself managed** by the
-container. 
+container.
 
 ```java
 @Stateless // annotation indicating that this is a EJB object
@@ -1409,3 +1409,180 @@ How the transaction is shared during method calls is defined by
 
 The **injected EMs are thread safe** thanks to a series of methods (proxying and
 method call serialization).
+
+## Physical database
+
+Databases are stored onto secondary memory into files. When we want to use
+data, we **need to move the data to primary memory**. **Data is organized into pages
+and blocks**:
+
+1. **Page**: unit of storage in **main memory**
+1. **Block**: unit of storage in **secondary memory**
+
+Secondary memory devices are **organized in blocks of usually fixed length**. We
+will make the **assumption that the size of a page equals the size of a block**. We
+can **estimate the cost of a query with the number of blocks to be moved** to
+execute said query.
+
+The DBMS uses only the basic features of the file system (read/write, file
+creation/deletion). The **DBMS directly manages file organization both in terms of
+distribution of records within blocks and with respect to the internal structure
+of each block**.
+
+### Access structures
+
+Each **access method** (access method: module that provides data access and
+manipulation primitives for each physical data structure) has **its own data
+structure**. All **structures are stored into the database**.
+
+Structures are classified into:
+
+1. **Primary structures**: they contain the **tuples** of a table
+2. **Secondary structures**: they are used to **index primary structures**, and only
+   contain the values of some fields, interleaved with pointers.
+
+Mainly we have sequential, hash-based and tree-based structures. Not all
+structures are equally suited for the same job. **Sequential structures are usually
+used for primary structures** while **hash-based and tree-based structures are used
+for secondary structures**.
+
+### Tuples and blocks
+
+**Tuples** are the **logical components of tables** while **blocks are the physical
+components of files**. **Blocks** typically have **fixed size** and **depend on the file
+system and how the disk is formatted**. **Tuple**, otoh, have **variable size**
+(dependant on the database design).
+
+**Blocks contain tuples**. The block is organized as **two juxtaposed stacks with some
+headers and footers**:
+
+1. **Block header and trailer** contain **control information** used by the filesystem
+2. **Page header and trailer** contain **control information** about the access method
+3. A **page dictionary** is the first stack and **contains pointers to each item
+   contained in the page**.
+4. The **useful part of the page** is the other stack and **contains tuples**
+5. A **checksum** is present to spot corrupted data.
+
+The **number of tuples** in a block is given by the **block factor**. It is a
+fundamental measure for evaluating the cost of queries.
+
+$$ B= \lfloor \frac{SB}{SR} \rfloor $$
+
+Where $SR$ is the average size of a record/tuple and $SB$ is the size of the
+block.
+
+The operation we will consider are: insertion and update of a tuple, deletion of
+a tuple, access to a field of a particular tuple.
+
+### Sequential structures
+
+**Tuples are sequentially arranged into blocks**. We can have two cases:
+
+1. **Entry-sequenced**: the sequence is dictated by their **order of entry**
+   - **Optimal** for **insertion, sequential reading and space**
+   - **Non optimal** for **searching and updates** that increase the size of a tuple
+2. **Sequentially-ordered**: tuples are **ordered according to the value of a key**
+   - **Optimal for range queries and `order by`/`group by` queries** exploiting the
+     key
+   - The **problem** is **insertion and updates that increase the size**: they trigger a
+     **reordering**
+
+### Hash-based structures
+
+Basically hash-tables, review API.
+
+### Indexes
+
+They are data structures that **help efficiently retrieve tuples on the basis of a
+search key**. They contain records of the form `[key, pointer]`. Index entries are
+sorted w.r.t the search key.
+
+Indexes can be:
+
+- **Dense**: there is **an entry for each search key value in the file**. We will always
+  assume this type of index.
+- **Sparse**: there is an **entry only for some search key values**.
+- **Primary**: an index **defined on sequentially ordered structures**. The **search key
+  is unique and coincides with the attribute according to which the structure is
+  ordered (called ordering key)**. Only **one primary index can be defined for
+  table**, usually on the primary key.
+- **Clustering**: a **generalization of the primary index** where the **ordering key can
+  be not unique**. The pointer will simply **refer to the block containing the first
+  tuple matching the key**.
+- **Secondary**: an index that **specifies an order different from the sequential
+  order of the file**. **Multiple secondary indexes can be defined on
+  the same tables for different search keys**. It is **necessarily dense**.
+
+Indexes are **usually implemented as hash-based structures**. They are handled
+exactly like a hash-based primary structure but instead of tuples the buckets
+only contains key values and pointers.
+
+To **access an index**, we need to **access two blocks**: one with index and one with
+the data.
+
+### Tree-based structures
+
+The **most frequent data structures for secondary (index) structures**. We have two
+types trees: **B trees and B+ trees**. We will see B+ trees.
+
+**Each node of the tree is stored in a block**. **Internal nodes form a multilevel
+sparse index on the leaf nodes**. Each **node** can hold **up to $N-1$ search keys and
+$N$ pointers**. **At least $\lceil N/2 \rceil$ pointers are maintained** to ensure
+that **each internal node is at least half full**. **Search keys** in a node are **sorted
+with $K_i < K_j$**.
+
+```txt
+[ P_1 | K_1 | P_2 | K_2 | ... | P_i | K_i | P_i+1 | ... | K_N-1 | P_N ]
+   |                            |                                  |-> subtree with key K >= K_N+1
+   |                            |-> subtree with keys K_i-1 <= K <= K_1
+   |-> subtree with keys K <= K_1
+```
+
+Each **leaf node** can **hold up to $N-1$ search keys**. **At least $\lceil (N-1)/2$ key
+values should be present in each node**. Search **keys are sorted in the same way as
+internal nodes**. The **last pointer in the leaf node is a pointer to the next leaf**
+to allow sequential processing. The set of leaves **forms a dense index**.
+
+```txt
+[ P_1 | K_1 | P_2 | K_2 | ... | P_i | K_i | P_i+1 | ... | K_N-1 | P_N ]
+   |                            |                                  |-> pointer to next leaf
+   |                            |-> Pointers to blocks of primary stoage containing key K_i
+   |-> Pointers to blocks of primary storage containing tuples with keys K_1
+```
+
+**B trees eliminate the redundant storage of search key values**: search key values
+appear only once; intermediate nodes for each key value $K_i$ have:
+
+- One pointer to the subtree with keys between $K_i$ and $K_{i+1}$
+- Pointers to the blocks that contain the tuples that have value $K_i$ for the
+  key
+
+**Lookup can be slightly faster, but interval queries are less efficient**.
+
+### Indexes in SQL
+
+Indexes are created with
+`create [unique] index IndexName on TableName(AttrList)` and dropped with
+`drop index IndexName`.
+
+In most SQL DBMSs, every table should have a suitable primary storage, possibly
+sequentially ordered. Secondary structures are progressively added, checking
+that the system actually uses them.
+
+Some **guideline for choosing indexes**:
+
+1. Do not index small tables
+2. Index primary keys of a table if it not a key of the primary file
+   organization (some DBMSs automatically generate indexes for primary keys)
+3. Add a secondary index to any columns that is used heavily as a secondary key
+4. Add a secondary index to a foreign key if it is frequently used
+5. Add secondary indexes on columns that are involved in:
+   - selection or join criteria
+   - `order by`
+   - `group by`
+   - other operators involving sorting (e.g `union` or `distinct`)
+6. Avoid indexing a columns or table that is frequently updated
+7. Avoid indexing a column if the query will retrieve a significant portion of
+   the records
+8. Avoid indexing columns that consist of long strings
+
