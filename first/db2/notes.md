@@ -1586,3 +1586,127 @@ Some **guideline for choosing indexes**:
    the records
 8. Avoid indexing columns that consist of long strings
 
+## Query optimization
+
+### Costs of different queries
+
+The **query optimizer** receives a **SQL query and produces a program in an internal
+format that uses the data access method**. The fundamental steps in the
+translation process are the **algebraic optimization and the cost-based
+optimization**.
+
+**Profiles** are stored in the data dictionary and contain **quantitative information
+about tables** like:
+
+1. **Cardinality**
+2. **Dimension** in bytes of each **attribute**
+3. **Number of distinct values** of each **attribute** ($val(A_j$)$)
+4. **Minimum/maximum values** of each attribute.
+
+These statistics are **used by the query optimizer for cost-based optimizations**
+and are periodically calculated.
+
+**Selectivity**: the **probability that any row will satisfy a predicate**. If
+**$val(A) = N$** and the **values are homogeneously distributed over the tuples** then
+it can be calculated as **$1/N$ for predicates in the form of $A=k$**.
+
+### Operations supported by various access modes
+
+A sequential structures perform a **sequential access** to all the tuples of a
+table/intermediate result executing various operations such as projection or
+selection on simple predicates.
+
+**Hashing adds support to equality predicates**. Tree-based indexes **support
+selection/join criteria, `order by`, `group by` and other operations involving
+sorting**.
+
+### Costs of lookups for different primary/secondary structures
+
+**Predicate-based lookup can use indexes built un the attribute for queries with
+equality or interval functions**. For equality lookup we have:
+
+1. **Sequential**:
+   - **Entry sequenced**: we need a **full scan**
+   - **Sequence ordered**: if we cannot **exploit our $k$ we can reduce the cost** or
+     still need a **full scan**
+2. **Hash**:
+   1. **Primary**:
+      - If we have **no overflow chains** we have just **1 access**, otherwise we need to
+        **follow the chain with an extra cost**.
+   2. **Secondary**:
+      - Like in the **primary case**, we have the cost of 1 + a scan of the overflow
+        chain if preset. Since it is a secondary index, we also need to **add the
+        cost of accessing the full tuples in primary storage**.
+2. **B+ tree**:
+   1. **Primary**:
+      - **Unique search key**: we need to access **$k$ intermediate plus 1 leaf node**
+      - **Non search key**: we need **$k$ intermediate plus a full scan of all the
+        leafs**
+      - **Non-unique search key**: we need **$k$ intermediate plus $j$ leafs**. Since
+        the search key is non-unique, it can appear in multiple leafs. This means
+        that **search algorithm needs to be extended**: if the key is the first in a
+        leaf, we also need to visit the previous sibling; the visit continues
+        accessing all the next leaf nodes until a key greater than our $K$ is
+        found.
+   2. **Secondary**:
+      - **Unique search key**: like the primary case + the access to the data block
+      - **Non search key**: 1 full scan for leaves and one for data
+      - **Non-unique search key**: like in the primary case + the access to the
+        data blocks
+
+**Interval lookups are not supported by sequential and hash structures** since they
+require a full scan. **Tree structure support it if the attribute on which we are
+making the lookup is the search key**.
+
+1. **Primary**: we consider $v_1 \leq A_i \leq v_2$ as the general case
+   - First we read the root. Then **a node per level is read until the leaf node
+     is reached that stores tuples with $A_i = v_1$**. If the searched tuples are
+     all stored in that leaf block we finish, otherwise we **continue up the leaf
+     chain until $v_2$ is reached**.
+   - The cost is **1 block per level + as many leaf blocks necessary** to read all
+     tuples in the interval
+2. **Secondary**: we consider $v_1 \leq A_i \leq v_2$ as the general case
+   - The algorithm is identical to the primary case
+   - The cost is identical to the primary case, plus the 1 access to data blocks
+     per pointer.
+
+**Conjunction and disjunction** of predicates is done as follows:
+
+1. **Conjunction**: If supported by the indexes, we **choose the most selective
+supported predicate** for data access and **evaluate the other predicates in main
+memory**
+2. **Disjunction**:
+   - If all predicates are supported, **indexes can be used for each predicate and
+     then duplicate elimination is performed**
+   - If **any of the predicates is not supported by the indexes, then a full scan
+     is needed**
+
+### Sorting
+
+We distinguish two type of sorting:
+
+1. **Sorting in main memory**, typically done by means of the usual algorithms
+2. **Sorting of large files that do not fit into main memory**, done with special
+   algorithm like external merge sort.
+
+#### External merge sort
+
+The general idea is to **first sort chunks of data small enough to fit in main
+memory and them merge the sorted parts**.
+
+To sort a file stored in $N$ blocks using $B$ buffer pages we:
+
+1. **Read $B$ blocks at a time into main memory and sort them**. Then **write the
+   sorted data into a chunk file**. The total chunks will be $\lceil N/B \rceil$
+2. We use $B-1$ blocks for the input and 1 block for the output. **Until all input
+   buffer pages are empty**:
+   - **Select the first record** (in sort order) among all buffer pages and **write it
+     to the output buffer;** if full, write it to disk.
+   - **Delete the record from its input buffer page**. If the buffer page is empty,
+     read next block of the chunk into the buffer.
+
+**In each pass, $B-1$ chunks are merged. A pass reduces the number of chinks by a
+factor of $B-1$ and creates chunks longer by the same factor**. We can calculate
+the **number of passes as $1+\lceil \log_{B-1} \lceil N/B \rceil \rceil$**. The
+**overall cost of the sort is $2N * \#_{passes}$**.
+
