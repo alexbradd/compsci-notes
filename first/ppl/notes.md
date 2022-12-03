@@ -1452,3 +1452,182 @@ lists:foldr(fun my_function/2, 0, [1,2,3]).
 **Everything is an actor**: an independent unit of computation. **Actors are inherently
 concurrent and can only communicate through messages**. Actors can be **created
 dynamically**. There is no requirement on the order of received messages.
+
+**Processes are represented through different actors communicating only through
+messages**. Each actor is a **lightweight process, handled by the VM** and not
+scheduled by the OS. The VM also handles the multiple cores and the distribution
+of actors in a network.
+
+### Concurrent programming
+
+We have **three primitives**:
+
+1. `spawn`: **create** a new process
+2. `send` (shortened to !): **sends a message** to a process through its identifier.
+   The operation is async.
+3. `receive ... end`: **extract**, from the first to the last, **a message** from a
+   process's mailbox queue with the provided set of patterns. It **blocks if the
+   queue is empty or if no message matches**.
+
+   A process's mailbox is persistent through the lifetime of it.
+
+To spawn a process we call `Pid2 = spawn(Mod, Func, Args)`. Note that `Pid2` is
+local to the process that called spawn. To send a message to another process we
+call `Pid2 ! {self(), foo}`: we sent `{Pid1, foo}` to `Pid2`. `Pid2` can receive
+the message when `receive {From, Msg} -> Actions end` is called.
+
+A quick example:
+
+```erlang
+-module(echo).
+-export([go/0, loop/0]).
+
+go() ->
+  Pid2 = spawn(echo, loop, []),
+  Pid2 ! {self(), hello},
+  receive
+    {Pid2, Msg} -> io:format("P1 ~w~n", [Msg])
+  end,
+  Pid2 ! stop.
+
+loop() ->
+  receive
+    {From, Msg} ->
+      From ! {self(), Msg},
+      loop(); % functions are tail recursive
+    stop -> true
+  end.
+```
+
+If we want to **`receive` messages in a specified order**, we can put the
+respective `receive` **blocks in sequence**:
+
+```erlang
+receive
+  foo -> ...
+end,
+receive
+  bar -> ...
+end.
+```
+
+We can **register processes with a specific alias** using `register(Alias,
+Pid)`. For example:
+
+```erlang
+start() ->
+  Pid = spawn(?MODULE, server, []),
+  register(analyzer, Pid).
+
+analyze(Seq) ->
+  ...
+```
+
+#### Client-server
+
+```erlang
+% server code
+-module(myserver).
+server(Data) -> % Data is the server state
+  receive
+    {From, {request, X}} ->
+      {R, Data1} = fn(X, Data),
+      From ! {myserver, {reply, R}},
+      server(Data1)
+  end.
+
+% client-side interface
+-export([request/1]).
+request(Req) ->
+  myserver ! {self(), {request, Req}},
+  receive
+    {myserver, {reply, Rep}} -> Rep
+  end.
+```
+
+#### Timeouts
+
+The `receive` blocks has an **optional `after` block that executes an action if no
+action in the receive block is performed until the specified timeout**.
+
+One simple use is to abuse the behaviour of `receive` and create `sleep` and
+`suspend`:
+
+```erlang
+sleep(T) ->
+  receive
+  after
+    T -> true
+  end.
+suspend() ->
+  receive
+  after
+    infinity -> true
+  end.
+```
+
+### Building application using Erlang
+
+The OTP provides useful **"Behaviours", which are pluggable ready-to-use patterns
+like "Server", "Supervisor" etc.**. The **applications** are structured in a **tree
+structure with supervisors and multiple workers for each one**. The processes
+follow the **"let it crash"** principle: if there is a problem, do not try to
+recover, simply crash.
+
+The supervisor+"let it crash" architecture works thanks to **process linking**: all
+workers are linked to their supervisor. Linking means that **if any children dies, the
+father and all siblings are also killed**. We can **intercept the kill message by
+settings the `trap_exit` process flag**.
+
+An example of a simple application:
+
+```erlang
+main(Count) ->
+  register(the_master, self()),
+  start_master(Count),
+  unregister(the_master),
+  io:format("That's all.~n").
+
+start_master(Count) ->
+  process_flag(trap_exit, true),
+  create_children(Count),
+  master_loop(Count).
+
+create_children(0) -> ok;
+create_children(N) ->
+  Child = spawn_link(?MODULE, child, [0]),
+  io:format("CHild ~p created~n", [Child]),
+  Child ! {add, 0},
+  create_children(N-1).
+
+master_loop(Count) ->
+  receive
+    {value, Child, V} ->
+      io:format("child ~p has value ~p ~n", [Child, V]),
+      Child ! {add, rand:uniform(10)},
+      master_loop(Count);
+    {'EXIT', Child, normal} ->
+      io:format("child ~p has ended~n", [Child]),
+      if
+        Count =:= 1 -> ok;
+        true -> master_loop(Count-1)
+      end;
+    {'EXIT', Child, _} ->
+      NewChild = spawn_link(?MODULE, child, [0]),
+      io:format("child ~p has died, now replaced by ~p ~n", [Child, NewChild]),
+      NewChild ! {add, rand:uniform(10)},
+      master_loop(Count)
+  end.
+
+child(Data) ->
+  receive
+    {add, V} ->
+      NewData = Data+V,
+      BadChance = rand:uniform(10) < 2,
+      if
+        BadChance -> error("I’m dying"); % random error in child
+        NewData > 30 -> ok; % child ends naturally
+        true -> the_master ! {value, self(), NewData}, % there is still work to do
+                child(NewData)
+      end
+  end.
