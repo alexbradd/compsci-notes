@@ -1600,7 +1600,7 @@ about tables** like:
 
 1. **Cardinality**
 2. **Dimension** in bytes of each **attribute**
-3. **Number of distinct values** of each **attribute** ($val(A_j$)$)
+3. **Number of distinct values** of each **attribute** ($val(A_j)$)
 4. **Minimum/maximum values** of each attribute.
 
 These statistics are **used by the query optimizer for cost-based optimizations**
@@ -1710,3 +1710,62 @@ factor of $B-1$ and creates chunks longer by the same factor**. We can calculate
 the **number of passes as $1+\lceil \log_{B-1} \lceil N/B \rceil \rceil$**. The
 **overall cost of the sort is $2N * \#_{passes}$**.
 
+### Joining
+
+Joins are the **most frequent and costly operations** in DBMSs. We have several join
+strategies, among which we will see: nested loops, merge-scans and hashed.
+
+#### Nested loop join
+
+A nested loop join **compares the tuples of a block of table $T_{Ext}$ with all
+the tuples of all the blocks of $T_{Int}$ before moving to the next block of
+$T_{Ext}$**.
+
+We will **assume that the buffer does not have enough available free pages to host
+more than a few blocks**. The **cost** of the join will be **quadratic in the size of
+the tables**. If **one of the tables is small enough to fit in the buffer**, then it
+is **chosen as the internal table**.
+
+If **one table supports indexed access in the form of a lookup based on the join
+predicate, then this table can be chosen as internal**, exploiting the predicate to
+extract the joining tuples without scanning the entire table. If **both tables
+support lookup, then the one for which the predicate is more selective is
+chosen**. The **cost** will be a **full scan of the external blocks + the cost of one
+indexed access of the internal table**.
+
+#### Merge-scan join
+
+**Merge-scan is possible only if both tables are ordered according to the same key
+attribute**, that is also the attribute used in the join predicate. **If the tables
+are not sorted, we first sort them on the join column**.
+
+The **ordered full scan is possible** for a table if the **primary storage is
+sequentially ordered w.r.t the join attribute or a B+ on the join attribute is
+defined**.
+
+The **cost is linear** in the size of the tables. If a table **needs to be sorted**, we
+**need to also add the cost for sorting**.
+
+#### Hashed joins
+
+This join is possible only is **both tables are hashed according to the same key
+(join) attribute**. The matching tuples can only be found in the corresponding
+buckets.
+
+The **cost is linear in the number of blocks of the hash based structure**.
+
+### Cost-based optimization
+
+It is a problem whose decisions are: the data access operations to execute, the
+order of operations, the option to allocate to each operation and deciding if
+parallelism/pipelining can be used.
+
+**Queries are optimized by using profiles and approximation formulas**. Using these
+we **build decision trees** in which each **node is a choice** and each **leaf corresponds
+to a specific execution plan**.
+
+For **query execution** we have two paths:
+
+1. **Compile and store**: the query is compiled once and executed many times
+   **(prepared statement)**
+2. **Compile and go**: the query is immediately compiled and executed.
