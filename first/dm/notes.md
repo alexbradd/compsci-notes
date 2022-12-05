@@ -651,7 +651,7 @@ problem**.
 
 We can view **each node $i$** as a **set $S_i$ of nodes it points to**. $K_{s,t}$ would
 be a **set $Y$ of size $t$ that occurs in $s$ sets $S_i$**. Looking for $K_{s,t}$ is
-equivalent to settings the frequency threshold to $s4 and look at layer $t$
+equivalent to settings the frequency threshold to $s$ and look at layer $t$
 
 ### Mining sequences
 
@@ -1829,9 +1829,9 @@ There are also **two possible modes of document selection**:
 
 The **quality** of text retrieval systems is done through **3 metrics**:
 
-1. **Precision**: $\frac{Relevant\cap Retrieved}{Retrieved}
-2. **Recall**: $\frac{Relevant\cap Retrieved}{Relevant}
-3. **F-score**: $\frac{2precision * recall}{precision + recall}
+1. **Precision**: $\frac{Relevant\cap Retrieved}{Retrieved}$
+2. **Recall**: $\frac{Relevant\cap Retrieved}{Relevant}$
+3. **F-score**: $\frac{2precision * recall}{precision + recall}$
 
 #### Document similarity
 
@@ -2006,3 +2006,71 @@ size** we **simply replace the old with the new**.
 Another method, called **elitism**, assumes that the **offspring is smaller than the
 original population**. In this case we **replace the worst performing strings of the
 original population**.
+
+### Real-coded genetic algorithms
+
+The idea is to **extend the principles seen before to another coding (real
+values)**. To do this we need to implement **new variation operators**.
+
+With this coding, **candidate solutions are vectors of real values and random
+initialization generates a random number from an interval for each variable**.
+
+1. **Arithmetic crossover**: given two parents $x=(x_1, \ldots, x_n)$ and
+$y=(y_1,\ldots,y_n)$ we **choose a random variable $i$ and a random $\alpha \in
+[0,1]$ and obtain two children by linearly combining the $i$s**:
+
+   $$
+   \begin{gathered}
+    o_1 = (x_1, \ldots, \alpha y_i+(1-\alpha)x_i, \ldots, x_n) \\
+    o_2 = (y_1, \ldots, \alpha x_i+(1-\alpha)y_i, \ldots, y_n)
+   \end{gathered}
+   $$
+2. **Simple mutation**: we **change each variable with a fixed probability**. To change
+   a variable, we generate a small random number in $[-\delta,\delta], \delta>0$
+   vary small and add this number to the variable.
+   3. **Gaussian mutation**: The **change is generated according to the Gaussian
+   distribution** $\mathcal{N}(0,\sigma^2)$ where $\sigma^2$ is the variance of
+   the mutation steps, which is a small number.
+
+### Permutations
+
+**Ordering and sequencing problems form a special class**. The task is solved by
+arranging some object in a certain order. We will **represent the problem with a
+list of $n$ integers, each of which appears exactly once**.
+
+Can we apply a genetic algorithm to this class of problems?
+
+Of our previous steps, **evaluation and selection do not require any modification**.
+**Recombination and mutation need to be adapted**.
+
+**Normal single-point crossover will often lead to inadmissible solutions**. We need
+to define a **more specialized operator** that focuses on **combining order or
+adjacency information from the two parents**. The same reasoning goes is
+applicable to mutation operators.
+
+#### Mutation
+
+The **mutation parameter** will reflect the **probability that some operator is
+applied once to the whole string**, rather than individually in each position.
+
+1. **Insert mutation**: Pick **two variables at random and move the second to follow
+   the first**. Preserves most adjacency and order information.
+2. **Swap mutation**: Pick **two variables at random and swap their position**.
+   Preserves most adjacency information but disrupts order more.
+3. **Inversion mutation**: Pick **two variables at random and invert the substring
+   between them**. Preserves most adjacency information but disrupts order.
+4. **Scramble mutation**: Pick a **subset of variables at random and randomly
+   rearrange them**.
+
+#### Crossover
+
+1. Choose an **arbitrary part from the first parent**
+2. **Copy** this part **to the first child**
+3. **Copy the numbers that are not in the first part to the first child**: starting
+   from the cut point of the copied part, using the order of the second parent
+   and wrapping around at the end.
+4. We do **the same for the second child**.
+
+## Feature selection
+
+See **notebooks**.
