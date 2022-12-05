@@ -2028,7 +2028,7 @@ $y=(y_1,\ldots,y_n)$ we **choose a random variable $i$ and a random $\alpha \in
 2. **Simple mutation**: we **change each variable with a fixed probability**. To change
    a variable, we generate a small random number in $[-\delta,\delta], \delta>0$
    vary small and add this number to the variable.
-   3. **Gaussian mutation**: The **change is generated according to the Gaussian
+3. **Gaussian mutation**: The **change is generated according to the Gaussian
    distribution** $\mathcal{N}(0,\sigma^2)$ where $\sigma^2$ is the variance of
    the mutation steps, which is a small number.
 
@@ -2078,3 +2078,8 @@ See **notebooks**.
 ## Discretization
 
 See **notebook**.
+
+## Anomaly detection
+
+See **notebook**.
+
