@@ -2074,3 +2074,7 @@ applied once to the whole string**, rather than individually in each position.
 ## Feature selection
 
 See **notebooks**.
+
+## Discretization
+
+See **notebook**.
