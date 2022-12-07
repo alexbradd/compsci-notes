@@ -1294,3 +1294,11 @@ alphabet $\Sigma$, an initial state $q_0$, a subset $F$ of final states and
 2. The **output function** $\nu$, which computes the string to write in each move
 3. The **final function** $\phi$, which computes the last suffix to concatenate to
    the output string when the transducer reaches a final state.
+
+### Purely syntactic transduction
+
+See **book**.
+
+## Attribute grammars
+
+See **book**.
