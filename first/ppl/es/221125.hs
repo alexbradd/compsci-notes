@@ -91,9 +91,14 @@ instance Foldable LolStream where
 --  Variante pradella
   foldr f z ls = foldr f z (destream ls)
 
--- Homework: finish Applicative
 instance Applicative LolStream where
   pure x = lol2lolstream [[x]]
-  fs <*> xs = let fs' = destream fs
-                  xs' = destream xs
-              in lol2lolstream [fs' <*> xs']
+  -- fs <*> xs = let fs' = destream fs
+  --                 xs' = destream xs
+  --             in lol2lolstream [fs' <*> xs']
+  f@(LolStream n fs) <*> x@(LolStream m xs) = if (n > 0) && (m > 0) then
+      LolStream (n*m) (lolRepeat (destream f <*> destream x))
+      else LolStream (-1) (fs <*> xs)
+
+instance Monad LolStream where
+  ls >>= fs = lol2lolstream [destream ls >>= (\x -> destream (fs x))]
