@@ -1631,3 +1631,50 @@ child(Data) ->
                 child(NewData)
       end
   end.
+```
+
+## Rust
+
+### Memory safety
+
+Characterizes programs everywhere and characterizes whether
+allocation/deallocation disrupts execution of the program. System level
+languages cannot afford garbage collection to ensure safety. Rust and
+C++ have compile-time and runtime mechanisms for ensuring such behaviour.
+
+Memory safety bugs can be seen as an ownership problem: when a variable has a
+pointer to a region it own it.
+
+#### Single ownership
+
+A memory leak is a pointer to a region of memory that gets lost, making that
+region unfreeable.
+
+C++ uses idiom RAII (Resource Allocation Is Initialization) to ensure the
+absence of memory leaks. It links the existence of object to the lifetime of
+automatic variables (through the use of smart pointers like `shared_ptr` and
+`unique_ptr`).
+
+Ownership can be moved between variables throughout the lifetime of the program.
+
+#### Multiple ownership
+
+Multiple owners to the same region of memory can have overlapping lifetimes, but
+we need to ensure that the memory is accessed consistently. Two errors that can
+occur are:
+
+1. Double free: we free the region two times
+2. Use-after-free: we use a deallocated region after we freed it.
+
+#### Rust's solution
+
+Rust enforces the single-owner policy and has a strict policy about borrowing
+references (aliasing). RAII idiom is also used everywhere. We can also put
+arbitrary data using `Box<>`.
+
+Move semantics are the default and are implicit. Assigning a variable always
+moves ownership and we need to explicitly specify when we want to copy values.
+Move semantics are enforced also during function calls.
+
+You can use `Arc<>` (`shared_ptr`-like) to handle multiple ownership, but the
+more idiomatic way is borrowing.
