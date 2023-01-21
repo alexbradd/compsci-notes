@@ -68,7 +68,7 @@ the alphabet that can contain a few metasymbols that follow this rules:
 2. $r = a, a \in \Sigma$
 3. $r = (s|t)$ (union)
 4. $r = (st)$ (concatenation)
-5. $r = (s)^\star)$ (star)
+5. $r = (s)^\star$ (star)
 
 The precedence is: star, concat, union. In the regexp $\epsilon$ is allowed.
 
@@ -313,8 +313,10 @@ With:
 We can replace the rule above with the two rules below:
 
 $$
-A\to \beta_1 A' | \ldots | \beta_m A'
-A'\to \alpha_1 A' | \ldots | \alpha_n A' | \epsilon
+\begin{aligned}
+  A &\to \beta_1 A' | \ldots | \beta_m A' \\
+  A'&\to \alpha_1 A' | \ldots | \alpha_n A' | \epsilon
+\end{aligned}
 $$
 
 #### Real time normal form and Greibach normal form
