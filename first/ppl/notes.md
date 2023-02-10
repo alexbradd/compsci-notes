@@ -158,7 +158,7 @@ block
 
 ### Define
 
-`define` cretes top-leve bindings. Defining a procedure is done via `define`
+`define` creates top-level bindings. Defining a procedure is done via `define`
 
 ```racket
 (define <name> <what>)
@@ -354,8 +354,8 @@ Folds are more complicated. We have two of them: `foldr` and `foldl` (aka
 
 $$
 \begin{gathered}
-  fold_{left}(\circ, i, (e_1, \ldots, e_n)) &= (e_n \circ (e_{n-1) \circ \ldots ((e_1 \circ i))) \\
-  fold_{right}(\circ, i, (e_1, \ldots, e_n)) &= (e_1 \circ (e_2 \circ \ldots (e_n \circ i)))
+  \mathit{fold}_{\text{left}} (\circ, i, (e_1, \ldots, e_n)) = (e_n \circ (e_{n-1} \circ \ldots ((e_1 \circ i))) \\
+  \mathit{fold}_{\text{right}}(\circ, i, (e_1, \ldots, e_n)) = (e_1 \circ (e_2 \circ \ldots (e_n \circ i)))
 \end{gathered}
 $$
 
@@ -1087,7 +1087,7 @@ exarr = let m = listArray (1,3) ["alpha", "beta", "gamma"] -- (1,3) is the range
 
 We saw that IO is a type construct instance of Monad. In recent versions of GHC
 the **Monad class needs the introduction of: Foldable, Functor and Applicative**
-($Functor \contains Applicative \contains Monad$).
+($\text{Functor} \subset \text{Applicative} \subset \text{Monad}$).
 
 #### Foldable
 
@@ -1121,7 +1121,7 @@ instance Functor Maybe where
 but necessary to have it make sense):
 
 1. `fmap id = id`
-2. `fmap (f . g) = fmap f . fmap g` (homomorphism)
+2. `fmap (f . g) = fmap f $ fmap g` (homomorphism)
 
 #### Applicative functors
 
