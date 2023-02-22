@@ -57,14 +57,14 @@ At first we will consider with the following assumptions:
 
 The cardinality of the set of serial schedules of $n$ transactions of $k_i$ is
 $N_s = n!$, however the cardinality of the total number of possible schedules
-is $N_d = \frac{(\sum_i^n k_i)!}{\prod_i^n (k_i)!}$. We have that $N_s \ll
+is $N_d = \frac{(\sum_i^n k_i)!}{\prod_i^n (k_i!)}$. We have that $N_s \ll
 N_d$.
 
 #### View serializability
 
 1. **$r_i(x)$ reads from $w_j(x)$ in a schedule when $w_j(x)$ precedes
    $r_i(x)$**
-2. **$w_i(x) is a final write if it is the last write on $x$ that occurs in a
+2. **$w_i(x)$ is a final write if it is the last write on $x$ that occurs in a
    schedule**
 
 Two schedules are **view-equivalent if they have the same operations, the same
@@ -134,11 +134,11 @@ An object can be in 3 different states: **free, r-locked, w-locked**.
 The lock manager receives the primitives from the transactions and grants access
 to the resources according to the conflict table:
 
-| Request  | Free           | r-locked         | w-locked       |
-|:--------:|:--------------:|:----------------:|:--------------:|
-| `r_lock` | OK -> r-locked | OK -> r-locked++ | KO -> w-locked |
-| `w_lock` | OK -> w-locked | NO -> r_locked   | KO -> w-locked |
-| `unlock` | ERROR          | OK -> lock--     | OK -> free     |
+| Request  | Free               | r-locked             | w-locked       |
+|:--------:|:------------------:|:--------------------:|:--------------:|
+| `r_lock` | **OK** -> r-locked | **OK** -> r-locked++ | KO -> w-locked |
+| `w_lock` | **OK** -> w-locked | NO -> r_locked       | KO -> w-locked |
+| `unlock` | ERROR              | **OK** -> lock--     | **OK** -> free |
 
 Each r-lock has a counter `n` that counts the number of concurrent readers.
 
@@ -288,11 +288,11 @@ locks. Update locks are another type of lock that grants a read and a
 successive write**. They are very easy to implement and mitigate the most common
 collision: `r1(x) - r2(x) - w1(x) - w2(x)`.
 
-| Request   | Free | Shared | Update | Exclusive |
-|:---------:|:----:|:------:|:------:|:---------:|
-| Shared    | OK   | OK     | OK     | KO        |
-| Update    | OK   | OK     | KO     | KO        |
-| Exclusive | OK   | KO     | KO     | KO        |
+| Request   | Free   | Shared | Update | Exclusive |
+|:---------:|:------:|:------:|:------:|:---------:|
+| Shared    | **OK** | **OK** | **OK** | KO        |
+| Update    | **OK** | **OK** | KO     | KO        |
+| Exclusive | **OK** | KO     | KO     | KO        |
 
 Update locks are requested by using `SELECT FOR UPDATE` SQL statement.
 
@@ -312,13 +312,13 @@ the intention of locking at higher/lower granularity**:
 
 With new locks, we have a new granting table:
 
-| Request | Free | ISL | IXL | SL  | SIXL | XL  |
-|:-------:|:----:|:---:|:---:|:---:|:----:|:---:|
-| ISL     | OK   | OK  | OK  | OK  | OK   | KO  |
-| IXL     | OK   | OK  | OK  | KO  | KO   | KO  |
-| SL      | OK   | OK  | KO  | OK  | KO   | KO  |
-| SIXL    | OK   | OK  | KO  | KO  | KO   | KO  |
-| XL      | OK   | KO  | KO  | KO  | KO   | KO  |
+| Request | Free   | ISL    | IXL    | SL     | SIXL   | XL  |
+|:-------:|:------:|:------:|:------:|:------:|:------:|:---:|
+| ISL     | **OK** | **OK** | **OK** | **OK** | **OK** | KO  |
+| IXL     | **OK** | **OK** | **OK** | KO     | KO     | KO  |
+| SL      | **OK** | **OK** | KO     | **OK** | KO     | KO  |
+| SIXL    | **OK** | **OK** | KO     | KO     | KO     | KO  |
+| XL      | **OK** | KO     | KO     | KO     | KO     | KO  |
 
 Locks are **requested starting from the root and going down the hierarchy. Locks
 are released starting from the locked resource going up the hierarchy**.
