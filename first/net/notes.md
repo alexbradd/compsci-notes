@@ -114,3 +114,95 @@ Server costs include:
 3. Risk management.
 
 ### Google jupiter's topology
+
+Google started from a **single commercial switching asic** (to keep costs down), and
+combined them into a single more powerful chip ( **chiplet-style design** ).
+
+## Software-defined networking
+
+Originally we had **two devices**:
+
+1. The **switch** routes packets only based on **layer 2** data
+2. The **router** routes packets only based on **layer 3** data
+
+Internally, a **router** is usually composed of **two main components**: a **CPU running
+an OS** (with all various router features like routing protocols and tables) and
+an **asic that does the actual routing**. The asic works with data given by the OS
+driver via a forwarding table.
+
+When a **packet enters a router**, we **parse the header** and then decide how to handle
+it:
+
+1. If it is a **data packet**, it **stays on the asic and uses the forwarding table** to
+   get sent fast
+2. If it a control **layer packet**, it gets **sent to the router OS** for slower
+   processing
+
+We can do this since **control layer updates are much rarer than data**.
+
+What if we need to run our network on a **routing protocol not yet supported by
+our router**? We could possibly request an update from the vendor, but this is
+slow and not very flexible.
+
+The basic idea of **SDN** is to **separate even more the control from the data plane**:
+the two layers are even **separated physically**. The **control plane** is now a **remote
+machine** that is connected to the data-plane via a communication channel. Since
+we do not need to change the data plane often, we can have a **simple API** to it
+and then implement what we want in the control plane.
+
+This architecture lets us have **many packet-forwarding devices and a single
+network OS with user-controlled features**. To do this **we need**:
+
+1. A **network OS** that provides the necessary abstractions
+2. **Consistent, up-to-date global network view**
+3. Open **interface to packet forwarding**
+
+We can then **write programs that take the global network view as input and
+outputs a configuration of each of the network devices**. The **interface between OS
+and programs is the _northbound interface_**, while the **interface between OS and
+the packet-forwarding devices is the _southbound interface_**.
+
+### OpenFlow
+
+OpenFlow is **realization of SDN**. It is a **set of protocols and APIs**. The CPU of an
+openflow switch runs an openflow daemon that handles communication with the
+server.
+
+A program can do a variety of things such as adding/removing flow rules at
+switches, collect statistics and establishing connectivity at switches.
+
+The **default** behaviour (called **reactive**) is the following: **when a packet arrives
+at the switch try to match it to the rules, if a match can be found it is
+processed accordingly, otherwise processing is interrupted and the header is
+sent to the controller; the controller then processes the header and sends a new
+ad-hoc rule**.
+
+The default behaviour, or **mode**, has the advantage of having **high control
+granularity and making efficient use of flow tables**. However it incurs in
+**additional setup costs for every new flow**. Moreover **if the connectivity to the
+controller is lost, the switch could become a paperweight**.
+
+Complementing the default mode, another one (called **proactive**) exists: **instead of
+interrupting the flow of packets, at setup time the controller pre-populates all
+possible rules (using wildcards to match every possibility)**.
+
+This second mode **exchanges granularity for speed**. However we have zero
+additional setup costs and our switch is always up, even in case of loss of
+connection to the controller.
+
+Is an openFlow switch a switch or a router: it depends. The flexibility enables,
+however, **flexibility in the control plane level**. We can also have a legacy
+compatibility mode with other control planes protocols.
+
+The **problem** is that **openFlow assumes that most network switches do the
+same things** and that switches **have a fixed, well-known behaviour**. Instead
+of **repeatedly extending the standard** we can define a **flexible mechanism for
+parsing arbitrary packets and matching header fields through a common interface**.
+
+### p4
+
+Usually network systems are configured bottom-up. However, how we did in all
+other branches of IT, the more flexible approach is to **do things top-down**. This
+means we need **programs to compile and execute directly on the switch, that now
+becomes programmable**.
+
