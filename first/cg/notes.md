@@ -257,3 +257,124 @@ The **$M_R$ 3x3 matrix encodes a rotation/scaling/shear**. Each **column of this
 matrix tells us the directions and sizes of each new axis in the old reference
 system**.
 
+#### Inversion of transformations
+
+Transformations can be **inverted to reverse a point to its previous position**.
+This operation **can be done only if the transformation matrix is invertible**. Our
+transformation matrix **can be inverted if the upper 3x3 block is invertible**,
+since the last row is $[0, 0, 0, 1]$.
+
+In the general case, the **transformation is not invertible if**:
+
+1. One **axis becomes of zero** length
+2. **Two axis become identical**
+3. One axes becomes a **linearly dependent** of the other two
+
+For the transformations we seen, **only scaling can cause problems**.
+
+Inverting can be done only on the 3x3 block and **use the formulas for block
+matrices** to fill out the rest.
+
+$$
+M^{-1} = \left[\begin{array}{c|c}
+  M_R^{-1} & -M_R^{-1} \cdot d^T \\
+  \hline
+  0   & 1   \\
+\end{array}\right]
+$$
+
+For the special patterns we described previously we have **pre-calculated matrix
+patterns**:
+
+1. **Translation**: $T(d_x, d_y, d_z)^{-1} = T(-d_x, -d_y, -d_z)$
+2. **Scaling**: $S(s_x, s_y, s_z)^{-1} = S(1/s_x, 1/s_y, 1/s_z)$
+   **Note**: inversion can be done only if $s \neq 0$
+3. **Rotation**: see `L03` slide 9
+4. **Shear**: simply invert the shearing factor
+
+#### Composition
+
+During the creation of a scene, an object is subject to several
+transformations. The application of a sequence of transformation is called
+composition. Moreover, rotations among arbitrary axes and scaling with different
+centers can be performed by composing different transformations.
+
+Thanks to the properties of matrix product, composition of transformations
+can be be done in a very efficient way.
+
+**Transformations are chained by multiplying them from right to left (think like
+function composition)**. For the other convention, everything is in reverse.
+
+Remember that matrix multiplication is not commutative, therefore **the order in
+which we apply a transformation matters a lot**.
+
+##### Rotations around an arbitrary axis/center
+
+Let us first imagine that **the rotation axis still passes through the origin**.
+This means that we can express the position of the axis using 3 angles $\alpha$,
+$\beta$ and $\gamma$: they are respectively roll, yaw and pitch.
+
+We will **express our rotation as a composition of different rotations**:
+
+1. Rotation of $-\beta$ around $y$
+2. Rotation of $-\gamma$ around $z$
+3. Rotation of $\alpha$ around $x$
+4. Rotation of $\gamma$ around $y$
+5. Rotation of $\beta$ around $z$
+
+Effectively we **first aligned the object's axis with x, did the rotation then
+re-rotated the object back**.
+
+If the **axis does not pass through the origin**, we **need to first reverse the
+translation**, rotate and then reapply the translation.
+
+##### Transformations around an arbitrary axis/center
+
+The **same concept** of arbitrary rotation can be applied to all transformations
+around a non-origin center: we **reverse the translation, the we apply the
+transformation and finally we reapply the translation**.
+
+We have an **alternative closed form to compute the rotation around arbitrary axes
+by using a unit vector. For the formula+paper see `L03` slide 25**.
+
+By using the **associative** property of matrix multiplication, we can
+**compute all the transformation and then multiply by the point to transform**. The
+**transformation matrix can be computed once for each object and then applied it to
+each vertex**.
+
+We can also use the properties on matrix inversion to compute the **inversion of
+the mega-rotation matrix**, **reducing it to only changing the sign of the input
+angle**.
+
+#### GLM
+
+GLM is simple linear algebra that we can use to simplify matrix operation for
+graphics. It has been created for openGL, but it also works for other contexts.
+
+We will not go in depth, but we will explain a little bit how it works.
+
+Includes:
+
+- `glm/glm.hpp`: the main component
+- `glm/gtc/matrix_transforms.hpp`: the extension that contains the functions to
+  create transform matrices
+
+`glm::mat4` is used to define the 4x4 matrices (`glm::mat3` for 3x3). We can
+instantiate a new matrix with elements by specifying elements per-column.
+`glm::mat4(1)` creates an identity matrix. Elements are accessed using array
+notation `[j][i]`, specifying first the column then the row.
+
+Products are computed using the overloaded `*` operator (like the other standard
+matrix operations), inversion using the `inverse()` function while transposition
+using `transpose()`.
+
+`glm::vec{3,4}` can be used for respectively 3 and 4 component vectors.
+
+Transformation matrices can be generated using the following functions:
+
+- Translation: `gml::tanslate()`
+- Scale: `gml::scale()`
+- Rotate: `gml::rotate()`
+- Shearing requires a special header and follows what the other functions do
+
+It is convenient to force angles in radians by defining `GLM_FORCE_RADIANS`
