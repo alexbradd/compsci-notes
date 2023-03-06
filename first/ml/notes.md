@@ -15,10 +15,12 @@ a desired output and the machine writes an algorithm.
 Machine learning can be categorized in three categories:
 
 1. **Supervised learning**: we learn the model
-   - Goal: **estimating the unknown model that maps known inputs to known outputs**
+   - Goal: **estimating the unknown model that maps known inputs to known
+     outputs**
    - Possible problems: classification, regression, probability estimation
 2. **Unsupervised learning**: we learn the representation
-   - Goal: **learning a more efficient representation of a set of unknown outputs**
+   - Goal: **learning a more efficient representation of a set of unknown
+     outputs**
    - Possible problems: compression, clustering
 3. **Reinforcement learning**: we learn to take decision
    - Goal: **learning the optimal policy**
@@ -43,12 +45,13 @@ Some dichotomies:
 ## Supervised learning
 
 The oldest, most mature and widely used sub-field of machine learning. **Given a
-training data set including desired outputs** $\mathcal{D} \{\langle x,t
-\rangle\}$ from some unknown function $f$. We need to **find a good approximation
-of $f$ that generalizes well on the test data**.
+training data set including desired outputs**
+$\mathcal{D} \{\langle x,t
+\rangle\}$ from some unknown function $f$. We need to
+**find a good approximation of $f$ that generalizes well on the test data**.
 
-The **input variables** $x$ are called **features**/predictors/attributes. The **output
-variables** $t$ are called **targets**/responses/labels. If $t$ is:
+The **input variables** $x$ are called **features**/predictors/attributes. The
+**output variables** $t$ are called **targets**/responses/labels. If $t$ is:
 
 - **Discrete**: we have a **classification** problem
 - **Continuous**: we have a **regression** problem
@@ -66,28 +69,29 @@ We can use this type of learning when:
 We want to approximate $f \in \mathcal{F}$ given $\mathcal{D}$. The **steps** in
 doing so are:
 
-1. **Define a loss function** $L$ that for any possible function, specifies how bad is
-   the candidate compared to the target $f$;
+1. **Define a loss function** $L$ that for any possible function, specifies how
+   bad is the candidate compared to the target $f$;
 2. Choose some **hypothesis space** $\mathcal{H}$, a subset of all the possible
    candidates (note: the hypothesis space may not contain our target);
 3. **Optimize** to find an approximate model $h$ with the **minimum loss**.
 
-With these steps we are doing functional approximation. With these steps, **we are
-assuming that we can compute the ideal loss function**, thus that we know our
-original target $f$. The difference with supervised learning is that **supervised
-learning is the same minimization problem but with an unknown target**.
+With these steps we are doing functional approximation. With these steps, **we
+are assuming that we can compute the ideal loss function**, thus that we know
+our original target $f$. The difference with supervised learning is that
+**supervised learning is the same minimization problem but with an unknown
+target**.
 
-Since we can only compute the loss function based on the dataset, **we can see the
-problem as an optimization against a noisy version of the target**. The **more
-noise**, the **worse** our approximation will be. **Larger hypothesis spaces are more
-susceptible to noise in the data**.
+Since we can only compute the loss function based on the dataset, **we can see
+the problem as an optimization against a noisy version of the target**. The
+**more noise**, the **worse** our approximation will be. **Larger hypothesis
+spaces are more susceptible to noise in the data**.
 
 There is no perfect solution, the best approach depends on the task at hand.
 
 ## Linear models for regression
 
-The goal of regression is to **learn a mapping from input $x$ to continuous output
-$t$**.
+The goal of regression is to **learn a mapping from input $x$ to continuous
+output $t$**.
 
 Linear models are **linear w.r.t the input features**. Linear models are useful
 because they can be solved analytically. Augmented with kernels, it can model
@@ -107,8 +111,8 @@ $$
 E[L] = \iint L(t, y(\mathbf{x}))p(\mathbf{x}, t)d\mathbf{x} dt
 $$
 
-We now need now to **define a loss** $L(t, y(\mathbf{x}))$. A **common choice** for the
-loss function is the **squared loss** function:
+We now need now to **define a loss** $L(t, y(\mathbf{x}))$. A **common choice**
+for the loss function is the **squared loss** function:
 
 $$
 E[L] = \iint (t - y(\mathbf{x}))^2 p(\mathbf{x}, t)d\mathbf{x} dt
@@ -148,18 +152,19 @@ are:
 
 ### Minimizing least squares
 
-Given a data set with $N$ samples, let us consider the **following loss function**:
+Given a data set with $N$ samples, let us consider the **following loss
+function**:
 
 $$
 L(\mathbf{w}) = \frac{1}{2} \sum_{n=1}^{N} (y(\mathbf{x_n}, \mathbf{w}) - t_n)^2
 $$
 
-This is (half) the residual sum of squares ( **RSS** ), also known as sum of squared
-errors. It can also be written as the sum of the $l_2$-norm of the vector of
-residual errors: $RSS(\mathbf{w}) = \|\epsilon^2\|$.
+This is (half) the residual sum of squares ( **RSS** ), also known as sum of
+squared errors. It can also be written as the sum of the $l_2$-norm of the
+vector of residual errors: $RSS(\mathbf{w}) = \|\epsilon^2\|$.
 
-Since we are working with **linear models**, we **do not have any local minimum.** This
-means that when we find a minimum we are sure it is the optimal.
+Since we are working with **linear models**, we **do not have any local
+minimum.** This means that when we find a minimum we are sure it is the optimal.
 
 We can write the **RSS in matrix form using the design matrix** $\mathbf{\Phi}$
 defined as
@@ -185,8 +190,8 @@ $$
   \mathbf{\Phi}^T \mathbf{\Phi}
 $$
 
-We can then **obtain the optimal waste by equaling to 0 the first derivative** and
-obtaining:
+We can then **obtain the optimal waste by equaling to 0 the first derivative**
+and obtaining:
 
 $$
 \mathbf{\hat{w}}_{OLS}
@@ -200,12 +205,47 @@ $\mathbf{\Phi}^\dagger$ the Penrose-Moore pseudo inverse.
 The $\mathbf{\Phi}^T\mathbf{\Phi}$ matrix is **non singular when**:
 
 1. We have **linearly dependent features**
-2. It is **fat**, i.e we have more features than samples ($M>N$). This is the major
-   limitation of the method.
+2. It is **fat**, i.e we have more features than samples ($M>N$). This is the
+   major limitation of the method.
 
 The second derivative is the Hessian matrix of $L(\mathbf{w})$. Since it is
 defined semi-positive (due to being a quadratic form), it assures us that all
 eigenvalues are positive, thus that the function has positive concavity and only
 one minimum.
 
+The computation complexity of the optimal weights is dominated by the inversion
+of the matrix. Therefore it is $\mathcal{O}(NM^2 + M^3)$.
 
+### Gradient optimization
+
+Gradient optimization can be used if it is too computationally expensive to
+compute the closed form.
+
+If the loss function can be expressed as a sum over samples, we can be more
+efficient:
+
+$$
+\begin{gathered}
+  (L(x) = \sum_n L(x_n)) \\
+  w^{k+1} = w^k - a^k\gradient L(x_n) \\
+  w^{k+1} = w^k - a^k (w^k^T\phi(x_n) - t_n)\phi(x_n)
+\end{gathered}
+$$
+
+Where $k$ is the iteration and $\alpha$ is the learning rate. For convergence,
+we need:
+
+$$
+\begin{gathered}
+  \sum_k^\infty a^k = +\infty \\
+  \sum_k^\infty a^k^2 < +\infty \\
+\end{gathered}
+$$
+
+A common $\alpha$ is $1/k$.
+
+## Final note
+
+Course is too fast to keep up accurate notes. Instead I will resort to sloppily
+annotated PDFs and the course book (Pattern Recognition and Machine Learning,
+Bishop).
