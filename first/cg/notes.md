@@ -2,8 +2,8 @@
 
 ## Coordinates
 
-Current graphics adapter can show 3 things: **points, lines and filled triangles**.
-**Any other shape must be composed by these 3 primitives**.
+Current graphics adapter can show 3 things: **points, lines and filled
+triangles**. **Any other shape must be composed by these 3 primitives**.
 
 **Primitives draw and connect points on the screen identified by a set of
 coordinates**, defined with a vector of two components. These **coordinates are
@@ -12,17 +12,18 @@ coordinates**.
 
 ### Pixel coordinates
 
-The coordinates system is **Cartesian**, with **origin on the top-left of the screen.**
-The **horizontal** direction is the **x-axis**, while the **vertical** one is the **y-axis**.
-The **y-axis is reversed**: it goes from the top to the bottom of the screen.
+The coordinates system is **Cartesian**, with **origin on the top-left of the
+screen.** The **horizontal** direction is the **x-axis**, while the **vertical**
+one is the **y-axis**. The **y-axis is reversed**: it goes from the top to the
+bottom of the screen.
 
-The coordinates of the two coordinates are **from $[0;s_w-1]$ and $[0;s_h-1]$** where
-$s_w$ and $s_h$ are respectively the horizontal and vertical resolutions of the
-screen.
+The coordinates of the two coordinates are **from $[0;s_w-1]$ and $[0;s_h-1]$**
+where $s_w$ and $s_h$ are respectively the horizontal and vertical resolutions
+of the screen.
 
-**For objects that have a position with coordinates greater than the maximum, we need
-to clip the objects**. If we continue drawing without clipping we may write to
-some unallocated memory space, causing problems.
+**For objects that have a position with coordinates greater than the maximum, we
+need to clip the objects**. If we continue drawing without clipping we may write
+to some unallocated memory space, causing problems.
 
 ### Normalized screen coordinates
 
@@ -31,21 +32,38 @@ To **remove the dependency on the knowledge of the screen resolution**, we use
 correctly the same scene on different aspect rations or pixel dimensions**
 (square vs rectangular).
 
-We use coordinates in the **range of $[-1;1]$**. This means that the **center of the
-display (point $(0;0)$) is also the origin of the system**.
+We use coordinates in the **range of $[-1;1]$**. This means that the **center of
+the display (point $(0;0)$) is also the origin of the system**.
 
-In **OpenGL**, both **directions go in the same direction** ($(-1;-1)$ in the lower
-left, $(1;1)$ in the upper right; this means that the y-axis goes up), while
-**Vulkan maintains the convention of the pixel coordinates** (y-axis goes down).
+In **OpenGL**, both **directions go in the same direction** ($(-1;-1)$ in the
+lower left, $(1;1)$ in the upper right; this means that the y-axis goes up),
+while **Vulkan maintains the convention of the pixel coordinates** (y-axis goes
+down).
 
-If we know the size of our draw area, we can **derive** the normalized coordinates
-using the following **transformation**:
+If we know the size of our draw area, we can **derive** the normalized
+coordinates using the following **transformation**:
 
-$$\begin{aligned}
+$$
+\begin{aligned}
   x_s &= \frac{(s_w-1)*(x_n=1)}{2} \\
   y_s &= \frac{(s_h-1)*(y_n=1)}{2} \\
-\end{aligned}$$
+\end{aligned}
+$$
 
+### Homogeneous coordinates
+
+In order to represent objects in a 3D space, an appropriate **coordinate
+system** must be chosen. We will use a special system, called **homogeneous
+coordinates**. In this system, a point is characterized by **four values**:
+$x,y,z,w$. The **first three are the usual 3D coordinates**, while the **fourth
+defines a scale**, that is a **unit of measure** used by the other three
+coordinates.
+
+Since we use 4D system to represent a 3D system, it means that **we have an
+infinite number of coordinates that identify the same position**. In particular,
+**all tuples of four values that are linearly dependent represent the same point
+in 3D space**. Due to this, we will **assume that the "real" position of the
+point is the one with** $w = 1$.
 
 ## Graphics primitives
 
@@ -56,25 +74,11 @@ pixel on the screen. The syscall to draw a pixel is called
 The line primitive connects two points on the screen with a straight line. It
 requires the coordinates of two points.
 
-The triangle is the basis of 3D graphics. They are specified with the coordinates
-of the 3 vertices. The graphics adapter will fill the surface of the triangle
-with some colors.
+The triangle is the basis of 3D graphics. They are specified with the
+coordinates of the 3 vertices. The graphics adapter will fill the surface of the
+triangle with some colors.
 
-## 3D images
-
-In order to represent objects in a 3D space, an appropriate **coordinate system**
-must be chosen. We will use a special system, called **homogeneous coordinates**. In
-this system, a point is characterized by **four values**: $x,y,z,w$. The **first
-three are the usual 3D coordinates**, while the **fourth defines a scale**, that is a
-**unit of measure** used by the other three coordinates.
-
-Since we use 4D system to represent a 3D system, it means that **we have an
-infinite number of coordinates that identify the same position**. In particular,
-**all tuples of four values that are linearly dependent represent the same point
-in 3D space**. Due to this, we will **assume that the "real" position of the point
-is the one with** $w = 1$.
-
-### Affine transforms
+## Affine transforms
 
 The affine transforms are usually categorized into 4 categories: translations,
 scaling, rotation and shear.
@@ -83,17 +87,19 @@ To transform an object, we apply the same transformation to all its points. The
 transformed object is obtained by reconstructing the geometric primitives with
 the new points.
 
-Affine transformations in homogeneous coordinates can be **expressed with a
-4x4 matrix**. The **transformed point** can be expressed using **matrix multiplication**:
-$p' = (M \cdot p^T )^T$. We could also have written the transformation as $p
-\cdot M^T)$, it is a matter of convention. **We will use the matrix-on-the-left
-form. We will also use column vectors, dropping the transpose operators**. _Many
-libraries work better with matrix-on-the-right transforms, so be careful_.
+Affine transformations in homogeneous coordinates can be **expressed with a 4x4
+matrix**. The **transformed point** can be expressed using **matrix
+multiplication**: $p' = (M \cdot p^T )^T$. We could also have written the
+transformation as $p
+\cdot M^T)$, it is a matter of convention. **We will use the
+matrix-on-the-left form. We will also use column vectors, dropping the transpose
+operators**. _Many libraries work better with matrix-on-the-right transforms, so
+be careful_.
 
-**NOTE**: whit the **matrix-on-the-right**, all **transformation matrices will be
-transposed**.
+**NOTE**: whit the **matrix-on-the-right**, all **transformation matrices will
+be transposed**.
 
-#### Translation
+### Translation
 
 Takes one object and moves it of a specified $d$ amount.
 
@@ -107,14 +113,15 @@ T(d_x, d_y, d_z) =
 \end{bmatrix}
 $$
 
-#### Scaling
+### Scaling
 
 Scaling scales the size of an object, while maintaining constant position and
 its orientation. By choosing appropriate parameters, scaling can be used to
 enlarge, shrink, deform, mirror or flatten objects.
 
-In a scaling transformation, the origin of the element does not change. **We will
-initially assume that the origin of the scaling is the origin of the 3D space**.
+In a scaling transformation, the origin of the element does not change. **We
+will initially assume that the origin of the scaling is the origin of the 3D
+space**.
 
 Proportional scaling scales all axes proportionally. Given $s$;
 
@@ -135,33 +142,33 @@ $$
 
 Proportional scaling happens when all $s_\star$ coefficients are equal.
 
-##### Mirroring
+#### Mirroring
 
-**Mirroring can be obtained by using negative scaling factors**. Mirroring can be
-planar, axial or central. Initially we will assume that the mirroring occurs
+**Mirroring can be obtained by using negative scaling factors**. Mirroring can
+be planar, axial or central. Initially we will assume that the mirroring occurs
 around a plane/axis/center that passes through the origin.
 
-1. **Planar**:  $s_x = -1, s_y = 1, s_z = 1$ (obtained by assigning a negative value
-   for the axis perpendicular to the plane; in this example we mirrored around
-   the yz-plane);
-1. **Axial**:   $s_x = -1, s_y = 1, s_z = -1$ (obtained by assigning a negative
+1. **Planar**: $s_x = -1, s_y = 1, s_z = 1$ (obtained by assigning a negative
+   value for the axis perpendicular to the plane; in this example we mirrored
+   around the yz-plane);
+1. **Axial**: $s_x = -1, s_y = 1, s_z = -1$ (obtained by assigning a negative
    value to all but one axis; in this example we mirrored around the y-axis);
 1. **Central**: $s_x = -1, s_y = -1, s_z = -1$ (changes all the sign).
 
 **Scaling can be combined with mirroring**.
 
-##### Flattening
+#### Flattening
 
 If the **scaling factor of one direction is zero**, then the object will be
-flattened along that plane. **Flattening can create problems** because setting all
-scaling factors to zero makes the **matrix non invertible**. This requires extra
-work and such **will not be accounted for during the course**.
+flattened along that plane. **Flattening can create problems** because setting
+all scaling factors to zero makes the **matrix non invertible**. This requires
+extra work and such **will not be accounted for during the course**.
 
-#### Rotation
+### Rotation
 
 Rotation varied the orientation of an object, leaving its position and size
-unchanged. Rotations will be performed around an axis. For now, we will **consider
-rotation around the x, y and z axes**.
+unchanged. Rotations will be performed around an axis. For now, we will
+**consider rotation around the x, y and z axes**.
 
 Rotation around the z-axis can be expressed as:
 
@@ -203,10 +210,10 @@ $$
 \end{gathered}
 $$
 
-#### Shear
+### Shear
 
-**It takes an objects and bends it in one direction. It is performed along an axis
-and has a center**.
+**It takes an objects and bends it in one direction. It is performed along an
+axis and has a center**.
 
 The direction of distortion is specified by a vector $h$. Again, we have three
 different matrices expressing shearing along x, y or z.
@@ -237,11 +244,12 @@ $$
 \end{gathered}
 $$
 
-#### Transformation matrix
+### Transformation matrix
 
 We can see that the **transformation matrix always has the last row equal** to
 $[0,0,0,1]$. This is not a coincidence: it is necessary to not modify the $w$
-coordinate. **The last column**, on the other hand, always **encodes a translation**.
+coordinate. **The last column**, on the other hand, always **encodes a
+translation**.
 
 This means we can **subdivide** our transformation matrix **into blocks**:
 
@@ -257,12 +265,12 @@ The **$M_R$ 3x3 matrix encodes a rotation/scaling/shear**. Each **column of this
 matrix tells us the directions and sizes of each new axis in the old reference
 system**.
 
-#### Inversion of transformations
+### Inversion of transformations
 
 Transformations can be **inverted to reverse a point to its previous position**.
-This operation **can be done only if the transformation matrix is invertible**. Our
-transformation matrix **can be inverted if the upper 3x3 block is invertible**,
-since the last row is $[0, 0, 0, 1]$.
+This operation **can be done only if the transformation matrix is invertible**.
+Our transformation matrix **can be inverted if the upper 3x3 block is
+invertible**, since the last row is $[0, 0, 0, 1]$.
 
 In the general case, the **transformation is not invertible if**:
 
@@ -287,20 +295,20 @@ For the special patterns we described previously we have **pre-calculated matrix
 patterns**:
 
 1. **Translation**: $T(d_x, d_y, d_z)^{-1} = T(-d_x, -d_y, -d_z)$
-2. **Scaling**: $S(s_x, s_y, s_z)^{-1} = S(1/s_x, 1/s_y, 1/s_z)$
-   **Note**: inversion can be done only if $s \neq 0$
+2. **Scaling**: $S(s_x, s_y, s_z)^{-1} = S(1/s_x, 1/s_y, 1/s_z)$ **Note**:
+   inversion can be done only if $s \neq 0$
 3. **Rotation**: see `L03` slide 9
 4. **Shear**: simply invert the shearing factor
 
-#### Composition
+### Composition
 
-During the creation of a scene, an object is subject to several
-transformations. The application of a sequence of transformation is called
-composition. Moreover, rotations among arbitrary axes and scaling with different
-centers can be performed by composing different transformations.
+During the creation of a scene, an object is subject to several transformations.
+The application of a sequence of transformation is called composition. Moreover,
+rotations among arbitrary axes and scaling with different centers can be
+performed by composing different transformations.
 
-Thanks to the properties of matrix product, composition of transformations
-can be be done in a very efficient way.
+Thanks to the properties of matrix product, composition of transformations can
+be be done in a very efficient way.
 
 **Transformations are chained by multiplying them from right to left (think like
 function composition)**. For the other convention, everything is in reverse.
@@ -308,7 +316,7 @@ function composition)**. For the other convention, everything is in reverse.
 Remember that matrix multiplication is not commutative, therefore **the order in
 which we apply a transformation matters a lot**.
 
-##### Rotations around an arbitrary axis/center
+#### Rotations around an arbitrary axis/center
 
 Let us first imagine that **the rotation axis still passes through the origin**.
 This means that we can express the position of the axis using 3 angles $\alpha$,
@@ -328,25 +336,25 @@ re-rotated the object back**.
 If the **axis does not pass through the origin**, we **need to first reverse the
 translation**, rotate and then reapply the translation.
 
-##### Transformations around an arbitrary axis/center
+#### Transformations around an arbitrary axis/center
 
 The **same concept** of arbitrary rotation can be applied to all transformations
 around a non-origin center: we **reverse the translation, the we apply the
 transformation and finally we reapply the translation**.
 
-We have an **alternative closed form to compute the rotation around arbitrary axes
-by using a unit vector. For the formula+paper see `L03` slide 25**.
+We have an **alternative closed form to compute the rotation around arbitrary
+axes by using a unit vector. For the formula+paper see `L03` slide 25**.
 
-By using the **associative** property of matrix multiplication, we can
-**compute all the transformation and then multiply by the point to transform**. The
-**transformation matrix can be computed once for each object and then applied it to
-each vertex**.
+By using the **associative** property of matrix multiplication, we can **compute
+all the transformation and then multiply by the point to transform**. The
+**transformation matrix can be computed once for each object and then applied it
+to each vertex**.
 
 We can also use the properties on matrix inversion to compute the **inversion of
 the mega-rotation matrix**, **reducing it to only changing the sign of the input
 angle**.
 
-#### GLM
+### GLM
 
 GLM is simple linear algebra that we can use to simplify matrix operation for
 graphics. It has been created for openGL, but it also works for other contexts.
@@ -378,3 +386,206 @@ Transformation matrices can be generated using the following functions:
 - Shearing requires a special header and follows what the other functions do
 
 It is convenient to force angles in radians by defining `GLM_FORCE_RADIANS`
+
+## Projections
+
+Projections **"flatten" our 3-dimensional space so that it can be represented on
+a 2d screen**. The **2D representation of a 3D object is defined by the
+intersection of a set of projection rays with a surface, usually a plane called
+the projection plane**.
+
+One important property of our projections is that **straight lines in the source
+space will be converted into lines in the projection**. With non-planar
+projection, this is not the case any more.
+
+Using the above property, **we can represent objects by projecting only the
+"extreme" points, not all of them. Then we can reconnect the projected edges and
+obtain the projection**.
+
+We will see parallel and perspective projections:
+
+1. In **parallel projection all rays are parallel to the same direction**.
+2. In **perspective projection all rays converge to a point** called the center
+   of projection.
+
+For both our projection, **a point on the screen corresponds to an infinite
+amount of coordinates in the space. This a consequence of losing a dimension**.
+In parallel projections, all points that pass through a line parallel to the
+projection ray are mapped to the pixel. In perspective projection, all points
+that are aligned with both the projected pixel and the center of projection are
+mapped to the same location.
+
+In 3D graphics, **projections convert "world coordinates" into 3D Normalized
+screen coordinates**. With **world coordinates we define a set of coordinates
+that positions objects into our 3D space**:
+
+1. The **origin will be in the center of our screen**.
+2. The **use a right-handed y-up system**: x goes to right, y to up and z
+   towards the viewer.
+
+   Another very common approach is using a z-up system.
+
+3. The **unit is chosen based on what we are drawing**. The important thing is
+   that we are consistent.
+
+To correctly sort surfaces, **we need to additionally store a "distance from
+viewer" metric** that allows us to do the sorting.
+
+**3D normalized screen coordinates have a third component**, which for Vulkan is
+in the $[0;1]$ range.
+
+Considering how we defined our world coordinates, **we have that everything we
+see has negative z coordinate**.
+
+### Aspect ratio
+
+The **proportions of the physical screen are called aspect ratio**. The
+**dividends of the aspect ratio of the screen are in metric units**, not in
+pixels. **If the pixels are square** (very common assumption), **both metrical
+units and pixels would lead to the same result**. If pixels are not square, only
+the actual display proportions can create images that are not distorted.
+
+**Normalized screen coordinates do not account for the aspect ratio**: the
+**projection matrix takes care of this factor and properly scales the images**
+to make them appear with the correct proportions.
+
+### Parallel projection
+
+The screen imposes **boundaries on what we can see**: we have limits on what we
+can see on the sides, but also on the depth (we do not want to show things that
+are too close or too far).
+
+The **depth limits are delimited by two planes**: the **near** plane (the plane
+with the closest z component) and the **far** plane.
+
+The **projection is defined such that the top-bottom-left and right borders are
+on the corresponding borders of the normalized space and that the two clip
+planes are inside the normalized space**.
+
+Since we use homogeneous coordinates, **we can express the projection with a
+matrix product**.
+
+Let us define some positions in the world coordinates:
+
+1. $l$ and $r$ ($r>l$) are the x-coordinates of the horizontal borders
+2. $t$ and $b$ ($t>b$) are the y-coordinates of the vertical borders
+3. $-n$ and $-f$ are the z-coordinate of the clip planes
+
+The projection matrix is **computed in three steps**:
+
+1. First **we move the center of the projection box at the near plane origin**
+   with a translation $T_{ort}$
+
+   $$
+    \begin{bmatrix}
+      1 & 0 & 0 & -\frac{r+l}{2} \\
+      0 & 1 & 0 & -\frac{t+b}{2} \\
+      0 & 0 & 1 & -\frac{r+l}{2} \\
+      0 & 0 & 0 & 1 \\
+    \end{bmatrix}
+   $$
+
+2. The second step **normalizes the coordinates between 0 and 1**:
+
+   $$
+    \begin{bmatrix}
+      \frac{2}{r-l} & 0 & 0 & 0 \\
+      0 & \frac{2}{t-b} & 0 & 0 \\
+      0 & 0 & \frac{1}{f-n} & 0 \\
+      0 & 0 & 0 & 1 \\
+    \end{bmatrix}
+   $$
+
+3. The last step **corrects the direction of the y and z axis**
+
+   $$
+    \begin{bmatrix}
+      1 & 0 & 0 & 0 \\
+      0 & -1 & 0 & 0 \\
+      0 & 0 & -1 & 0 \\
+      0 & 0 & 0 & 1 \\
+    \end{bmatrix}
+   $$
+
+The result of the composition is:
+
+$$
+\begin{bmatrix}
+  \frac{2}{r-l} & 0 & 0 & \frac{r+l}{l-r} \\
+  0 & \frac{2}{b-t} & 0 & \frac{t+b}{t-b} \\
+  0 & 0 & \frac{1}{n-f} & \frac{n}{n-f} \\
+  0 & 0 & 0 & 1 \\
+\end{bmatrix}
+$$
+
+In order to not output distorted images, **our bounds need to be consistent with
+the aspect ration of the monitor**.
+
+In most cases, **the projection box is centered in the origin both horizontally
+and vertically: if this happens, the half width $w$, the clip planes $n$ and $f$
+and the aspect ratio $a$ are enough to define the projection**:
+
+$$
+\begin{bmatrix}
+  \frac{1}{w} & 0 & 0 & 0 \\
+  0 & \frac{-a}{w} & 0 & 0 \\
+  0 & 0 & \frac{1}{n-f} & \frac{n}{n-f} \\
+  0 & 0 & 0 & 1 \\
+\end{bmatrix}
+$$
+
+```txt
+w             -w
++--------------+  w/a
+|              |
+|              |
++--------------+ -w/a
+```
+
+If we consider the **near plane at 0 ($n=0$) we can even avoid the
+translation**.
+
+**At the end** of the projection process, we **need to convert our result to
+Cartesian coordinates by dividing by the 4th coordinate. In the case of parallel
+projection this last component will always be one**, so it can be simply
+discarded.
+
+> In GLM we have the `glm::ortho` function. Since the library was created for
+> OpenGL, we need to change the axes of the ortho matrix to obtain a Vulkan
+> compatible one.
+>
+> Since it is very simple to create the matrix, we can simply roll our own
+> function.
+
+To make stuff **appear more three dimensional** with parallel projections we
+**slightly tilt the view/changing the orientation of the projection plane**.
+
+#### Axonometric projections
+
+Axonometric projections use the "rotate world" method.
+
+**Axonometric projections where that have rays perpendicular to the projection
+plane are called orthographic projections**. A **property** of axonometric
+**projections is that the y axis is always vertical**.
+
+We are going to see 3 main types:
+
+- **Isometric**: all axes are 120 degrees distant. To obtain an isometric
+  projection we need to first apply **two rotations**:
+
+  1. $\pm 45$ degrees **around the y-axis**
+  2. $\pm 35.26$ **around the x-axis**
+
+  **Using different combination of signs, we obtain different representations of
+  the isometric projections**.
+
+- **Dimetric**: used a lot in retro-style games since it was **very easy to
+  handle with integer math**; it has the same angle between y-z and y-x but
+  different for x-z. To obtain this projection we do **two rotations**:
+
+  1. $\pm 45$ degrees **around the y axis**
+  2. $\alpha$ **around the x-axis**
+
+- **Trimetric**: all three angles are different. It is obtained by:
+  1. **An arbitrary** $\beta$ **rotation around the y-axis**
+  2. **An arbitrary** $\alpha$ **rotation around the x-axis**
