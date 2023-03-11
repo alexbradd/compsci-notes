@@ -589,3 +589,104 @@ We are going to see 3 main types:
 - **Trimetric**: all three angles are different. It is obtained by:
   1. **An arbitrary** $\beta$ **rotation around the y-axis**
   2. **An arbitrary** $\alpha$ **rotation around the x-axis**
+
+In **oblique projections, rays are parallel but oblique with respect to the
+plane itself**. This has the effect of **keeping two of the three axes (usually
+x and y) parallel to the screen; the third one is at an angle**.
+
+The **length of the z axis can be maintained (Cavalier) or halved (cabinet)**.
+
+Oblique projections can be applied by **applying a shear of modulo** $\rho$ and
+**angle** $\alpha$ **along the z-axis before the orthogonal projection**. The
+**shear factor will determine the angle of projection and whether it will be a
+Cavalier or cabinet**.
+
+### Perspective projections
+
+Perspective projections **simulate perspective**. The **magnification effect
+produced by perspective is due to the fact that all rays pass through the same
+point**.
+
+To simplify computation, let us **assume that the projection center is in the
+origin**. The **projection plane** is located at a distance $d$ **on the z axis
+from the projection center**. Our point is $y$ distant vertically from the
+center. We can **compute the projected height** $y_s$ using **trigonometry**:
+$y_s = \frac{d\cdot y}{z}$. With **the same reasoning**, we can calculate
+$x_s = \frac{d\cdot x}{z}$.
+
+The parameter $d$ is **the distance of the center from the projection plane**.
+It can be used to **simulate the focal length of the lens of a camera**.
+Changing $d$ we can simulate a zoom effect. **Parallel projections can be
+obtained if we impose that** $d\to\infty$.
+
+Thanks to homogeneous coordinates, perspective projection can be **obtained with
+matrix-vector products**.
+
+First we note that the considered world coordinate system is oriented the
+opposite direction on the z-axis: this means that in our formula **we need to
+invert the sign of** $z$. The resulting matrix is:
+
+$$
+\begin{bmatrix}
+  d & 0 & 0  & 0 \\
+  0 & d & 0  & 0 \\
+  0 & 0 & d  & 0 \\
+  0 & 0 & -1 & 0
+\end{bmatrix}
+$$
+
+We notice that **the resulting vector does not have** $w=1$. This means that
+**to obtain the Cartesian equivalent we need to divide by** $w$.
+
+This method has the **problem of loosing depth information** since $z = -d$.
+This does not allow us to define proper 3D normalized screen coordinates with a
+$z_s$ component that reflects the distance of the point from the view plane.
+**To solve this problem we can simply add a translation** of $1$ **along the z
+axis**.
+
+As for parallel projections, the visible area of the 3D world should be mapped
+to 3D normalized screen coordinates. In the case of perspective, things are more
+difficult **since our boundary is not anymore a simple cube, but a frustum**.
+
+Let us call:
+
+- $n$ the distance from the origin of the near plane.
+- $l,r,t,b$ the coordinates of the left, right, top and bottom edges of the
+  projection planes in the world space at the near plane.
+- $f$ the distance from the origin of the far plane.
+
+Since our visible space is not a cube, the **far plane's dimensions will be
+different from those of the near plane**. Since **the coordinates of the border
+of the screen are specified at the near plane, the value of $n$ corresponds to
+the distance of the projection plane $d$**.
+
+The **first step** is taking the previous translation and replacing $d$ with
+$n$. Since the edges of the near plane are given at the near plane, we **compute
+the projections of the top-left and bottom-right corners at the near plane**. We
+also **need to compute the projected coordinate of a point at the far plane**
+($z=-f$) to **determine the proper normalization of the z axis**. Now we must
+apply **translation and scaling to bring the points of into the normalized
+space**. **Finally, we can flip the y axis**. Since obtaining the relevant
+matrices is just numbers and latex, I am lazy and I am not doing it.
+
+Like with parallel projections, the **sizes of the borders need to be consistent
+with the aspect ration of the monitor**: $r - l = a(t - b)$.
+
+A **simpler way to express the parameters** of the projections is **using
+photography related parameters**: $n$, $f$ and $\Theta$ **the vertical field of
+view** (angle between top-most and undermost rays). Given that:
+
+- $t = n\tan\frac{\Theta}{2}$
+- $b = -n\tan\frac{\Theta}{2}$
+- $l = -an\tan\frac{\Theta}{2}$
+- $r = an\tan\frac{\Theta}{2}$
+
+We can redo our matrices using only these three parameters.
+
+> Like with `ortho`, GLM does provide functions (although made for OpenGL) for
+> computing our functions:
+>
+> - `glm::frustum(l, r, b, t, n, f)` computes the perspective projection
+>   specifying the boundaries
+> - `glm::perspective(fov, a, n, f)` computes the perspective projection using
+>   the "photographic" set of parameters
