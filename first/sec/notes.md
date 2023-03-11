@@ -154,6 +154,8 @@ However, this is a simplistic view since the attacker is considered passive.
 - Active attacker may tamper with the data and observe the reactions of a
   decryption-capable entity (**chosen plaintext attack**)
 
+### The perfect cipher (and why it's useless)
+
 In a **perfect cipher**, for all plaintexts and ciphertexts:
 
 $$
@@ -171,3 +173,129 @@ plaintext corresponding to it could be**.
 2. a **unique key maps a given plaintext into a given ciphertext**.
 
 Basically this theorem gives us a **perfect (but useless) cipher**.
+
+A **simple algorithm** needs a **fresh perfectly random key for every message of
+length equal to the message**. We can simply **XOR the message with the key to
+encrypt, and XOR the ciphertext with the key to decrypt it**. The algorithm is
+obviously impractical due to the length of the key and also the need to extract
+a fresh key for every message.
+
+A more **practical assumption is to try to achieve not mathematic perfection,
+but to make our cipher practically unbreakable**. This means we need to **make
+our attacker solve a problem that is exponentially complex**.
+
+An outline for proving the computational security of problem is:
+
+1. Define the ideal attacker
+2. Assume a given computational problem is hard
+3. Prove that any non-ideal attacker solves the hard problems
+
+**An attacker is represented as a program able to call given libraries**,
+libraries implement the cipher at hand. We define the **security property as
+answering to a given question**. The **attacker wins the game if it breaks the
+security property more often than what is possible through a random guess**.
+
+### Cryptographically safe PRNGs
+
+**A CSPRNG is a deterministic function** $\{0,1\}^\lambda\to\{0,1\}^{\lambda+l}$
+**whose output cannot be distinguished from a uniform random sampling** of
+$\{0,1\}^{\lambda+l}$ in $\mathrm{poly}(\lambda)$. $l$ is the **generator's
+stretch**.
+
+In practice, **we have only candidate CSPRNGs**: we do not have proof that such
+a function exists; moreover proving that a CSPRNG exists implies $P\neq NP$.
+Practically CSPRNG are built with Pseudorandom Permutations (PRPs), which
+themselves are built from Pseudorandom functions.
+
+### Random functions and permutations (block ciphers)
+
+Consider the set of all functions $\mathbf=\{\{0,1\}^{in}\to\{0,1\}^{out}\}$.
+**A uniformly randomly sampled** $f\gets^\$\mathbf{F}$ can be **encoded** by a
+$2^{in}$ entries **table**, each entry $out$ bit wide. This means that
+$|\mathbf{F}| = (2^{out})^{2^{in}}$.
+
+A **pseudorandom function is a function** $\mathit{prf}_{seed}$ **taking an
+input and a** $\lambda$ bit **seed**. The **entire function is described by the
+value of the seed**. It **cannot be told apart from a random function**
+extracted from $\mathbf{F}$ in $\mathit{poly}(\lambda)$.
+
+A **pseudorandom permutation is a bijective PRF**. It is:
+
+1. Uniquely identified by the value of the seed
+2. **It is not possible to tell apart** in $\mathit{poly}(\lambda)$ from a
+   **random function**
+3. It is a **permutation of all the possible** $\{0,1\}^{len}$ **strings**
+
+Operatively speaking, it acts on a block of bits and outputs another of the same
+size. The output "looks unrelated" to the input. Its actions is fully identified
+by the seed.
+
+**No formally proven PRP exists** (for the same reasons as CSPRNGs). A typical
+construction is starting with a small bijective boolean function $f$ and
+sequentially computing $f$ until we are satisfied.
+
+Real world PRPs go by the **historical name of block cyphers**. They are
+considered broken if with less than $2^\lambda$ operations, we can tell them
+apart from a PRP, e.g. via deriving the input corresponding to an output without
+the key. The key length $\lambda$ is chosen to be large enough so that computing
+$2^\lambda$ guesses is not practically feasible.
+
+Some famous block ciphers are:
+
+- **AES**: most common block cypher
+- **DES**: broken, the key is to short. A patch is to apply the algorithm three
+  ties
+
+#### Block cipher modes
+
+Block ciphers can be used in a variety of different encryption modes:
+
+1. **ECB** (Electronic code book) consists of **applying the cipher with the
+   same key to each block independently**. The biggest flaw of this method is
+   that **if two blocks are identical, they will be equal even when encrypted**.
+   Furthermore, it has very weak integrity protection since the cipher cannot
+   tell if any block has been altered.
+2. **Counter** (CTR) mode consists of **feeding a counter to each block cipher.
+   The output of the cipher is then XORed with the plaintext** to obtain the
+   ciphertext for that block. This mode, however, is **not effective against
+   chose plaintext attacks**: the encryption is **deterministic** (the counter
+   always starts at 0).
+3. **CPA-secure CTR** is like the regular CTR, however **for each encryption a
+   NONCE (one time use number) is used as the counter start**. To enable
+   decryption, **the nonce needs to be public**.
+4. Symmetric **ratcheting** is a technique that **makes impossible to roll-back
+   the encryption procedure**.
+
+A problem that all these schemes suffer is that of **malleability**: **making
+changes to the ciphertext maps to predictable changes in the plaintext**. To
+**avoid** this issue we can: create a non-malleable scheme (not easy) or **add a
+mechanism for validating data integrity**.
+
+#### Data integrity
+
+To provide integrity, we can **add a small piece of information (tag) that
+allows us to test for the message integrity of the encrypted message itself**.
+Adding it to the plaintext and then encrypting it is not a good idea. These tags
+are called **MACs** (Message Authentication Codes) (name is very misleading:
+they do not authenticate anything).
+
+A MAC is comprised of a **pair of functions**:
+
+1. `compute_tag(string, secret_key) -> tag`: returns the tag for the input
+   string
+2. `verify_tag(string, tag, secret_key) -> bool`: returns whether the tag is
+   valid
+
+The ideal attacker **knows as many message-tag pairs as he wants**. However **he
+cannot forge a valid tag** (including splicing other messages' tags) **for a
+message for which he does not know the tag already**.
+
+We can **build a MAC using a block cipher in the CipherBlock Chaining mode**:
+
+1. **For each block** we **XOR the plaintext block with the previous block's
+   result**
+   - All ciphers use the same secret key
+2. For the first block we use 0 as the init
+
+**CBC-MAC is secure for prefix-free messages. If we encrypt the tag once more we
+solve this issue**.
