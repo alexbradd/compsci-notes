@@ -276,3 +276,146 @@ ALUs).
 The **P4 compiler first does dependency analysis on our code and maps it onto
 the various pipeline stages. The placement depends both on match and cation
 dependencies**.
+
+### Ternary content-addressable memory
+
+The **matching logic** in our PISA is basically a **mix of SRAM and ternary
+content-addressable memory (TCAM)** used for lookup and other things.
+
+A switch/router, to do routing, it needs to quickly compute the longest-prefix
+match of the packet in a set of rules. Since we run a pipeline, we want this
+match to be deterministic and always take a set amount of time in order to not
+stall the pipeline.
+
+**TCAM is a special type of associative memory that compares input data against
+the stored data and returns the address of matching data**. They **produce the
+result of the query in a single clock cycle**. They are **very expensive**, so
+they need to be as few as possible.
+
+TCAMs are called ternary because they use **ternary logic**: 0, 1, and \_ (don't
+care).
+
+The TCAM's buckets correspond to addresses in a RAM that contains the output
+port. This means that to match a rule we need:
+
+- 1 TCAM access to get the address in RAM (constant time operation)
+- 1 RAM access to get the output port (constant time operation)
+
+**A match is done in 2 memory accesses**, which can be done in a single clock
+cycle.
+
+Whether a TCAM matches the longest/shortest prefix is user-configurable and adds
+extra control logic to the memory.
+
+TCAM is not cheap, so we cannot have a lot of it. We need the help of other data
+structure to efficiently create rules without using much memory.
+
+### Some data structures
+
+#### Bloom filters
+
+A traditionally implemented set is not very well suited to our case: the output
+is deterministic, however the number of required operations cannot be known
+a-priori. What if **we can exchange the deterministic nature of the output for a
+deterministic time complexity?**
+
+Traditional sets are very space inefficient: they tend to have a high
+probability of hash collisions for densly filled tables. To keep the conflicts
+down we need a very over-dimensionated table.
+
+Let us start with a simple implementation: we have **an array of $m$ bits and a
+hash function. If an element is in the set, we set the bit indexed by the hash
+to 1**. This structure, when queried for set-inclusion, will respond
+probabilistically; it can return:
+
+- **true**-positives/negatives
+- **false-positives** (different objects can have the same hash) with a
+  probability of
+
+  $$1-(1-\frac{1}{m})^n$$
+
+But **never false-negatives** (if a bit is 0, then all objects with said hash
+are not in the set).
+
+We just described a **bloom filter with $k=1$**. The $k$ parameter **indicates
+the number of different hash functions that we will use on insertion**: each of
+those will calculate an index and set the corresponding bit to 1 in the array.
+To check for inclusion:
+
+1. We calculate the $k$ hashes
+2. An element is considered in the set if all hashes correspond to a 1
+3. An element is not in the set if at least one hash corresponds to a 0
+
+The usage of **$k$ hashes reduces the probability of false positives** to:
+
+$$
+(1- (1-\frac{1}{m})^{kn})^k \approx (1-e^{-\frac{kn}{m}})^k
+$$
+
+To find **how many hash functions we need, we can minimize** the above
+probability and it can be proven that the minimum $k$ is $k=\frac{m}{n}\ln 2$.
+
+To **enable element removal**, we can extend our filter to have one **integer
+per cell**, instead of one bit. **On insertion we increment** the bits
+corresponding to the hashes and **on removal we decrement them**. On query we
+check for $>0$ and $=0$. All our previous analysis still applies. This extension
+obviously **requires more memory, but also introduces the problem dimensioning
+the counters**: if a counter **overflows**, we incur the risk of introducing
+**false negatives**.
+
+#### Invertible bloom lookup tables
+
+Let us assume we have a counting bloom filter. How can we know which elements
+are stored inside the filter?
+
+Instead of having only one array, we have **3**:
+
+1. `count`: as before
+2. `keysum`: the sum of all the keys mapped to a cell
+3. `valuesum`: the sum of all the values mapped to a cell
+
+Our operations become like this:
+
+1. Query: as a normal counting bloom filter
+2. Insertion: we update the filter, then sum the key and the value to the
+   respective columns
+3. Deletion: we update the filter, then subtract the key and the value from the
+   respective columns
+
+The **value of a key can be found if the entry** is associated with a `count`
+counter with value $1$.
+
+To **list all inserted elements** in a IBLT, we can:
+
+1. **For all entries with count one**:
+   - Remove them from the set and store the reconstructed values
+2. **If there are no entries with count 1 we cannot do anything**
+
+#### Sketches
+
+Let us consider the problem of computing the frequencies of different objects in
+a stream. We could have a precise answer by using a counter for each type of
+element, however this requires a lot of memory especially if we have a lot of
+elements/element types.
+
+**Count-min sketches are a probabilistic data structure that serves as a
+frequency table of events in a stream of data**. It trades off counting
+precision with performance.
+
+It uses a **hash function to map events to frequencies**:
+
+- We have $d$ **arrays, with one hash per array of counters**
+- Each array hash $w$ **indices**
+
+When an element is added, **for each hash, we increment the counter for the
+corresponding array and index**. **Collisions** between elements can cause
+**overcounting**.
+
+When we **query** the number of occurrences of an element we return the
+**minimum of all the values corresponding to our element**.
+
+It uses similar principles as counting bloom filter but it is **designed to have
+provable bounds for frequency queries**. It also **requires sub-linear space**
+(unlike hash tables) since the memory requirements do not grow linearly with the
+amount of data to be tracked. Due to how they work, the **counting error reduces
+for more frequent elements**.
