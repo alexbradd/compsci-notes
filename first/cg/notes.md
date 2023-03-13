@@ -690,3 +690,145 @@ We can redo our matrices using only these three parameters.
 >   specifying the boundaries
 > - `glm::perspective(fov, a, n, f)` computes the perspective projection using
 >   the "photographic" set of parameters
+
+## View matrix
+
+Until now, all our projections have been anchored to one point. **How can we
+draw objects as seen from an arbitrary point in space**?
+
+For ease, le tu consider the following compass (from the top):
+
+```txt
+      -z
+      ^
+      |
+-x <--+--> +x
+      |
+      v
+      +z
+```
+
+The projection matrices assume that: projection plane is parallel to the $xy$
+plane and that we are facing "north". We can **re-orient our view by adding a
+set of additional transformations before our projection**.
+
+We will focus on perspective, but the same works for parallel projections.
+
+Let us imagine that our projection point is a camera with an orientation. This
+camera is characterized by its position, the direction its aiming and the angle
+around this direction. **The projection matrices seen as far compute the view of
+the camera initially positioned in the origin and aiming along the negative
+z-axis**. We can consider our camera as a 3D object. **We will call the matrix
+that moves the camera from the origin to its final position "camera matrix"**
+$M_c$.
+
+If **we apply the inverse of $M_c$ to all the object in the scene, we obtain a
+new 3D world where the projection plane is placed exactly as required by the
+projection matrices**. $M_c^{-1}$ is called the "view matrix". The view matrix
+must be applied before the projection.
+
+### Creating a view matrix: look-in-direction
+
+The user directly controls the camera position and the view direction.
+
+The position of the camera is given in world coordinates. **The direction where
+the camera is looking is specified with three angles**:
+
+1. The "compass" direction ($\alpha$), also called **yaw**:
+   - $\alpha = 0$: north
+   - $\alpha = 90$: west
+   - $\alpha = 180$: south
+   - $\alpha = 270$: east (can be also -90)
+   - It is a **rotation around the $y$ axis**
+2. The elevation ($\beta$), also called **pitch**:
+   - $\beta > 0$: look up
+   - $\beta < 0$: look down
+   - It is a **rotation around the $x$ axis**
+3. The **roll** ($\rho$):
+   - $\rho > 0$: counter-clockwise roll
+   - it is a **rotation around the $z$ axis**
+
+These rotations must be **done in a specific order** (we will come back later on
+the why):
+
+$$
+\begin{gathered}
+M_c = T(c_x, c_y, c_z) R_y(\alpha) R_x(\beta) R_z(\rho) \\
+M_c^{-1} = R_z(-\rho) R_x(-\beta) R_y(\alpha) T(-c_x, -c_y, -c_z) \\
+\end{gathered}
+$$
+
+> GLM does not provide any special functions, so we need to roll our own.
+
+### Creating a view matrix: look-at
+
+In the look-at we want to **follow a specific object**. We have a
+**translation**, as before but instead of the angles we have **the position of
+the target point**. This technique also requires the **up vector**, i.e. the
+direction perpendicular to the ground $[0, 1, 0]$ (the up vector can be changed
+to achieve some interesting effects). The need of the up vector is to align the
+camera's frame with the "horizon".
+
+The first step is to **compute the direction of the camera in world
+coordinates**, then we can use the corresponding information to build the camera
+matrix as before.
+
+To compute the rotation we **compute the axes in the transformed space**:
+
+- The new **z-axis (negative) should be the vector that connects the camera with
+  the point looked at**.
+
+  $$ v_z = \frac{c - a}{|c-a|} $$
+
+- The new **x-axis must be perpendicular to both the new z-axis and the
+  up-vector**. It can be computed using the **normalized cross-product**.
+
+  $$ v_z = \frac{u \times v_z}{|u \times v_z|} $$
+
+  Note that the cross product is zero if the two axis are aligned. In this case
+  we can select a random orientation for the x axis.
+
+- The new y-axis should be **perpendicular to the other two**. We calculate it
+  like we did for the x-axis
+
+  $$ v_y = v_z \times v_x $$
+
+  Since the two axes are by construction perpendicular, we do not need to
+  normalize.
+
+The camera and view matrices can be created as follows:
+
+$$
+\begin{gathered}
+  M_c = \left[\begin{array}{ccc|c}
+    v_x & v_y & v_z & c \\
+    \hline
+    0 & 0 & 0 & 1 \\
+  \end{array}\right] \\
+  M_v = \left[\begin{array}{c|c}
+    (R_c)^T & -(R_c)^T c \\
+    \hline
+    \mathbf{0} & 1 \\
+  \end{array}\right] \\
+\end{gathered}
+$$
+
+> cross product and normalization can be done with `glm::cross` and
+> `glm::normalize` function.
+>
+> glm does offer the `glm::lookAt` function that create this matrix for us
+> starting from three `vec3` representing the center of the camera, the point it
+> targets and the up vector.
+
+To implement **roll**, we can do two things:
+
+1. We can **rotate the up vector**
+2. We can **add a rotation** of $\rho$ around the **z-axis**.
+
+### Navigation
+
+A navigation model update procedure receives up to six floating point values in
+the $[0,1]$ range:
+
+1. Three movement axes
+2. Three rotation axes
