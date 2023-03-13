@@ -1,0 +1,3 @@
+[submodule "first/net/labs"]
+	path = first/net/labs
+	url = git@github.com:alexbradd/network-computing-labs.git
