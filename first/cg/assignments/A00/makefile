@@ -1,5 +1,5 @@
 CFLAGS = -std=c++17 -O2
-LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
+LDFLAGS = -lglfw -lvulkan -ldl -lpthread
 
 A00: A00.cpp
 	g++ $(CFLAGS) -o A00 A00.cpp $(LDFLAGS) -I "./headers"
