@@ -255,3 +255,114 @@ $$
 If we also consider stalls, we need to add to the above time the number of
 stalls per instruction.
 
+## Control hazards
+
+In pipelining control hazards are one of the biggest performance penalties. We
+can apply some optimizations to make them less probable.
+
+A **branch is taken if the branch condition is satisfied, otherwise the branch
+is not taken**. The branch target address is the address where to branch.
+
+The **outcome of the comparison is computed in the EX phase, together with the
+computation of the branch target address**. The result is then used in the
+memory access phase to update the program counter.
+
+The main problem with conditional instructions is that **we need to wait for the
+EX step to fetch the correct instruction based on the conditional outcome**:
+this causes a one-cycle stall in our pipeline. To fix this problem we have
+several solution:
+
+1. **Stalling until resolutions**
+2. **Assume the branch as not taken**
+
+### Branch optimization using stalling
+
+We **would need to insert 3 stalls** until IF of the next instruction comes
+after MEM. Then we can use MEM-IF propagation to fetch the correct instruction.
+
+We can **anticipate the resolution of the branch outcome to the EX stage**,
+before writing and use propagation to **reduce to only 2 stalls** per branch.
+
+We can do **even better by moving the branch determination into the ID stage**.
+Using our conservative method, we can **then insert only 1 stall and use ID-IF
+propagation to fetch the correct instruction**.
+
+The number of stall cycles introduced due to branch conflicts is:
+
+$$ #_{cycles} = \mathit{Branch}_{freq} \cdot \matit{Branch}\_{Penalty} $$
+
+This is the slowest option and results to 10%-30% performance loss.
+
+### Branch prediction techniques
+
+There are **two main types of branch prediction**:
+
+1. **Static** branch prediction techniques: done at **compile time**
+2. **Dynamic** branch prediction techniques: done at **execution time**
+
+#### Static prediction techniques
+
+Static branch prediction is typically **used when the branch behaviour for the
+target application is highly predictable at compile time**. **It can be used in
+combination with dynamic predictors**.
+
+We have the following schemes:
+
+1. **Branch always not taken**: the easiest method, **every branch is predicted
+   as not taken by the compiler**. In case we **mispredict**, we need to
+   **flush** one instruction: we have a **one-cycle penalty**.
+
+   This type of prediction is **best suited to if-then-else** constructs where
+   we have information about the probability of each branch.
+
+2. **Branch always taken**: the **dual to the previous case**. Like before, we
+   have a **one-cycle penalty** if we mispredict.
+3. **Backward taken forward not taken (BTFNT)**: we can make **predictions based
+   on the direction of the jump**:
+   - **Backward branches are taken** since they are most likely **loops**
+   - **Forward branches are not taken** since we assume that the condition
+     relative to the **else is less likely** and not taken.
+4. **Profile**: we assume **some profiling done on the application**; the
+   prediction is based on said profiling. The profile-driven prediction method
+   can use **compiler hints** associated to each branch instruction.
+5. **Delayed branch**: the **compiler statically schedules an independent
+   instruction in the branch delay slot**. The **instruction(s) in the branch
+   delay slot is always executed or needs to be flushed in case of
+   misprediction, the instruction after the slot will depend on if the branch
+   was taken or not**.
+
+   There are four ways of filling the branch delay slot:
+
+   1. **From before**: an independent instruction **from before the branch is
+      scheduled in the slot**. Useful for if-then-else constructs.
+   2. **From target**: an **independent instruction from the target of the jump
+      is scheduled in the slot**. This strategy is preferred when is more
+      probable that a branch is taken (e.g. in do-while loops).
+   3. **From fall-through**: an **independent instruction from the fall-through
+      path of the jump** is scheduled in the slot. This branch is preferred when
+      there is a high likelihood of the branch not being taken (e.g an
+      if-then-else with less probable else).
+   4. **From after**: an independent instruction **from after the condition**.
+
+   In **deeply pipelined processors, the slot might be more than one cycle long,
+   so the compiler needs more instructions**. On average, the compiler manages
+   to fill 50% of them. For this reasons, **if a processor uses a delay slot it
+   is usually one cycle**.
+
+   The **limitations** arise from the **ability of the compiler to predict the
+   outcome and on choosing instructions to schedule**. To improve the filling
+   ability of the compiler, **most processors using this predictions implemented
+   a hint direction in the instruction: if the branch behaves as predicted, the
+   instruction in the slot is executed, otherwise it is flushed**.
+
+#### Dynamic branch prediction
+
+We **use the past behaviour to predict the outcome of a branch**. The prediction
+will **depend on the runtime behaviour of the branch**. Dynamic branch
+prediction is based on **two interacting hardware blocks placed in the
+instruction fetch stage** used to predict the next instruction to read in the
+instruction cache:
+
+1. **Branch outcome predictor**: to predict the **direction** of a branch
+2. **Branch target predictor**: to predict the **branch target address** in case
+   of taken branch
