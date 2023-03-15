@@ -832,3 +832,71 @@ the $[0,1]$ range:
 
 1. Three movement axes
 2. Three rotation axes
+
+The input is taken from the operating system using libraries like GLFW or SDL.
+
+## World matrix
+
+One of the main features of 3D computer graphics is placing and moving objects
+in the virtual space. **Movement of the objects is usually performed with a
+transformation matrix: the world matrix** $M_w$.
+
+**Every object is characterized by a set of local coordinates**: the positions
+of the object's points in the space where it was created. **The world matrix
+transforms each object's local coordinates into world coordinates**. It is also
+important that a **model is modeled considering as the origin the point that
+most represents its position**.
+
+The world matrix applies a series of translations, rotations (and possibly
+scaling or shears) to the local coordinates.
+
+For positioning, we can simply do a translation. For the correct result,
+**translations should be always applied last**. If we want to change the scale
+of an object, we apply a scale transformation. **Scaling must always be the
+first. Rotation should be done in the middle of the two**.
+
+### Euler angles
+
+**Which order of rotations should we use to ensure a natural transformation?**
+Let us consider three parameters: roll, pitch and yaw (we already seen them
+previously).
+
+Euler angles were introduced for **z-up coordinate** systems. This explanation
+will refer to this system.
+
+Like with the origin, the modeler should help us by creating a model that is
+facing along the positive x axis, with the side aligned to the y-axis and the
+vertical line along the z axis.
+
+In this system, we have that:
+
+1. **Roll** is the rotation around the **x-axis**. (positive turns clockwise)
+2. **Pitch** is the rotations along the **y-axis**. (positive turns down)
+3. **Yaw** is the rotation along the **z-axis**. (positive rotates towards
+   north, 0 is east)
+
+With this convention, our rotations are done in the alphabetic order of the
+axis: x, y and z. For different axes conventions, we always need to follow the
+**Roll-Pitch-Yaw order**.
+
+A rotation defined by the Euler Angles, is **perfect for "planar" movements**,
+like the one available in a driving simulation or in an FPS. However they are
+not the proper solution for applications such as flight or space simulators
+since they can **suffer a problem known as Gimbal Lock: it is the loss of one
+degree of motion when two of the three gimbals are in a parallel
+configuration**.
+
+### Quaternions
+
+A solution to the Gimbal lock problem is **rethinking our representation of
+rotations**.
+
+**Quaternions are an extensions of complex numbers that have three imaginary
+components**:
+
+$$ a + ib + jc + kd $$
+
+The three imaginary components are called the **_vector part_** and must
+**respect the following relation**:
+
+$$ i^2 = j^2 = k^2 = ijk = -1 $$
