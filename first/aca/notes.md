@@ -117,12 +117,12 @@ means that instruction throughput will be our most important metric.
 Definitions:
 
 1. $X$ is $n\%$ faster than $Y$:
-   $\frac{\mathrm{execution time}_y}{\mathrm{execution time}_y}$ or
+   $\frac{\mathit{ExecutionTime}_y}{\mathit{ExecutionTime}_y}$ or
    $1 + \frac{n}{100}$.
 
    An analogous definition exists if we use other metrics.
 
-2. $\mathrm{performance}_x = \frac{1}{\mathrm{execution time}_x}$.
+2. $\mathit{Performance}_x = \frac{1}{\mathit{ExecutionTime}_x}$.
 
 A performance improvement means an increment, while latency improvement means a
 decrement.
@@ -131,7 +131,7 @@ The execution time of program, also called CPU time, is:
 
 $$
 \begin{aligned}
-  \mathit{CPU time} &= \#_{cycles}\cdot T_{clk} = \frac{\#_{cycles}}{f_{clk}}
+  \mathit{CPU}_{time} &= \#_{cycles}\cdot T_{clk} = \frac{\#_{cycles}}{f_{clk}}
     &= \mathit{IC}\cdot\mathit{CPI}\cdot T_{clk}
 \end{aligned}
 $$
@@ -141,7 +141,7 @@ clock. We can write the number of cycles as $\sum_n (\mathit{CPI}_i I_i)$ where
 $I_i$ is the number of instructions of type $i$. This means that the CPU time
 can be rewritten as:
 
-$$\mathit{CPU time} = \sum_n (\mathit{CPI}_i I_i) T_{clk}$$
+$$\mathit{CPU}_{time} = \sum_n (\mathit{CPI}_i I_i) T_{clk}$$
 
 Rewriting the above equations we can extract the instruction frequency
 $F_i = \frac{I_i}{IC}$. We can calculate the total $CPI$ as the sum of all the
@@ -159,8 +159,8 @@ factor $S$ and the remainder of the task is unaffected then:
 
 $$
 \begin{aligned}
-  \mathit{Execution time}_E = (\frac(1-F) + \frac{F}{S})\mathit{Execution time}_\bar{E}
-  \mathit{Speedup}_E = \frac{1}{(1-F) + \frac{F}{S}}
+  \mathit{ExecutionTime}_E &= ((1-F) + \frac{F}{S})\cdot\mathit{ExecutionTime}_{\bar{E}} \\
+  \mathit{Speedup}_E &= \frac{1}{(1-F) + \frac{F}{S}}
 \end{aligned}
 $$
 
@@ -201,7 +201,9 @@ among pipeline stages and the overhead in the pipeline control:
 
 The number of cycles can be computes as such:
 
-$$ \#_{cycles} = IC + \#_{stall} + 4 $$
+$$
+  \#_{cycles} = IC + \#_{stall} + 4
+$$
 
 Let us consider $n$ iterations of a loop composed of $m$ instructions per
 iterations requiring $k$ stalls. We can compute the asymptotic CPI as:
@@ -228,7 +230,9 @@ We can equate the pipeline's speedup to the depth of the pipeline
 Recalling all previous definitions about caches (hit/miss time and rate), we can
 define the average memory access time as
 
-$$ \mathit{AMAT} = H*\mathrm{time} + M*\mathrm{rate} \* M\_\mathrm{penalty} $$
+$$
+  \mathit{AMAT} = H_\mathrm{time} + M_\mathrm{rate} \cdot M_{\mathrm{penalty}}
+$$
 
 If we have separate cache for instructions and data (Harvard architecture), we
 need to weigh the $\mathit{AMAT}$ of the two caches. Each level of cache also
@@ -289,7 +293,9 @@ propagation to fetch the correct instruction**.
 
 The number of stall cycles introduced due to branch conflicts is:
 
-$$ #_{cycles} = \mathit{Branch}_{freq} \cdot \matit{Branch}\_{Penalty} $$
+$$
+  \#_{cycles} = \mathit{Branch}_{freq} \cdot \mathit{Branch}_{Penalty}
+$$
 
 This is the slowest option and results to 10%-30% performance loss.
 
@@ -359,10 +365,100 @@ We have the following schemes:
 
 We **use the past behaviour to predict the outcome of a branch**. The prediction
 will **depend on the runtime behaviour of the branch**. Dynamic branch
-prediction is based on **two interacting hardware blocks placed in the
-instruction fetch stage** used to predict the next instruction to read in the
-instruction cache:
+prediction is based on **two interacting hardware blocks placed in the IF
+stage** used to predict the next instruction to read in the instruction cache:
 
-1. **Branch outcome predictor**: to predict the **direction** of a branch
-2. **Branch target predictor**: to predict the **branch target address** in case
-   of taken branch
+1. **Branch outcome predictor** (buffer): to predict the **direction** of a
+   branch
+2. **Branch target predictor** (buffer): to predict the **branch target
+   address** in case of taken branch
+
+If the branch is predicted by the BOP as not taken, the PC is incremented and
+execution proceeds. If we predict correctly, performance is preserved. If we
+mispredict, we need to flush the instruction already fetched and restart the
+execution by fetching the target address.
+
+If the branch is predicted as taken, the BTB gives the predicted target address.
+If we predict correctly, we preserve performance. Otherwise we need to flush the
+branch target instruction already fetched and restart the execution by fetching
+the next instruction.
+
+We have **3 different techniques for implementing the BOP**. We are going to see
+them one by one.
+
+##### Branch history table
+
+It is a **table that has 1 bit for each entry that says whether the branch was
+recently taken or not**. The table is **indexed by the lower k-bits of the
+address of the branch** (exploiting locality, we do not expect changes in the
+higher bits of the address).
+
+The prediction is a **hint that is assumed to be correct: since we do not have
+tags, we are not sure if a colliding branch overwrote our prediction**.
+
+The 1-bit suffers in loops: it will mispredict twice, once when the loop exists
+and once when the loop is reentered again. We can mitigate this problem by
+extending the entry to 2-bit: we require that a branch is taken/untaken two
+times to be changed.
+
+We can **extend it to an n-bit counter**: if the **counter is grater than or
+equal to half the maximum it is predicted as taken, otherwise as untaken**.
+**The counter is incremented on branch taken and decrement on branch untaken**.
+
+Usually 2-bit is enough.
+
+##### Correlating branch predictors
+
+The BHT uses only the recent behaviour of a single branch to predict the future
+behaviour of that branch. Here **we try to exploit the fact that the behaviour
+of recent branches is correlated and can influence the prediction of the current
+branch**. Branch predictors that make use of the outcome of correlated branches
+are called **correlating predictors or 2-level predictors**.
+
+A **(1,1)-correlating-predictor indicates a predictor with 1-bit of correlation,
+meaning that the behaviour of the last branch is used to choose among a pair of
+1-bit branch predictors**. For implementing such a predictor we need 2 1-bit
+BHTs:
+
+1. One used if the last branch was taken
+2. One used if the last branch was not taken.
+
+Usually a **(m,n)-correlating-predictor chooses considers the $m$ last branches
+and chooses from $2^m$ $n$-bit predictors**. If we use more than 1 branch for
+prediction, the **buffer holding the last $m$ branch outcomes is called the
+global branch history**. The **BHT can be indexed by using a concatenation of
+the branch-index and the $m$-bit global history**.
+
+The **number of bits** necessary for this predictor is:
+
+$$
+  2^m \cdot n \cdot \text{Number of prediction entries selected by the branch address}
+$$
+
+A simple 2-bit BHT is a (0,2)-correlating-predictor. Comparing the performance
+of the BHT and a (2,2)-predictor having the same total number of bits, the
+second one outperforms the first even if it had an unlimited number of entries.
+
+##### 2-level adaptive branch predictors
+
+**The first level history is recorded in one or more k-bit shift registers**
+(Branch History Registers or BHRs). This structure records the outcomes of the
+most $k$ recent branches.
+
+**The second level history is recorded in one or more tables called Pattern
+History Tables (PHTs) of two-bit saturating counters. The BHR is used to index
+the BHT and select which counter to use**. The prediction is made using the same
+method as the 2-bit counter scheme.
+
+With this scheme, **we lose the branch-address of the previous predictors** (GA
+predictor). To **re-correlate the BHR with the PC, we can XOR the lower k-bit of
+the PC with the BHT before indexing** (GShare predictor).
+
+##### Implementing the BTB
+
+The Branch Target Buffer is an **associative cache storing the predicted target
+addresses**. We can **access** the values stored within it **in the IF stage by
+using the address of the fetched branch instruction**.
+
+We can **combine the BTB and the branch outcome predictor** (prediction bit
+output of the predictor).
