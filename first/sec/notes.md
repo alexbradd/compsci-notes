@@ -299,3 +299,117 @@ We can **build a MAC using a block cipher in the CipherBlock Chaining mode**:
 
 **CBC-MAC is secure for prefix-free messages. If we encrypt the tag once more we
 solve this issue**.
+
+Testing the integrity of a file requires, however, to compare it bit by bit with
+an intact copy or read it entirely to compute a MAC. It would be nice to have a
+short fixed length string independent of the file size. However, due to the
+mismatch of cardinality between the total number of files and the total number
+of strings of length $k$.
+
+### Cryptographic hashes
+
+A cryptographic hash is a **function** $H: \{0,1\}^*\to\{0,1\}^l$ for which the
+**following problems are hard**:
+
+1. Given $d=H(s)$ find $s$ ( **first preimage collision resistance**)
+   - Takes $\mathcal{O}(2^l)$ hashes computations to guess $s$
+2. Given $s,d = H(s)$ find $r\neq s : H(r) = d$ ( **second preimage collision
+   resistance**)
+   - Takes $\mathcal{O}(2^l)$ hash computations to guess $r$
+3. find $r, s$ with $r\neq s$ and $H(s) = H(r)$ ( **collision**)
+   - Takes $\approx\mathcal{O}(2^\frac{l}{2})$ hash computations
+
+1st preimage collision implies the possibility of 2nd preimage collisions,
+however the opposite is not true.
+
+**The output bitstring of a hash is known as a digest.**
+
+Some uses for hashes:
+
+1. Store/compare hashes instead of values.
+2. Building MACs: generate tag hashing together with the message and a secret;
+   verify tag recomputing the same hash.
+   - See HMAC
+3. Forensic uses.
+
+### Asymmetric encryption
+
+Agreeing on a secret has to be done on a trusted channel. Is there a way to
+**share a key on a public channel, without compromising the message**? Yes:
+asymmetric encryption.
+
+Up to now, enumeration of the secret parameter was the best possible attack.
+**Asymmetric cryptosystems rely on hard problems for which bruteforcing the
+secret parameter is not the best attack**.
+
+This means that **comparing bit-sizes of the secret parameters between
+algorithms instead of the actual complexities is very wrong** for this type of
+encryption, do this only for algorithms of the same type. God forbid you do this
+with symmetric algorithms.
+
+#### Diffie-Hellman key agreement
+
+The goal is to make two parties share secret values with only public messages.
+**The attacker can**:
+
+1. **Eavesdrop anything, but not tamper**
+2. This **assumptions** should hold:
+
+   - Let $(G\mathbf{G}, \cdot)$ a group of finite prime order $q$ and on a
+     generator $g$ of this group. Let there be two numbers $a,b$ sampled
+     uniformly from $\{0,\ldots,|\mathbf{G} -1\}$. $\lambda$ will be the length
+     in bits of $\mathrm{len}(a)\approx\log_2|\mathbf{G}|$.
+
+     Given $g^a$ and $g^b$, finding $g^{ab}$ costs more than
+     $\mathrm{poly}(\log |\mathbf{G}|)$.
+
+     $g$ and $\lambda$ are public.
+
+**The assumptions basically requires an attacker to be able to solve the
+discrete logarithm problem in polynomial time**. Usually the chosen group is
+subgroup of the natural numbers of order $p$ (still prime and appropriately
+large). The group can also be defined by an elliptic curve.
+
+The agreement goes like this:
+
+1. Alice picks $a$ and sends $g^a$ to Bob
+2. Bob picks $b$ and sends $g^b$ to Alice
+3. Each party computes $(g^b)^a$ and $(g^a)^b$ respectively. Thanks to the
+   commutativity of the group, these two are equal. Now we have our key.
+
+#### Public key encryption
+
+**Based on the same ideas of the DH key agreement**, we can define asymmetric
+key encryption: the **key-pair generation algorithm generates two keys, one
+public and one private. The public part can be shared publicly and is used for
+encrypting a plaintext that can only decrypted with the associated private
+key**.
+
+It is **computationally hard** to:
+
+1. **Decrypt a ciphertext without the private key**
+2. **Compute the private key given the public key**
+
+Asymmetric algorithms are **very slow**, so implementing it like this in the
+real world is not really feasible for fast communication. **What is done,
+instead, is called key encapsulation**:
+
+1. **Alice chooses a large random secret for a pre-agreed symmetric cipher,
+   encrypts it using Bobs public key and sends it**.
+2. **Bob receives the message, decrypts it and communication continues using the
+   shared secret on a symmetrically encrypted channel**.
+
+This is basically what TLS and the like do.
+
+### Authenticating data
+
+To build a secure hybrid encryption scheme **we need to be sure that the public
+key the sender uses is the one of the recipient**. We’d like to **be able to
+verify the authenticity of a piece of data without a pre-shared secret**.
+
+**Digital signatures** are used for this: they are asymmetric cryptographic
+algorithms. Signatures cannot be repudiated by the user.
+
+It uses the **same principles as public key encryption, however it flips it**:
+we **sign** the message with our **private key**, meaning that **everyone with
+access to our private key can verify it**.
