@@ -413,3 +413,78 @@ algorithms. Signatures cannot be repudiated by the user.
 It uses the **same principles as public key encryption, however it flips it**:
 we **sign** the message with our **private key**, meaning that **everyone with
 access to our private key can verify it**.
+
+Due to the slowness of asymmetric encryption and due to space constraints, we
+**sign only a hash of the message and append it to the message**.
+
+Signing documents **makes sense only if the document is completely static**. If
+it is not, we are signing only the program that generates the content, non the
+content.
+
+### Digital certificates
+
+We have one more problem: **how can we be sure that the public key corresponds
+to the correct identity (public key binding problem)**?
+
+A **PKI** is a **system that allows people to bind a certain public key with an
+identity**. A **digital certificate is basically a file that contains the name
+of the entity and a public key**. The most used standard for digital
+certificates is X.509v3.
+
+Digital certificates are the best way to **sign documents**, since we solve the
+binding problem.
+
+**Digital certificates need to be themselves signed**, however who signs them? A
+**certificate authority is a trusted issuer that signs certificates**. But **who
+signs the certificate authority's certificate? Another CA**. This creates a
+**signing tree**, however it introduces an infinite recursion. This means **we
+need to have a root CA that is self-signed, trusted a-priori and whose
+certificate is stored in trusted storage**.
+
+The root CA is not a certificate anymore, it is a statement of authority: we
+cannot verify it, we need to trust it.
+
+### Fundamentals of information theory
+
+From information theory we need mainly 2 things: qualitatively frame "luck" and
+"guessing".
+
+Basics definitions:
+
+1. Communications takes place between two endpoints:
+
+   - The sender, made of an information source and an encoder
+   - The receiver, made of an information destination and an encoder.
+
+2. Information is carried by the channel in the form of a sequence of symbols of
+   a finite alphabet.
+
+The **receiver gets information only through the channel: it will be uncertain
+on what the next symbol is**. Acquiring information is **modeled through a
+random variable** $\mathcal{X}$: the **closer the variable is to a uniform
+distribution, the higher the amount of information I get from knowing the
+outcome**. Encoding maps each outcome as a finite sequence of symbols.
+
+**Entropy** is basically a **measurement of uncertainty**. The desired
+properties are: non-negativity, "combining uncertainties" should map to adding
+entropies.
+
+**Entropy definition**: Let $\mathcal{X}$ be a d.r.v. with $n$ outcomes in
+$\{x_0, \ldots,x_{n-1}\}$ with $P(\mathcal{X} = x_i) = p_i$ for all $i$. The
+entropy of $\mathcal{X}$ is $H(\mathcal{X}) = \sum_0^{n-1} -p_i\log_b(p_i)$.
+
+The measurement unit of entropy depends on the base of the logarithm. The
+typical case for $b=2$ is bits.
+
+**Shannon's noiseless coding theorem (informal)**: It is possible to encode the
+$n$ outcomes of i.i.d. random variables, each one with entropy $H(\mathcal{X})$
+into no less than $nH(\mathcal{X})$ bits per outcome. If less bits are used,
+some information is lost.
+
+**Min-entropy**: we define the min-entropy of $\mathcal{X}$ as
+$H_\infty(\mathcal{X}) = -\log(\max_i p_i)$.
+
+Intuitively, the **min-entropy is a uniform distribution where the probability
+of each outcome is** $\max_i p_i$. This means that **guessing the most common
+outcome of $\mathcal{X}$ is at least as hard as guessing a
+$H_\infty(\mathcal{X})$ bit long string**.
