@@ -778,12 +778,17 @@ To compute the rotation we **compute the axes in the transformed space**:
 - The new **z-axis (negative) should be the vector that connects the camera with
   the point looked at**.
 
-  $$ v_z = \frac{c - a}{|c-a|} $$
+  $$
+    v_z = \frac{c - a}{|c-a|}
+  $$
 
 - The new **x-axis must be perpendicular to both the new z-axis and the
   up-vector**. It can be computed using the **normalized cross-product**.
 
-  $$ v_z = \frac{u \times v_z}{|u \times v_z|} $$
+  $$
+  v_z
+    = \frac{u \times v_z}{|u \times v_z|}
+  $$
 
   Note that the cross product is zero if the two axis are aligned. In this case
   we can select a random orientation for the x axis.
@@ -791,7 +796,9 @@ To compute the rotation we **compute the axes in the transformed space**:
 - The new y-axis should be **perpendicular to the other two**. We calculate it
   like we did for the x-axis
 
-  $$ v_y = v_z \times v_x $$
+  $$
+    v_y = v_z \times v_x
+  $$
 
   Since the two axes are by construction perpendicular, we do not need to
   normalize.
@@ -894,9 +901,82 @@ rotations**.
 **Quaternions are an extensions of complex numbers that have three imaginary
 components**:
 
-$$ a + ib + jc + kd $$
+$$
+  a + ib + jc + kd
+$$
 
 The three imaginary components are called the **_vector part_** and must
 **respect the following relation**:
 
-$$ i^2 = j^2 = k^2 = ijk = -1 $$
+$$
+  i^2 = j^2 = k^2 = ijk = -1
+$$
+
+From these rules, we can **define a complete algebra**, see slide 41 of lecture
+07 for the complete formulas.
+
+**Unitary quaternions are enough to encode rotations**. Let us consider a
+rotation of an angle $\theta$ around an axis oriented along a unitary vector
+$v = (x,y,z)$. This rotation can be **represented by the following quaternion**:
+
+$$
+  q = \cos\frac{\theta}{2} + \sin\frac{\theta}{2}(ix + jy + kz)
+$$
+
+Since $v$ is unitary, $q$ is also unitary.
+
+Unitary quaternions can be **directly converted to rotation matrices** with the
+following formula:
+
+$$
+  R(q) = \begin{bmatrix}
+    1-2c^2 - 2d^2 & 2bc + 2ad       & 2bd - 2ac      & 0 \\
+    2bc - 2ad     & 1 - 2b^2 - 2d^2 & 2cd + 2ab      & 0 \\
+    2bd - 2ac     & 2cd - 2ab       & 1 - 2b^2 -2c^2 & 0 \\
+    0             & 0               & 0              & 1 \\
+  \end{bmatrix}
+$$
+
+If $q_1$ and $q_2$ are two quaternions that encode two different rotations,
+their **products encodes the composed transform**. We can **transform a set of
+Euler angles into a quaternion** using the formulas on slide 46 of lecture 7.
+
+Like with transformations, the **product between quaternions is not
+commutative**.
+
+**There isn't a direct formula to transform a quaternion into the equivalent
+Euler angles**.
+
+#### Usage
+
+When a program has to work with complex rotations, we usually internally store
+the quaternion and convert it to a rotation matrix every time we compute the
+transform.
+
+Even relative changes in the direction of an object are encoded using a
+$\Delta q$ that expresses the direction and entity of rotation. **Due to the
+non-commutativity of quaternions we have that**:
+
+- $\Delta q \cdot q$ results in a rotation in **world space** (i.e. using the
+  axes of the current world coordinates)
+- $q \cdot \Delta q$ results in a rotation in **local space** (i.e. using the
+  axes of the object coordinates)
+
+> To use quaternion functions in GLM we need to import `glm/gtc/quaternion.hpp`.
+> Quaternions can be specified in three ways:
+>
+> 1. From Euler angles (rarely used, if we want to use it, we need to manually
+>    apply the three rotations in the correct order).
+> 2. Specifying the scalar and then the imaginary parts.
+> 3. From the angle of rotation and the axis direction
+>
+> The scalar part is the `.w` component, while the imaginary parts are
+> `x, y, z`.
+>
+> We can create a rotation matrix by simply passing it the corresponding
+> quaternion.
+>
+> The normalize function is also defined for quaternions.
+>
+> The extended functions allow for more operations, however they are out of
+> scope.
