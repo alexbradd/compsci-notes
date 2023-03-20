@@ -419,3 +419,128 @@ provable bounds for frequency queries**. It also **requires sub-linear space**
 (unlike hash tables) since the memory requirements do not grow linearly with the
 amount of data to be tracked. Due to how they work, the **counting error reduces
 for more frequent elements**.
+
+## Datacenter monitoring
+
+At a very large scale, problems are difficult to debug: we might not even know
+were they might be (network, software, hardware etc.). Even figuring out the
+path of a packet is very difficult.
+
+**Network monitoring is the use of a system that constantly monitors a computer
+network for slow or failing components**. We have different ways to monitor a
+network:
+
+1. **From switches**: using their **features** (NetFlow, mirroring, SNMP) or
+   **building new feature using dataplane programmability**
+2. **From servers**: using **standard tools** (`netstat`, `tcpdump` or
+   `traceroute`) or **ad-hoc tools**
+
+### Network monitoring using legacy switches
+
+We would like to work around some problems like:
+
+- **silent packet drops**: packets dropped but not reported by the culprit, it
+  is due to software bugs or faulty hardware
+- **silent blackhole**: a routing blackhole that does not show up in forwarding
+  tables, caused by corrupted TCAMs.
+- **inflated e2e latency**
+- **loops from buggy middlebox routing**: due to a middlebox incorrectly
+  identifying packets
+- **load imbalance**
+- **protocol bugs**
+
+**Problems would be easier if we could `traceroute` every packet, however at
+scale this is unfeasible**. We might also need to **correlate packets over
+different hops**. Also the traces might not be enough if a problem is transient.
+
+Let us analyze Microsoft's Everflow. The tree **main ideas** behind the method
+are:
+
+1. **Match and mirror on switch**: **match** based on predefined rules **and
+   mirror packets**. We mainly use matching rules for:
+   - TCP's `SYN`, `FIN` and `RST`
+   - A special debug bit in the header
+   - All protocol traffic (BGP and others)
+2. **Switch-based reshuffler**: traced traffic must be sent to different
+   collectors as a single machine cannot cope with the amount of data
+   - **We may use a virtual IP with a load balancer**
+3. **Guided probing**: it allows to **inject any desired packet into the network
+   and trace its behaviour**.
+
+   It can be used to recover lost information with match&mirror and allows to
+   check if a problem is transient or persistent. **Which bit can we use to
+   signal it? The unused DSCP field and IPID fields in the IP header**: the
+   first one to signal whether it is a flow of interest and the IPID to sample
+   packets.
+
+Everflow applications interact with a **central controller that knows the
+routing**. The controller gets as **input the operator request and the supposed
+network routing**; then it **initializes the rules on switches, configures the
+analyzers and sets the appropriate debug bit into probes**. After the
+configuration, the **mirrored traffic will be sent to the analyzers where they
+were heuristically checked and stored if problematic**.
+
+Takeaways: although powerful, it is still **limited by the capabilities exposed
+by the switches**.
+
+### Network monitoring using dataplane programmability
+
+An important trade-off to consider is where to put the monitoring overhead:
+
+1. Collectors have limited bandwidth and storage
+2. Switches have limited memory and processing time
+
+#### FlowRadar
+
+Let us analyze FlowRadar to find a way to minimize the load between the two.
+**FlowRadar allows us co compute packet counts across different flows**.
+
+Architecture:
+
+- **Each switch maintains a fast and efficient data structure for half-baked
+  per-flow counter and sends periodic reports to collectors**.
+
+  - We maintain a **tree column table**:
+    1. `FlowXOR`:: the XOR of all the flows mapped to a bin
+    2. `FlowCount`: the number of flows mapped to a bin
+    3. `PacketCount`: the number of packets of all the flows mapped to a bin
+
+  If a **flow is new, everything is updated, otherwise only the packet count**.
+  We implement the following **filter using an invertible bloom filter**.
+
+- The **collectors correlate network wide info to extract per-flow counters**.
+  The work is divided into **two stages**:
+
+  1. **Single decode**: **compute the number of packets by inverting the flow
+     filter on a per-switch basis**:
+     1. We find a cell with one flow (pure cell)
+     2. Remove the flow from all the cells
+     3. Continue removing all flows until have no more pure flows.
+  2. **Network decode**: **we solve eventual stalls in the single decode by
+     leveraging network wide info (info from other switches)**.
+
+     We use merge tables into a single mega-switch table and use it in our
+     algorithm. To find which switch processed what flow we can query its bloom
+     filter.
+
+#### In-band Network Telemetry
+
+It is a **framework designed to allow the collection and report of network
+state, by the data plane**. In the INT architectural model, **packets may
+contain header fields that are interpreted as telemetry instructions by network
+devices**. These **instructions tell an INT-capable device what state to
+collect**. We can see this as a much more powerful version of Microsoft's
+Everflow.
+
+We can run INT into **three modes**:
+
+1. `XD`: **Each nodes exports metadata** based on watchlist configuration
+   - Good: no packet modification
+   - Bad: pressure on collectors, query based on switch configuration
+2. `MX`: **Embed only instructions in the packet. Each node exports metadata**.
+   - Good: query is packet dependent
+   - Bad: pressure on collectors, modified packets
+3. `MD`: **Embed instruction and metadata, export at the sink node**.
+   - Good: query is packet dependent, no pressure on collectors
+   - Bad: impact on packet MTU (the switch will eat space into what is usable by
+     the application), packets need to be modified
