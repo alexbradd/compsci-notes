@@ -980,3 +980,105 @@ non-commutativity of quaternions we have that**:
 >
 > The extended functions allow for more operations, however they are out of
 > scope.
+
+## Meshes
+
+**3D objects are not stored as a collection of 3D points, since this would
+require too much memory**. However, what we worked with until now is using 3D
+points.
+
+We store an object geometry using **mathematical models that represent surfaces
+through a set of parameters** (computational geometry is the field). Many
+approaches have been developed, the most common are:
+
+1. **Meshes (polygonal surfaces)**
+2. Hermite surfaces
+3. NURBS (Non-Uniform Rational B-splines)
+4. HSS (Hierarchical Subdivision Surfaces)
+5. Metaballs
+
+Each of this has its own features and limitations. However all models will be
+converted into meshes when rendered, thus we will only look at them.
+
+**Polygonal surfaces are objects that can be described by a set of contiguous
+polygons. Due to special rendering tricks, these polygonal surfaces can be used
+to approximate also continuous ones.**
+
+**Definitions**:
+
+- A **face** is a polygon that describes a planar portion of the surface of an
+  object.
+- The sides of the polygons are called **edges**.
+- **Vertices** correspond to the starting and ending points of the edges.
+  - Two vertices create an edge
+  - Three faces intersect at a given vertex
+- If every edge is adjacent to exactly two faces, the object is called as a
+  **2-manyfold**,
+  - **Non-2-manyfold usually represent objects with holes or lamina-faces. We
+    will need special care to render these objects correctly**.
+
+**Each face can be reduced to a set of triangles that share some edges**. A set
+of **adjacent triangles is called a mesh**. **Meshes are encoded as a set of
+vertices**. The **rendering engine uses such vertices to determine the endpoints
+of the triangles that compose the mesh**.
+
+**Several types of mesh encoding** have been defined, however only two of them
+are standard in Vulkan: **triangle lists and strips**.
+
+> OpenGL supported also triangle fans, however it is optional in Vulkan.
+
+- **Triangle lists**: encode **each triangle as a set of three different
+  coordinates**. They do not reuse any vertex, leading to duplicated vertices.
+  To encode $N$ triangles they need $3N$ vertices.
+- **Triangle strips**: encode a **set of adjacent triangles that define a
+  band-like surface**. The encoding begins by considering the first two
+  vertices, then each new vertex is connected to the previous two. To encode $N$
+  triangles we need just $N+2$ triangles.
+
+There are however **circumstances where triangle strips cannot be used even if
+the topology would seem appropriate: vertices are defined by more than their
+position**. This means that is is possible for two vertices to be different even
+if they have the same position.
+
+Many primitive objects cannot be encoded using a single triangle strip.
+**Indexed primitives is a way to allow us to reduce the memory usage even
+further**.
+
+Indexed primitives are defined by **two arrays**:
+
+1. The **vertex array** contains the definitions of the different vertices
+2. The triangles are specified in an indirect way using the **index array**, an
+   **array of indices of the vertex array**.
+
+To save even more space we can use an **indexed triangle strip**. Vulkan also
+provides some optimizations for restarting strips using negative indexes.
+
+### Wireframes
+
+Sometimes it is useful to display only the edges of objects, this is called a
+wireframe meshes. The two main types of wireframe meshes: line lists and line
+strips. These works just like the triangle equivalent. Wireframe primitives can
+also be indexed.
+
+**Vulkan allows us to draw standard objects using only the contour of their
+triangles**.
+
+## Pipelines
+
+**In order to transform a set of data representing meshes to an image on screen,
+a sequence of operations need to be performed. This sequence is called a
+pipeline**.
+
+In vulkan and in CG in general, the process of creating an image on screen
+starting from the primitive description is **accomplished through a set of steps
+that can be organized as a pipeline. Each step in the pipeline can be either
+fixed and defined by the system or programmed by the user using programs called
+shaders**.
+
+There are **different types of pipelines**, with different purposes. The latest
+vulkan spec defined 4 types of pipelines:
+
+1. Graphic pipeline
+2. Ray-traced pipeline
+3. Mesh shading pipeline
+4. Compute pipeline
