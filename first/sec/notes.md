@@ -488,3 +488,88 @@ Intuitively, the **min-entropy is a uniform distribution where the probability
 of each outcome is** $\max_i p_i$. This means that **guessing the most common
 outcome of $\mathcal{X}$ is at least as hard as guessing a
 $H_\infty(\mathcal{X})$ bit long string**.
+
+## Authentication
+
+An important distinction is that **between identification and authentication**:
+
+1. In **identification an entity declares an identifier**
+2. In **authentications an entity provides proof that verifies its identity**
+
+Authentication can be **unidirectional or bidirectional** and can happen between
+any entity. **Authentication is subdivided in 3 factors**:
+
+1. Something that the entity knows (**to know**)
+2. Something that the entity has (**to have**)
+3. Something that the entity is (**to be**)
+
+**Multi-factor authentication uses two or three of these factors**.
+
+### To-know factors (passwords and pins)
+
+**Advantages**:
+
+- **Low cost**
+- **Ease of deployment**
+- **Low technical barrier**
+
+Note: this advantages are **mainly for the implementer** of the authentication
+method and not the user.
+
+| Disadvantages (passwords can be:) | Countermeasures (enforce passwords that) |
+| --------------------------------- | ---------------------------------------- |
+| Stolen/snooped                    | Change/expire                            |
+| Guessed                           | Are long and have rich character sets    |
+| Cracked (enumerated)              | Are not related to the user              |
+
+These **countermeasures are costs because humans are not machines**: we are
+unable to keep secrets and have trouble remembering arbitrary strings for a long
+time. This means that **we can't apply all the countermeasures, we need to
+choose based on the most likely attack we want to defend**.
+
+| Countermeasure   | Snooping       | Cracking       | Guessing       |
+| ---------------- | -------------- | -------------- | -------------- |
+| Complexity       | Not effective  | Very effective | Effective      |
+| Change           | Very effective | Effective      | Effective      |
+| Relation to user | Not effective  | Not effective  | Very effective |
+
+The **best countermeasure is user education**: the human is the weak link. We
+need to enforce strong passwords, enforce expiration policies, use password
+meters to balance usability.
+
+Authentication is about sharing a secret. **How do we minimize the risk that
+secrets get stolen?**
+
+1. Use **mutual authentication** if possible
+2. **Challenge-response scheme**: we **find a problem that can be solved only if
+   you have the secret and only communicate the solution to said problem**.
+
+   A sketch of a challenge-response scheme is the following:
+
+   ```txt
+   +----------+                                               +----------+
+   | Entity 1 | Authenticate(id)                              | Entity 2 |
+   |          | --------------------------------------------> |          |
+   |          |               hash(random1, secret) + random1 |          |
+   |          | <-------------------------------------------- |          |
+   |          | hash(random1, secret)                         |          |
+   |          | --------------------------------------------> |          |
+   |          | hash(random1, secret, random2) + random2      |          |
+   |          | --------------------------------------------> |          |
+   |          |                hash(random1, secret, random2) |          |
+   |          | <-------------------------------------------- |          |
+   +----------+                                               +----------+
+   ```
+
+   Random data is used to avoid replay attacks
+
+On the entity part, we need a way to **safely store passwords without
+compromising confidentiality**:
+
+1. **Cryptographic protection**: never store passwords in clear (**hashing +
+   salting**)
+2. **Access control** policies
+3. **Never disclose secrets in password-recovery schemes**
+
+We also need to be careful of the **caching problem**: information could be held
+in intermediate storage locations.
