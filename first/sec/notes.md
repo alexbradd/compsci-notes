@@ -566,10 +566,80 @@ secrets get stolen?**
 On the entity part, we need a way to **safely store passwords without
 compromising confidentiality**:
 
-1. **Cryptographic protection**: never store passwords in clear (**hashing +
+1. **Cryptographic protection**: never store passwords in clear ( **hashing +
    salting**)
 2. **Access control** policies
 3. **Never disclose secrets in password-recovery schemes**
 
 We also need to be careful of the **caching problem**: information could be held
 in intermediate storage locations.
+
+### To have factors (tokens, smart cards and smartphones)
+
+The **user must prove that it possesses something**.
+
+**Advantages**:
+
+- **Human factor** (less likely to hand out a key)
+- **Relatively low cost**
+- **Good level of security**
+
+| Disadvantages            | Countermeasures        |
+| ------------------------ | ---------------------- |
+| Hard to deploy correctly | None                   |
+| Can be lost or stolen    | Use with second factor |
+
+This factor **works best in conjunction with another factor**.
+
+Some classic technologies that implement this factor are:
+
+- One time password generators: they are simple machines that contain a secret
+  key that computes a MAC of a counter synchronized with the host.
+- Smart cards: a CPU with non-volatile ram containing a private key. The smart
+  card authenticates itself with a challenge-response. It uses the private key
+  to sign the challenge. Should be tamper-proof.
+- TOTP: software that implements the same functionality as password
+  authenticators (see Google Authenticator). Only big difference: TOTPs run on
+  general purpose systems, so they are more difficult to secure
+
+**It is really important that the key the device holds never leaves the device.
+If the key leaves it, the factor degrades to a "to know" factor**.
+
+Note: **not all devices are equally strong**. Each has its own weaknesses (e.g.
+see SIM-swapping for SMS 2FA).
+
+### To be factor (biometric)
+
+**User must prove that it has some specific characteristics**.
+
+**Advantages**:
+
+- **High level of security**
+- **Requires no extra hardware to carry around**
+
+| Disadvantages                         | Countermeasures                  |
+| ------------------------------------- | -------------------------------- |
+| Hard to deploy                        | None                             |
+| Probabilistic matching                | None                             |
+| Invasive measurements                 | None                             |
+| Can be cloned                         | None                             |
+| Biological characteristics can change | Frequent re-measurement          |
+| Privacy sensitivity                   | Secure the enrollment process    |
+| Users with disabilities               | Use a (maybe weaker) alternative |
+
+### Single Sign On
+
+SSO **tries to solve the problem of managing and remembering multiple
+passwords**. The solution is to have **only 1 identity** (therefore 1 password)
+with possibly 2FA **on a single trusted host**. This means that **hosts
+authenticate only on this trusted host, other hosts can ask the trusted element
+if the user is authenticated**.
+
+Examples of this flow are Shibboleth (AunicaLogin) and **OAuth**.
+
+The problem of the method if the **reliance on a single point of trust**: if it
+is compromised, the whole thing comes crashing. Moreover, **the password reset
+scheme must be bullet proof since the email becomes a trusted element**.
+
+SSO is a complex flow that is difficult to get right. Libraries exists, but they
+can contain bugs.
