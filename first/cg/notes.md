@@ -1082,3 +1082,168 @@ vulkan spec defined 4 types of pipelines:
 2. Ray-traced pipeline
 3. Mesh shading pipeline
 4. Compute pipeline
+
+**In vulkan, shaders are defined by SPIR-V code blocks**. SPIR stands for
+Standard Portable Intermediate Representation and it is a **binary format for
+specifying instructions that a GPU can run in a device independent way**. **Each
+driver will then compile SPIR-V into device-specific instructions. Shaders are
+written in high-level languages such as GLSL and compiled into SPIR-V**.
+
+### Rendering
+
+To obtain realistic images with filled 3D primitives, **light reflection should
+be correctly emulated**. Rendering reproduces the effects of light **by defining
+the light sources of the virtual environment, and the surface properties of the
+objects populating the 3D world**. The light sources are elements of the scene
+from which illumination starts. The photons emitted by the light sources bounce
+on the objects, and some of them reach the viewpoint (the camera). Rendering
+computes the quantity and the color of such photons. **The quantity of light
+reflected depends on the input direction, and can bounce in many different
+output directions**.
+
+Definitions:
+
+- The **energy** measures the total light emitted by a surface in all the
+  directions during a time interval.
+- The **power** is the instantaneous light energy (emitted by a surface in all
+  the directions in a given time instant).
+- The **irradiance** is the fraction of power emitted by a point of a surface
+  (in a given time instant). It is measured in $W / m^2$. It will be denoted by
+  letter $E$.
+- **Radiance** measures the energy emitted in a given time instant from a point
+  of a surface in a given direction. It is measured in $W / (m^2 \cdot sr)$
+  (where $sr$ are steradians). It will be denoted by letter $L$.
+
+Readings of most light sensors (including the human eyes and cameras) are
+proportional to the radiance.
+
+**Rendering determines the radiance received in each point of the projection
+plane (i.e each pixel of the screen) according to the direction of the
+corresponding projection ray**.
+
+**The surface properties of one object can be encoded in a function called the
+Bidirectional Reflectance Distribution Function (BRDF)**. The function **inputs
+are the incoming $\omega_i$ and outgoing $\omega_r$ directions**. They are both
+unit vectors. The function **returns how much irradiance from the incoming angle
+is reflected to an outgoing angle**. It is measured in $sr^{-1}$.
+
+A good BRDF should satisfy **two main properties**:
+
+1. **Reciprocity**: if the ingoing and outgoing directions are swapped, the
+   value of the function does not change
+2. **Energy conservation**: the BRDF cannot increase the total irradiance that
+   leaves a point on a surface
+
+   $$
+    \int f_r(\omega_i, \omega_r)\cos \theta_r d\omega_r \leq 1
+   $$
+
+The BRDF allows **relating together the irradiance in all the directions for all
+the points of the objects composing a scene. This relation is called the
+rendering equation**:
+
+$$
+  L(x, \omega_r) = L_e (x, \omega_r) +
+    \int L(y, \vec{yx})f_r(x, \vec{yx}, \omega_r)G(x,y)V(x,y)dy
+$$
+
+**Terms**:
+
+- $L_e$ characterizes **light emission** from a point in some direction
+- The **integral** accounts for the **light that hits the considered point $x$
+  from all the points $y$ of the surfaces of all the objects and lights in the
+  scene**.
+
+  It also includes points of the same objects to allow the computations of
+  effects such as self-shadowing/self-reflections.
+
+  - $L$ is the **radiance** emitted toward point $x$
+  - $f_r$ is the **BRDF** of the material of the object at point $x$
+  - $G$ encodes the **geometric relation** between $x$ and $y$. It considers
+    both the relative orientation and the distance of the two points.
+
+    $$
+      G(x,y) = \frac{\cos\theta_c \cos\theta_y}{r_{xy}^2}
+    $$
+
+  - $V$ considers the **visibility** between point $x$ and $y$. This term is 1
+    if the two points can see each other, 0 otherwise. This terms allow for the
+    computation of shadows.
+
+$L$ is our unknown in the equation, meaning that **it is an integral equation of
+the second kind**.
+
+The equation is **repeated for every wavelength** $\lambda$ of the light:
+usually this means that the equation is repeated for the three different RGB
+channels.
+
+This rendering equation can be **extended to simulate other effects such as
+transparency or other mediums like gasses**.
+
+#### Rendering equation extensions: transparency
+
+The first extension is to consider transmitted lights: this is **done by
+defining the BTDF**: Bidirectional Transmittance Distribution Function. **It has
+a similar definition to the BRDF, but it is used in the opposite direction**:
+
+$$
+  f_t(\theta_i, \phi_i, \theta_r, \phi_r) = f_t(\omega_i, \omega_r)
+$$
+
+Since usually the angles for the BRDF and BTDF do not overlap, they are
+**included in a single function called BSDF**: Bidirectional Scattering
+Distribution Function.
+
+The rendering equation can be updated as such:
+
+$$
+  L(x, \omega_r) = L_e (x, \omega_r) +
+    \int L(y, \vec{yx})f_r(x, \vec{yx}, \omega_r)G(x,y)V(x,y)dy +
+    \int L(y, \vec{yx'})f_t(x', \vec{yx'}, \omega_r)G(x',y)V(x',y)dy
+$$
+
+#### Rendering equation extensions: transparency
+
+A more complex function, called **BSSRDF** (Bidirectional surface reflectance
+distribution function) must be used. **The function has an extra parameter $x'$
+that considers the point on the surface from which lights enters at angle
+$\omega_i$**. The rendering equation now **integrates over all the points of an
+object to compute the quantity of lights that exits from a give position**.
+
+$$
+  L(x, \omega_r) = L_e (x, \omega_r) +
+    \iint L(y, \vec{yx'})f_{ss}(x', \vec{yx'}, \omega_r)G(x',y)V(x',y)dx'dy
+$$
+
+#### Solving the rendering equations
+
+The rendering equations are **very hard to solve**, and generally require
+complex discretization techniques. We will see very **simple approximations** to
+the rendering equation that are capable of providing good results with
+reasonable complexity. Some of them, are supported in Vulkan with specific types
+of pipelines.
+
+Several approximations to BRDF functions have been proposed in the literature:
+some of them can provide good results during rendering, even if they do not
+satisfy the two previous properties. In the following lessons, we will present
+several common BRDF functions and how can they be implemented using Shaders.
+Databases that provides measured BRDF exist: see for example the MERL database.
+
+To characterize different approximations to the rendering equation, **light
+sources can be divided into direct and indirect**.
+
+- **Direct** sources represent **lights** coming from specific positions and
+  directions
+- **Indirect** sources consider **all the other types of illumination**, mainly
+  caused by **light bounces** and reflections among the surfaces.
+
+With only direct sources, images become very dark and do not seem very
+realistic: if a point is not hit by any light, it appears black. Projected
+shadows are created by the occlusion of direct light sources. **Indirect
+lighting** adds realism, by making elements in directions not directly hit by
+sources still visible thanks to light bounces, but it **requires a lot of
+computation**, and it is not easy to implement in real time.
+
+In most of the cases, **light contribution for single points and directions is
+computed off-line and stored in some image-based structure, which is later used
+to approximate indirect lighting in real-time rendering**.
