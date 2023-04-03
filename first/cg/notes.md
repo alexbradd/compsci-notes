@@ -1079,7 +1079,7 @@ There are **different types of pipelines**, with different purposes. The latest
 vulkan spec defined 4 types of pipelines:
 
 1. Graphic pipeline
-2. Ray-traced pipeline
+2. Ray traced pipeline
 3. Mesh shading pipeline
 4. Compute pipeline
 
@@ -1247,3 +1247,296 @@ computation**, and it is not easy to implement in real time.
 In most of the cases, **light contribution for single points and directions is
 computed off-line and stored in some image-based structure, which is later used
 to approximate indirect lighting in real-time rendering**.
+
+### Scanline rendering
+
+It is the **simplest approximation of the rendering equation**. It **considers
+light sources and objects separately**: the scene has a set of objects and a set
+of light sources. **No projected shadows or indirect lighting are produced**.
+
+**Lights** are characterized by having **only the emission** term in the
+rendering equation (it can have arbitrary position and direction).
+
+Points that define the **vertices** of the triangles belonging to a mesh are
+**projected** on screen, finding the corresponding hardware coordinates. All
+**pixels belonging to a triangle are then enumerated**. **Each pixel becomes a
+point for which the rendering equation is solved**.
+
+**Objects only reflect lights**. They **might emit** some light, but **they
+cannot illuminate other objects**. **Inter-reflection between objects is not
+considered**, thus the integral becomes a summation over all the light sources.
+The **geometric term is generally included in the BRDF**, obtaining:
+
+$$
+  L(x, \omega_r) = L_e(x, \omega_r) +
+    \sum_l L_e (l, \vec{lx}) f_r (x, \vec{lx}, \omega_r)
+$$
+
+**Visibility is considered only with respect to the observer, by means of the
+z-buffer** algorithm that will presented in the future.
+
+Since term **$V()$ of the rendering equation is not considered for lights,
+scan-line rendering does not generate projected shadows**. **Neither it does
+include light emitted by other objects in the scene**, and thus it does not
+produce reflection, refraction or indirect illumination. However, **it considers
+different types of BDRF functions that can describe the materials composing the
+objects in a detailed way**.
+
+#### The "graphics" pipeline
+
+Vulkan supports **scan-line rendering**, with a specific type of pipeline,
+called the **"graphics" pipeline**.
+
+Up to **five different types of shaders can be used** to define the functions of
+the programmable stages of the pipeline. Only the **initial and final stages are
+generally required**. This means that **in most of the cases, only vertex and
+fragment shaders are required to generate an image**. If any optional stage is
+present, the pipeline ignores such shaders and continues processing.
+
+Stages of the pipeline:
+
+1. **Input assembler**: whenever a draw command is issued, **Vulkan creates the
+   vertices by combining all parameters that describe them**. This stage also
+   **decides if we are drawing point, lines or triangles, using lists or other
+   strip-based approaches**.
+2. **Vertex shader**: vertex shaders **perform operations on each vertex**:
+
+   - Transform local coordinates to clipping coordinates
+   - Compute colors and other values associated to vertices
+
+   These values can be used later the pipeline.
+
+3. **Tessellation shader**: tessellation is used to **increase the resolution of
+   an object**: for example a sphere can be approximated by few triangles when
+   distant from the viewer, or with a very high number of subdivisions when seen
+   from a close distance.
+4. **Geometry shader**: it can **remove or add primitives to the stream**,
+   starting from the previously generated elements. In principle, it could
+   perform the same tasks as Tessellation stages. However, due to its
+   generality, it would result in more complexity.
+5. **Rasterization**: it **determines the fragments in the frame-buffer occupied
+   by each primitives**. They are called fragments and not pixels, since a
+   single pixel on screen can be computed by merging several fragments to
+   increase the quality of the final image. In these stages, transformation of
+   clipping coordinates into normalized screen coordinates is also performed.
+   **Fragments are usually generated per line**, left to right, with respect to
+   the corresponding triangle, from here comes the name of the method.
+6. **Fragment shader**: determines the final color of each fragment. In this
+   stage physically based models or other artistic techniques are used to
+   produce either realistic or effective images.
+7. Finally, the **computed colors might either replace or be merged with the
+   ones already present in the same position**. This can be used to implement
+   **transparency, or other blending effects**.
+
+We will not cover tessellation and geometry shaders.
+
+#### Ray casting
+
+Ray casting is an **extension of scan-line rendering** that **computes the
+visibility function for all the (triangle point, scene light) tuples in the
+scene**.
+
+$$
+  L(x, \omega_r) = L_e(x, \omega_r) +
+    \sum_l L_e (l, \vec{lx}) f_r (x, \vec{lx}, \omega_r) V(x,l)
+$$
+
+Ray casting **allows including projected shadows**. The **visibility function is
+computed by casting a ray that connects the considered points with each light
+source**: if the ray intersects an object, the light is occluded and its effect
+is not considered in the rendering equation.
+
+**One of the typical techniques to test if a light is occluded in real-time is
+using shadow maps**: an image rendered from the position of the light source,
+where each pixel represent the distance of the point from the light.
+
+Ray casting is **generally implemented using the graphics pipeline, by executing
+several passes to compute the shadow maps**, and to use them in determining the
+final colors.
+
+### Ray tracing
+
+Ray tracing **considers for each pixel also the light emitted by other objects
+in two specific directions: the mirror reflection and the refraction** (for
+transparent objects).
+
+For **reflection**, this **direction corresponds to the mirror direction with
+respect to the normal vector of the surface in the considered point**. This
+allows the reproduction of realistic perfect reflections. In particular, for
+each point $x$, the algorithm looks for the objects in direction $\vec{rx}$, the
+one that has the same outgoing angle with respect to the normal vector as the
+incoming one.
+
+For **refraction**, the **physical properties of objects are emulated by
+considering the index of refraction of materials to determine the angle at which
+the refraction ray will be cast**. In this case, **for each point $x$ the
+algorithm searches for the objects in direction $\vec{tx}$, calculating $x’$
+using the different refraction indices of the solids at the two sides of the
+surface**.
+
+The algorithm **relies on a ray casting procedure that computes the colors seen
+from a given $(x, \omega)$ tuple**. The procedure **searches for the closest
+object to point $y$ in the given direction $\omega$ and applies the approximated
+rendering equation to compute $L(y, \omega)$**.
+
+The algorithm **starts by considering each point on the projection plane** (i.e.
+each pixel of the generated image) **in the direction of the projection ray**.
+It then executes the **ray-casting** procedure from it. For **handling the
+reflection and refraction part**, the **procedure is called recursively with
+different points and direction rays**. The **recursion is repeated up to a given
+number of bounces, called ray depth**.
+
+Vulkan and DirectX, both have a specific pipeline to support ray tracing in real
+time (provided that suitable GPUs are available).
+
+#### The ray tracing pipeline
+
+The ray tracing pipeline **creates images from pixels on screen: it is not
+driven by triangles and their corresponding vertices**. **For each fragment, a
+ray is cast into the scene and it is intersected with all the triangles of all
+the meshes in the 3D environment**. Only the intersection closer to the viewer
+is considered. **In order to compute its color, extra rays can be traced to
+accurately reproduce reflections and refraction** (or transparencies).
+
+**Determining the intersection with all the triangles in the scene is not a
+simple task**: without special care, it can have $\mathcal{O}(n^2)$ complexity
+in the number of triangles. In order to cope with this complexity, **special
+acceleration structures must be used**.
+
+The ray tracing pipeline requires **5 shaders**:
+
+1. `RayGen`: executed **for each fragment** of the image, **it must determine
+   the starting point and the direction of the corresponding ray in the scene**
+2. `Intersection`: implements **ray-triangle intersection**
+3. `Closest hit`: called on the point that is closer to the viewer, **computes
+   its color**. For achieving this, **it can recursively cast other rays**
+4. `Any hit`: **filters out intersections that should not be considered**
+5. `Miss`: **called if the ray does not hit any object**
+
+**The fixed part of the pipeline controls the acceleration structure traversal,
+and the determination of the closest hit**.
+
+The **pseudocode** of a ray tracing rendering algorithm can be the following:
+
+```txt
+for each pixel x on screen
+  r = cast_ray_from(x)
+  compute_color(r)
+
+function compute_color(r)
+  q = point_of_object_closest_to(r)
+  color = 0
+  for each light l in scene
+    if !occluded(l)
+      c += l.contribution_to(q)
+  c += calculate_reflection(r) # recursive call
+  c += calculate_refraction(r) # recursive call
+```
+
+The **number of traced rays potentially doubles at every step**. This can
+significantly increase the rendering times. Moreover, it requires computation of
+the closest intersection using the acceleration structure instead of the
+Z-buffer (which is more computation intensive).
+
+**Ray tracing allows including mirror reflection and transparency with
+refraction**: this can be used to realistically reproduce glass, fluid, shiny
+metals and many other objects. However, ray tracing **is not able to simulate
+indirect lighting or consider glossy reflections**, limiting the level of
+achievable realism.
+
+### Radiosity
+
+Radiosity proposes a **different simplification to the rendering equation**. In
+particular it **considers only materials that have a constant BRDF**. The
+unknowns of the rendering equations are thus reduced to one variable per point
+of object since reflections do not depend on the direction from which they are
+seen. This **unknown** is called the **radiosity of the object**.
+
+$$
+\begin{gathered}
+  f_r(x,\omega_i, \omega_r) = \rho_x \\
+  L(x) = L_e(x) + \rho_x \int L(y)G(x,y)V(x,y)dy
+\end{gathered}
+$$
+
+The **surfaces of objects are then split into patches, with one unknown per
+patch**. **Light sources are implemented as patches that emit radiosity**. The
+**rendering equation becomes a (large) system of linear equations that can be
+solved with an iterative technique**. We can write it as a matrix expression:
+
+$$
+\begin{aligned}
+  L(x) &= L_e(x) + \rho_x \int L(y)G(x,y)V(x,y)dy \quad\text{becomes}\\
+  L(x_i) &= L_e(x_i) + \rho_{x_i} \sum_{y_j} L(y_j)G(x_i,y_j)V(x_i,y_j) \\
+    &= L_e(x_i) + \sum_{y_j} L(y_j)R(x_i, y_j) \\
+  L = L_e + R \times L
+\end{aligned}
+$$
+
+The **solutions of the systems are then interpolated** to produce the view of
+the scene.
+
+**Pseudocode** for the algorithm can be:
+
+```txt
+dicretize_scene()   # very intensive
+R.compute()         # very intensive
+L = solve_system(R) # very intensive
+render_scene()      # can be done with either scan-line or ray tracing
+interpolate(L)
+```
+
+**Once the most intensive steps are done, the scene can be re-rendered quickly
+from any point of view**.
+
+Radiosity is **able to capture indirect illumination effects**. **Shadows are
+usually very poorly approximated** due to the size of the patches. **Mirror
+reflections and refractions cannot be considered directly**, since they depend
+on the direction from which the object is seen.
+
+### Montecarlo techniques
+
+**Photorealistic results can only be achieved by approximating the solution of
+the complete rendering equation**. Due to its complexity, **Montecarlo
+techniques are usually employed**: the **integral is computed by averaging
+several random points and directions chosen from the equation**.
+
+Many alternative approaches are possible: each advanced rendering engine
+exploits one of them.
+
+1. **Instead of sending a single ray in the mirror direction, a sampling of the
+   most probable output directions is considered**. A ray is thus traced for
+   each selected direction, and the radiance is computed using the BRDF of the
+   considered material.
+2. **Photon mapping emulates the movements of photons in the scene**,
+   considering bounces, focalizations and other advanced phenomenon such as
+   caustics.
+
+**Due to the randomness** that drives the techniques, Montecarlo based rendering
+algorithms tend to **produce noisy images**. This effect **can only be reduced
+by increasing the number of rays** and consequently the rendering time.
+
+### Mesh shader pipeline
+
+**Mesh shaders compute indexed triangle lists, returned as a set of vertices and
+groups of three indices for each triangle**. Vertices are computed in normalized
+screen coordinates, to simplify rasterization. **The number of vertices and
+triangles that a mesh shader can generate is limited**. For this reason each
+**object is divided in so called meshlets**: small patches of a mesh.
+
+The optional `Task` shader subdivides a larger mesh into smaller meshlets and
+controls the mesh shader for the creation of all the required patches.
+
+**The generated triangles lists is then fed into the rasterization pipeline**.
+
+### Compute pipeline
+
+The compute pipeline is **not for rendering images, but for performing GPGPU
+tasks**. The application provides a **single shader, the compute shader, that
+performs the desired computations**.
+
+Data is copied into buffers in GPU memory. **Compute shaders executions are
+identified by a (up to) tridimensional index**. **Using this index, the shader
+can refer to the data to find the partition on which it can work**.
+
+If you want more, follow the dedicated course (if available).
