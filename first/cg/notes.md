@@ -1540,3 +1540,194 @@ identified by a (up to) tridimensional index**. **Using this index, the shader
 can refer to the data to find the partition on which it can work**.
 
 If you want more, follow the dedicated course (if available).
+
+## GLSL
+
+Most of the BRDF functions, and light emission models, will be implemented in
+shaders written with the GLSL language. We have already seen how we can compile
+a shader from source to its SPIR-V intermediate format.
+
+GLSL is a C-like language, and it is very similar to C, C++, C#, JAVA,
+JavaScript and others.
+
+Shaders follow the classical convention of having global variables and functions
+in the main scope of the file. **The entry point of the shader can be defined in
+the code that calls it. However, it is generally the function `main()`**.
+
+As examples, here are vertex and fragment shaders that compute the Mandelbrot
+fractal.
+
+```glsl
+// ==== Vertex shader ====
+#version 450 // minimum version supported by vulkan, it is required
+
+layout(set = 0, binding = 0) uniform
+UniformBufferObject {
+  mat4 worldMat;
+  mat4 vpMat;
+} ubo;
+
+layout(location = 0) in vec3 inPosition;
+layout(location = 0) out float real;
+layout(location = 1) out float img;
+
+// The main procedure
+void main() {
+  gl_Position = ubo.vpMat * ubo.worldMat * vec4(inPosition, 1.0);
+  real = inPosition.x * 2.5;
+  img = inPosition.y * 2.5;
+}
+
+// ==== Fragment shader ====
+#version 450
+
+// Variables can be preceded with different qualifiers. Most of them are
+// required to interface with the pipeline
+layout(location = 0) in float real;
+layout(location = 1) in float img;
+
+layout(location = 0) out vec4 outColor;
+
+layout(set = 0, binding = 1) uniform
+  GlobalUniformBufferObject {
+  float time;
+} gubo;
+
+void main() {
+  // Variables are typed and follow the C naming convention
+  // Variables are local to the block they are defined in
+  float m_real = 0.0f,
+        m_img = 0.0f,
+        temp;
+  int i;
+
+  // Control structures work as in C
+  for(i = 0; i < 16; i++) {
+    if(m_real * m_real + m_img * m_img > 4.0) {
+      break;
+    }
+    temp = m_real * m_real - m_img * m_img + real;
+    m_img = 2.0 * m_real * m_img + img;
+    m_real = temp;
+  }
+  outColor =
+    vec4((float(i % 5) + sin(gubo.time*6.28)) / 5.0, float(i % 10) / 10.0, float(i) / 15.0, 1.0);
+}
+```
+
+GLSL supports a number of types, including scalars (the usual), vectors and
+matrices (type name is identical to GLM, they by default are floats).
+
+**Vectors can be accessed using the "dot" syntax with aliases** (e.g.
+`x`/`r`/`s`, `y`/`g`/`t`, `z`/`b`/`p`, `w`/`a`/`q` based on the vector meaning).
+**More than one letter can be used to refer to more elements and shuffle them
+around** (e.g. `light.zxy` or `light.rb`).
+
+Matrix types are the most commonly used (`2x2`, `3x3` and `4x4`). **We can
+address the column and elements of the matrices using C-like array syntax**.
+
+Matrix and vector types can be constructed by using a constructor with the name
+of the type, with arguments the elements of the vector/matrix. Larger vectors
+can be composed by adding elements to shorter ones (e.g. `vec4(my_vec3, 1.0)`).
+The same "constructor" syntax can be used for explicit casting.
+
+Algebraic operations, including between vectors and matrices, is done using the
+conventional operators. The other common C operators are also defined.
+
+Functions are defined using the C syntax, invocation is the same. Many
+mathematical, trig and geometric functions are already defined.
+
+**Please note that control flow statements behave differently than on a CPU. The
+SIMD architecture always processes many elements at the same time and has some
+nasty implications**:
+
+- **Both the if and else branches are always executed**.
+- **In variable length loops, all executions are conditioned by the longest one
+  in the batch being run concurrently**.
+
+This is why **it is always a good idea to try to avoid loops and conditional
+statements as much as possible**.
+
+**Communication between the shaders and the pipeline occurs through global
+variables**:
+
+- **`in` and `out` variables** are used to** interface with the programmable**
+  or configurable part of the pipeline
+- Communication with the **fixed part of the pipeline occurs using predefined
+  global variables** (e.g. in a vertex shader, `gl_Position` is a `vec4`
+  variable that must be filled with the clipping coordinates of the
+  corresponding vertex)
+- **Communication between shader and the application occurs using special types
+  of external variables**
+  - The most common on are the **Uniform variable blocks**
+  - Each **block is similar to a C struct**
+
+## Final fixed part of the scan-line pipeline
+
+### Clipping
+
+Clipping is **usually performed after the projection transform but before
+normalization**. For this reason, the space in which it is performed is called
+**clipping coordinates**.
+
+If we use homogeneous coordinates, **we can identify a plane with a four
+component vector** $n = (n_x, n_y, n_z, d)$. In this way, **the plane equation
+becomes a scalar product between the homogeneous coordinates of the point and
+the vector representing the plane**.
+
+$$
+  n \cdot (x, y, z, 1)^T = n_x x + n_y y + n_z z + d = 0
+$$
+
+**A point is in one of the half-spaces defined by the plane depending on the
+sign of the scalar product**.
+
+**Since the clipping frustum is a convex solid, we can represent its volume by
+using intersection of the half-spaces** that delimit its six faces: **a point is
+inside the frustum if all 6 scalar products are positive**.
+
+When considering **triangles**, this problem becomes **more difficult**. The
+**distance** from a plane with normal $n_v$ is computed by using **the scalar
+product of the coordinates of the vertices with the normal vector**. We have a
+**trivial reject/accept for the side if the three distances are all
+negative/positive**. **In the case of a negative, the algorithm stops** (since
+it is outside the frustum), while **for accepts it moves on to checking the
+other sides**.
+
+If only **two points are outside**, then **two intersections between the
+triangle and plane are computed using interpolation**. The distance from from
+the plane is used as interpolation coefficients.
+
+If just **one point is outside**, **two intersections** on the segments that
+connect the point **are calculated**. In this case **two triangles are
+produced**.
+
+The algorithm continues **for each side until all triangles have been clipped or
+rejected**. **If new triangles have been generated, they are considered
+separately**.
+
+The algorithm is simple, but **it can produce a large number of triangles**
+since **triangles can double at every iteration**. This has also **implications
+on the data structure required to store the triangles**, since it must be able
+to accommodate a variable number of figures. Moreover, **computing the
+intersection is usually very complex, since it must take into account all the
+parameters assigned to vertices** which can be a lot (e.g. normal vectors,
+colors and UV coordinates).
+
+### Back-face culling
+
+Back-face culling can **exclude the faces that belong to the backside of a
+mesh** by **checking whether the triangle vertices are ordered clockwise or
+counterclockwise with respect to the view**. The **check can be performed either
+before the projection of the triangle or using the normalized screen
+coordinates** (Vulkan implements back-face culling in normalized screen
+coordinates).
+
+Let us suppose that **all triangles of a mesh are encoded using a consistent
+orientation**, for example clockwise. **Once projected on screen, front faces
+will still be ordered clockwise**, while back faces will be ordered in the
+opposite direction. The **orientation of the vertices of a triangle in
+normalized screen coordinates can be computed with a simple cross-product**: if
+the result vector is oriented toward the viewer (positive z component), then the
+vertices are ordered clockwise. Since only the sign of the z component is
+required, the test can be performed in a very efficient way.
