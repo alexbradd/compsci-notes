@@ -544,3 +544,143 @@ We can run INT into **three modes**:
    - Good: query is packet dependent, no pressure on collectors
    - Bad: impact on packet MTU (the switch will eat space into what is usable by
      the application), packets need to be modified
+
+## Datacenter load balancing
+
+### Layer 3 load balancing
+
+Many distributed applications run in a datacenter, these generate traffic within
+the datacenter with very variable characteristics. To best support distributed
+applications we need a high bisection bandwidth. Lots of paths available from
+one rack to the other, so **how do we best utilize network resources**? This is
+the goal of L3 load balancing. This is hard because flows come and go and we
+have a mix of short and long flows.
+
+A **simple technique** is to do **packet spraying**: we "spray" the packets to
+all the possible paths.
+
+- Pros: **traffic is well spread** (even with heavy flows)
+- Cons: **interacts very badly with TCP**:
+  - Packet reordering can trigger duplicated ACKs
+  - Sender will reduce the sending rate as it thinks packets are lost
+
+This solution is **simple but very bad**. We will see some better ones.
+
+#### Equal Cost Multi Path (ECMP)
+
+We use **per-flow load balancing**. This can be **implemented with a hash
+function**: `port.output = hash(packet.tuple)`; the tuple of fields used is
+switch-implementation-dependant.
+
+Basically **all packets belonging to a flow (i.e. packets that have the same
+tuple hash) are routed to the same path**.
+
+- Pros: **a flow follows a single path**
+- Cons:
+  - The **performance depends on traffic characteristics** (hash collisions)
+  - **No optimal load balancing** (on average it could be optimal)
+
+The main **problem** with ECMP is that it **is static and completely oblivious
+to link utilization**. More over, it **can cause long-term flow collisions due
+to hash collisions**. It has been proven that ECMP on average wastes 61% of the
+bisection bandwidth.
+
+#### Hedera
+
+It is a solution proposed to **improve and complement ECMP**. It is **built to
+work on top of a SDN network and tested with the OpenFlow protocol**.
+
+**Given a dynamic traffic matrix of flow demands, how do you find paths that
+maximize network bisection bandwidth?**
+
+> A traffic matrix is a two-dimensional matrix with its ij-th element ($t_{ij}$)
+> determining the amount of traffic sourcing from a node i and exiting node j
+
+Assuming we have OpenFlow switches and a centralized controller, we can
+**execute the following loop forever**:
+
+1. **Pull stats** from the switches and **detect large flows**
+2. **Compute the demands**
+3. **Compute the placement**
+4. **Place the flows**
+
+We **schedule only elephant flows since ECMP is enough to deal with shorter
+flows**.
+
+Flow rates are a poor indicator of flow demand: the network could be the
+bottleneck. **Hedera's approach to computing flow demands is assuming no
+bottleneck in the network, we compute each flow's demands by considering shares
+of sender and receiver flows**.
+
+For **placing flows**, we have **two policies**:
+
+1. **Global first-fit**: when a new flow is detected, we linearly search all
+   possible paths from source to a destination. We place the flow on the first
+   path whose component links can fit that flow.
+2. **Simulated annealing**: probabilistically search for good solutions that
+   maximize bisection bandwidth
+
+In **global first-fit a large flow can be rerouted upon detection and is
+essentially pinned to its reserved links. Simulated annealing, on the other
+hand, waits for the next scheduling tick and uses previously computed flow
+placements to optimize the current placement**.
+
+Problems with this approach:
+
+1. **Dynamic workloads can generate large-flow-turnover faster than the control
+   loop**, meaning the controller will be continuously chasing the traffic
+   matrix.
+2. **Can it scale to really large datacenters**?
+
+#### In-network load-balancing (HULA)
+
+If the problem is the centralized controller, **can we get rid of it and
+implement load balancing back in the switches (as ECMP was doing)?** This
+**makes sense because datacenter traffic is very bursty and upredictable**,
+meaning that there is not much time available for the control loop.
+
+The problem with ECMP is that it is static... **What if as a new flow arrives we
+assign it the least congested port? Why are we working per-flow and not
+per-packet**? Per-packet load balancing would be ideal but introduce
+packet-reordering which is bad for TCP; per-flow load balancing is fine but too
+coarse-grained to fully utilize the network.
+
+We can **divide a flow into flowlets: bursts of packets from a flow that are
+separated by large enough gaps. If the gap is large enough then it is possible
+to route the two flowlets to different paths without risking reordering**.
+
+Putting it all together we **obtain a congestion-aware load balancing solution
+with flowlet switching, built to work on P4 programmable switches**: HULA
+(Hop-by-hop Utilization-aware Load-balancing)! The challenges we face are:
+
+1. If we want to create a congestion-aware algorithm, how to keep track scalably
+   of all the possible paths?
+2. How to do this continuously (in a proactive manner)?
+3. How to implement such an algorithm given the constraints of programmable
+   switches?
+
+**Hula switches exchange probes to propagate path utilization** (allowing
+continuous monitoring of network status). **Each switch remembers only the best
+next hop, removing scalability/topology problems. We will use flowlets to split
+elephant flows into smaller chunks**.
+
+A HULA probe is a minimum-sized IP packet, including the HULA header:
+
+```txt
++---------------------------------+
+| Standard IP Header              |
++----------------+----------------+
+| HULA switch ID | HULA path util |
++----------------+----------------+
+```
+
+Some questions:
+
+1. What happens on **link failure**?
+   - **Switches update their table only considering probes they receive**. The
+     probes act as a sort of **heartbeat**.
+2. Shall we **run the probes more or less frequently**?
+   - **Frequent probes generate more overhead but provide better network
+     visibility**
+3. What’s the **right flowlet timeout**?
+   - **It depends on the network RTT**
