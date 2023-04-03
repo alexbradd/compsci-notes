@@ -643,3 +643,214 @@ scheme must be bullet proof since the email becomes a trusted element**.
 
 SSO is a complex flow that is difficult to get right. Libraries exists, but they
 can contain bugs.
+
+## x86 crash course
+
+### Architecture
+
+x86 assumes the Von Neumann architecture. It uses a little-endian endianness.
+The architecture has several registers, the most important are:
+
+1. General purpose:
+   - `EAX`, `EBX`, `ECX`, `EDX`
+   - `ESI`, `EDI` (source and destination for string op)
+   - `EBP` (base pointer)
+   - `ESP` (stack pointer)
+2. Instruction pointer `EIP`
+   - We do not have access to it directly. It can only be modified by control
+     instructions like `jmp`, `call`, and `ret`
+   - It can be read from the stack
+3. Program status and control: `EFLAGS`
+
+If we remove the `E` from the general purpose registers, we can access them in
+16-bit compatibility mode (lower half). Inside this half we can further split
+them into high and low by substituting the `X` with `H` and `L` respectively.
+
+The `EFLAGS` register is a 32-bits register of boolean flags. It contains flags
+such as:
+
+- Program status: overflow, sign, zero, auxiliary carry (BCD), parity, carry
+- Program control: direction flag (controls string instructions)
+- System: control operating-system operations
+
+All instructions work on: bytes, words (2 bytes), dwords (4 bytes) and qword (8
+bytes).
+
+### Assembly
+
+x86 assembly has two main syntaxes: intel (default on windows) and AT&T (default
+in most UNIX tools). Beware, the order of operands IS different. We will use the
+Intel syntax since it is more readable.
+
+In x86 instruction have variable length. They are formatted as such:
+
+1. Prefix + OPCODE: 1 to 3 bytes
+   - Note: the same instruction may have different OPCODES depending on how it
+     is called
+2. Operands
+
+Instructions:
+
+1. Data transfer:
+   - `mov dst src`: moves the value from a source to a destination:
+     - `mov eax, 4h`: moves a constant into `eax`
+     - `mov eax, ebx`: moves from register to register
+     - `mov eax, [ebx + 4h]`: moves from address in `ebx` + 4 to `eax` (we can
+       use arithmetic expressions into the indirect addressing block, e.g.
+       `[edx + ebx*4 + 8]`)
+     - Memory to memory is invalid
+   - `lea dst src`: like `mov`, but it stores the address, not the value. It
+     does not access memory.
+2. Integer arithmetic:
+
+   - `add dst src`: source can be any addressing type, while destination only
+     register and memory.
+   - `sub dst src`, `neg val`, `and`, `or`, `xor`, `not` work at the same way
+   - `mul src`: unsigned multiply (for signed we use `imul`). The implied
+     operands are based on the size of the source:
+
+     - `AL`, `AX`, `EAX` as first operand
+     - `AX`, `DX:AX`, `EDX:EAX` as destination
+
+     `R1:R2` mean that high bits will be in `R1` while the lower ones in `R2`.
+
+   - `div src`: computes the quotient and remainder. The implied operand is
+     `*DX:*AX`. The result is stored into `EAX`, the remainder into `EDX`.
+     Signed division is `idiv`.
+   - `cmp op1, op2`: sets the correct flags in `EFLAGS` after `op1 - op2`
+   - `test op1, op2`: sets the correct flags in `EFLAGS` after `op1 & op2`
+
+3. Control flow:
+   - `jmp addr`: jumps to the given address ore to an offset
+   - `j<cc>`: conditional jump. The condition is dictated by `cc` (e.g. `jz`,
+     `jlt`)
+   - `nop`: the OPCODE is `0x90`
+4. Interrupts and syscalls:
+   - `int val`: generate a software interrupt with number $[0; 255]$. These are
+     OS dependent (e.g. `80h` are Linux syscalls)
+   - `syscall`: used for calling syscalls on Linux 64 bit
+   - `sysenter`: the same thing as `syscall`, but for Windows
+
+### 64-bit extension (`AMD64` or `x86_64`)
+
+Mainly it added 8 new general purpose (`R8` to `R15`) registers and expanded the
+previous registers to 64 bit (they use the `R` prefix, e.g. `RAX`, `RBX`...).
+
+### Program layout
+
+We have two main binary formats:
+
+1. PE (Portable Executable): used by Windows
+2. ELF: common on other OSs (except MacOS)
+
+In both cases we are more interested in which way the executable is mapped into
+memory.
+
+In ELFs we have different sections (PEs have similar sections):
+
+- `.plt`: stubs for external linking
+- `.text`: executable instructions
+- `.rodata`: read-only data
+- `.data`: initialized data
+- `.bss`: uninitialized data. It is initialized with all 0s at startup
+- `.debug`: symbols for debugging
+- `.got`: global offset table
+
+```txt
+Low addresses (0x80000000)
++------------------+
+| Shared libraries |
++------------------+
+| .text            |
++------------------+
+| .bss             |
++------------------+
+| Heap             |
++------------------+
+|                  |
+|                  |
++------------------+
+| Stack            |
++------------------+
+| env              |
++------------------+
+| argv             |
++------------------+
+High addresses (0xbfffffff)
+```
+
+### Calling functions
+
+We can manipulate the stack pointer using the `push src` instruction (`val` is
+an immediate or register).
+
+```asm
+  push eax
+  ; equivalent to
+  sub esp, 4
+  mov DWORD PTR [esp], eax
+```
+
+The `pop dst` instruction does the opposite: loads int the destination a word
+off the top of the stack and moves `esp` accordingly.
+
+```asm
+  pop eax
+  ; equivalent to
+  mov eax, DWORD PTR [esp]
+  add esp, 4
+```
+
+To call a function, we use `call func`: it pushes to the stack the address of
+the next instruction and moves the `EIP` to the first instruction of the
+routine. `ret`, which does the exact opposite as `call` (i.e reads the pops the
+return address from the stack and updates the `EIP`). Calling a function,
+however, requires the following operations:
+
+- A stack frame is the area allocated to a function
+- `EBP` register is a pointer to the beginning of a function's frame
+- At the beginning of a function we need to:
+  - Save the old `EBP`
+  - Set `EBP` to the address of the function's frame
+  - The `EBP` can be used to access local variables (pushed on top of the stack)
+    or the function arguments (stored under the `EBP` and under the return
+    address)
+
+Calling functions requires that caller and callee agree on which registers are
+preserved, where arguments are stored and where the return value is stored
+(calling conventions). This is part of the ABI (Application Binary Interface).
+
+The default C calling convention (`_cdecl`) is as follows:
+
+- Arguments: passed through the stack, right to left
+- Cleanup: the caller removes the parameters from the stack after the called
+  function completes
+- Return: `EAX`
+- Caller-saved registers: `EAX`, `ECX`, `EDX` (the other are callee-saved)
+
+Microsoft's `_stdcall` convention is slightly different:
+
+- Arguments: as in `_cdecl`
+- Cleanup: the callee is responsible for clearing the parameters before
+  returning
+  - To do this, the functions needs to know the right number of parameters
+    passed. This means that this convention can only be used with fixed-length
+    arglist functions (e.g. not `printf`)
+- Return: as `_cdecl`
+- Caller-saved registers: as `_cdecl`
+
+Another convention is `_fastcall`:
+
+- Arguments: Up to 2 parameters passed via registers `ECX` and `EDX`, the others
+  are pushed to the stack as in the other
+- Rest is the same
+
+Linux's AMD64 convention (System V) works as follows:
+
+- Arguments: passed in registers `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`, the
+  subsequent ones are on the stack (ordered like in the other conventions)
+- Cleanup: done by caller
+- Callee-saved registers: `rbx`, `rsp`, `rbp`, `r12`, `r13`, `r14`, and `r15`
+- Caller-saved registers: `rax`, `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`, `r10`,
+  `r11`
+- Return value: `rax` (`rax:rdx` if 128 bits are needed)
