@@ -684,3 +684,138 @@ Some questions:
      visibility**
 3. What’s the **right flowlet timeout**?
    - **It depends on the network RTT**
+
+### Layer 4 load balancing
+
+In a traditional cloud load balancing architecture, we have different levels of
+load-balancing: Network (L3), Transport (L4) and Application (L5).
+Application-level load-balancing is usually tenant-written software, while
+network load-balancing is usually managed by the datacenter owner and is
+hardware-based. L4 is usually datacenter-owned but software implemented.
+
+Similarly to L3 load balancing, our goal is **finding a way to spread requests
+over multiple servers. We have three possible approaches**:
+
+1. Load balancer **terminates TCP and opens own connection to servers**
+   - Problem: **very intensive** since we have one connection for each external
+     connection and one for each internal server
+2. **NAT approach**: load balancer replaces service VIP with server’s actual IP
+   - Problem: we **force each stream to pass into software**
+3. **DSR** (Direct Server Return): **servers bind both the VIP and the dedicated
+   IP, load balancer replaces the destination MAC. Server sees the client IP and
+   responds directly, i.e. exiting packets do not pass through load balancing**.
+   - **Greater scalability**, particularly for asymmetric bandwidth
+
+What **policy** do we use to equally share resources to the servers?
+
+- **Round robin**: the load balancer has a counter, when a new request arrives,
+  assign it to the server indexed by the counter and increase the counter
+  - We **break-up flows**: requests may not fit into one packet and packets
+    belonging to the same request must hit the same instance
+  - **Processing request time may vary**: some server may be slower or some
+    requests are more complex
+
+Let us **focus on correctly spreading requests**. To tackle this issue **we must
+implement a notion of persistence** for load balancers: **packets belonging to
+the same flow are forwarded to the same server**; therefore we must guarantee
+packets belonging to the same TCP connections hit the same server even in the
+face of topological changes. We need a **uniform deterministic load-balancing
+function**:
+
+- Uniform: we need to spread loads across servers
+- Deterministic: we need to guarantee connection affinity
+
+Options:
+
+1. Keep **per-flow state** at the load balancer, a TCP/IP tuple identifies a
+   connection
+   - Stateful solution that might require a **lot of memory**
+2. Apply a **hash function** $h$ on the packet header. This allows us to map
+   arbitrary size data into data of fixed size.
+   - **Pros**: **zero state**, packets of the same flow will hit the same server
+     (not necessarily of the same user)
+   - **Cons**: **does not resist server-pool updates**
+3. **Consistent hashing**: **every server is responsible for the hashing space
+   until its predecessor**.
+   - **Removing servers might lead to imbalances**: a solution might be mapping
+     each server to multiple points on the circle. When adding a new node the
+     load will be balanced.
+   - On server addition, we still have a problem: **how do we know some of the
+     connections in the new server's range were pre-existing and shall be
+     forwarded to the previous server**? We would need to **reintroduce some
+     statefulness**.
+   - The above might not be enough: what if a **load balancer itself goes
+     down**? We might **replicate state** to different load balancers (increased
+     latency).
+
+#### Cheetah
+
+We want a stateless load-balancer, but we do not want all problems associated
+with consistent hashing.
+
+1. A **new request from a user hits the load balancer and a server is selected**
+2. On the **way back, a cookie is inserted** in the reply with the originating
+   server ID
+3. **New packets of the same flow need to just insert the cookie**
+
+To remove the possibility of DoS a server by forging packets **we can encrypt
+the server ID by XORing the server ID with a secret hash of the connection ID**.
+
+As a **flow-assigning strategy we can implement each strategy** (even
+round-robin, although it not always the best option). We can **also implement
+DSR**, but we **need to change the server's network stack** to compute the
+cookie. Cheetah **does not require changes to the client side** since we can use
+**standard TCP features** to store the cookie (timestamp echo).
+
+#### Fastly's solution (faild)
+
+This is a solution for the edge. **Requests enter a specific network through
+Points of Presence** (PoPs); **requests that cannot be fulfilled by a PoP are
+routed through an owned backbone network to a datacenter**. **PoPs**, then,
+become **small datacenters**: this means that they need to be
+
+1. High performance
+2. Do not be a single point of failure
+3. Absorb DDoS attacks
+4. Do not cause service disruption on maintenance
+
+We need a load balancing architecture which is:
+
+- Efficient: no dedicated hardware and no much space available
+- Resilient: anything that maintains state is easy to DDoS
+- Graceful: ability to change services without disrupting flows
+
+`faild` **maps the VIP to a static set of "virtual" next hops** (to avoid ECMP
+rehashing). The **forwarding is controlled using the ARP table**; **on drain we
+update the affected IPs and balance the virtual hops across the available
+servers**. This is just consistent hashing with extra steps, however **since we
+are playing with fake MACS we can**:
+
+- Keep a **mapping history**:
+  - `xx:xx:xx:xx:a:b`: `a` is the ID of the current host, `b` is the ID of the
+    previous host.
+  - Keeping only previous and current target conveys enough information to down
+    to the host
+
+**Each host can inspect the destination MAC of the packet and execute the
+following algorithm to decide what to do with the packet**:
+
+```txt
+  ┌──────────────────────┐      True
+  │ current == previous? │━━━━━━━━━━━━━━━┓
+  └──────────────────────┘               ┃
+            ↓ False                      ▼
+    ┌────────────────┐   True     ┌────────────────┐
+    │ is SYN packet? │──────────► │    Process     │
+    └────────────────┘            └────────────────┘
+            ↓ False                      ▲
+   ┌──────────────────┐      True        ┃
+   │ Is local socket? │━━━━━━━━━━━━━━━━━━┛
+   └──────────────────┘
+            ↓ False
+         Redirect
+```
+
+This effectively means that **packets filtered through the host are only
+accepted if they belong to a new connection, or if they match a local TCP
+socket**.
