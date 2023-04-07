@@ -854,3 +854,126 @@ Linux's AMD64 convention (System V) works as follows:
 - Caller-saved registers: `rax`, `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`, `r10`,
   `r11`
 - Return value: `rax` (`rax:rdx` if 128 bits are needed)
+
+## Access control
+
+Access control is binary decision: we are allowed or not. At scale, however, we
+cannot enumerate all possible answers, we need **rules**. So we need to
+establish how we write these rules, how we express them in practice and how do
+we enforce them.
+
+The **reference monitor is the agent that enforces the control policies**. All
+modern kernels have one implementation. The reference monitor needs to be :
+
+1. **Tamper proof**
+2. **Un-bypassable**
+3. **Small enough to be verified/tested**
+
+Access control encompasses **both authentication and authorization**:
+
+1. **Authentication**: the reference monitor **needs to verify the identity of
+   the principal (user) making an access request**
+   - The user enters username and password. The login process creates a process
+     that runs with access rights equal to those of the user
+2. **Authorization**: the reference monitor **decides whether access is granted
+   or denied**
+   - The reference monitor has to find and evaluate the security policy relevant
+     for the given request
+
+The above tasks are easy in centralized systems but non-trivial in distributed
+systems.
+
+To model the access methods, we use the **following concepts**:
+
+- **User**: a person
+- **Principal**: the user's identity (the name used in the system)
+- **Subject**: the entity making a request within the system
+- **Object**: what is being requested
+- **Access operations**: all the operations executable on the requested object
+
+### Discretionary access control
+
+Resources have a **owner that discretionarily decides its access privileges**.
+All common OSs and applications use DAC. The general model of DACs (**HRU
+model**) is the following:
+
+- We need the following entities:
+  - **Subjects** who can exercise privileges
+  - **Objects** on which privileges are exercised
+  - **Action** which can be exercised
+- **Protections state**: a triple $(S, O, A)$
+  - $A$: matrix with $S$ rows and $O$ columns
+  - $A[s,o]$: privileges of subject $s$ over $o$
+- **Basic operations**: create/destroy subject/object or add/remove permissions
+- **Transitions**: sequence of basic operations
+
+  - **Transitions need to be applied atomically**: every steps is executed iff
+    the previous succeed and if one fails they need to be rolled back
+  - **Given an initial protection state and set of transitions, is there any
+    sequence of transitions that leaks a certain right $r$ (for which the owner
+    is removed) into the access matrix? If not, the system is safe with respect
+    to right $r$.**
+
+    The problem is **undecidable**; it becomes **decidable only if we disallow
+    transitions**.
+
+In real world OSs, we do not have an access matrix (if there were one, it would
+be sparse) but more optimal representations:
+
+- **Authorization tables**: records non-null triples (typically used in DBMSs)
+- **Access Control Lists**: records by columns (for each object, we store the
+  list of subjects and authorizations)
+  - Efficient with per-object operations
+  - Most common case
+  - Some systems can use abbreviated ACLs
+  - Cannot have multiple owners
+- **Capability Lists**: records by row (for each subject, we store the list of
+  objects and authorizations)
+  - Efficient with per-subject operations
+  - Usually objects change and subjects stay
+  - Capabilities are optional in POSIX OSs
+
+Shortcomings of DACs:
+
+1. **Cannot prove safety**
+2. **Control access to objects but not to the data inside objects**
+   - Malicious user attacks
+   - Trojan horse attack: malicious program running with privileges of the user
+3. **Problems of scalability and management**
+   - Each user-owner can potentially compromise security of the system with
+     their own decisions
+
+### Mandatory Access Control
+
+**Privileges are set by a security administrator which defines a classifications
+of subjects (clearance) and of objects (sensitivity)**. The classification is
+composed of a **strictly ordered set of secrecy levels and a set of labels**.
+
+Classification is a **partial order relationship that defines a lattice**. The
+order is imposed by the **dominance relationship**:
+
+$$
+  \{C_1, L_1\} \geq \{C_2, L_2\} \iff C_1\geq C_2 \land L_2\seubseteq L_1
+$$
+
+This means that we can have **some combinations that are not comparable between
+each other**.
+
+The **Bell-LaPadula model** defines two rules:
+
+1. **No read-up**: a subject $s$ at a given secrecy level cannot read an object
+   $o$ at a higher secrecy level
+2. **No write-down**: A subject $s$ at a given secrecy level cannot write an
+   object at a lower secrecy level
+3. (For DACs): use of an access matrix to specify the discretionary access
+   control
+
+If we add the **"tranquility property"**, i.e the fact that the secrecy level of
+objects cannot change dynamically, **we have a secure system where information
+monotonically flows towards higher secrecy levels**. To make it possible for
+higher-ups to write public information **we need trusted subjects who can
+declassify or sanitize documents**.
+
+The Bell-LaPadula model **does not address integrity**, we need **another model
+such as the Biba model (basically just inverts the rules of the
+Bell-LaPadula)**.
