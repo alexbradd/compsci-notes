@@ -1731,3 +1731,237 @@ normalized screen coordinates can be computed with a simple cross-product**: if
 the result vector is oriented toward the viewer (positive z component), then the
 vertices are ordered clockwise. Since only the sign of the z component is
 required, the test can be performed in a very efficient way.
+
+Back-face culling **can improve the performances of an application, however
+there are some potential issues** that can arise:
+
+1. There are **transforms that change the ordering of the vertices** (i.e.
+   mirroring)
+2. Not all software that produces 3D assets use the same **convention for front
+   faces**
+   - **This and (1) can be solved by allowing a way to specify the order**
+     (clockwise or counter-clockwise)
+3. If a **world matrix includes a scaling component with an odd number of
+   negative coefficients** (either one or all three), the **acceptance test must
+   be inverted**
+4. Back-face culling **cannot be always applied**, for example in non 2-manyfold
+   objects
+5. **Transparent objects** needs their back faces to be drawn
+
+### Depth testing (z-buffer)
+
+The simplest method to order the visibility of objects is technique called
+**"the painter's algorithm": primitives are drawn in reverse order with respect
+to the distance from the projection plane**. In this way, objects closer to the
+view cover the ones further apart. There are **cases in which a correct order
+cannot be determined** and algorithm cannot be applied.
+
+The **z-buffer** method **orders the primitives at the pixel level**. It
+**requires a special memory area that stores additional information for every
+pixel** on the screen, which is called the **z-buffer** or the depth-buffer.
+
+The algorithm **draws all the primitives** in the scene and **tests whether to
+draw their corresponding pixels on screen**. **For each pixel, both the color
+and the distance from the observer are computed**. The **z-buffer stores the
+distance from the observer** (i.e. the normalized screen z coordinate) for each
+pixel on the screen. **When a new pixel is written, its distance from the
+observer is compared against the value stored in the z-buffer**: the **new pixel
+is written** on screen **if its distance is less than the one in the z-buffer**;
+the value in the **z-buffer is also updated** with the new distance. If instead
+the **distance** of the new pixel is **greater than the value stored in the
+z-buffer**, the new **pixel is discarded** (since it corresponds to an object
+behind the one already shown).
+
+The z-buffering technique is very **simple, but it requires an extra memory area
+that can store the distance information for all the pixels**: **in Vulkan**,
+this memory area **must be created by the programmer**, making the use of
+z-buffer more complex than in other environments. Moreover, **it requires the
+generation of all the pixels of all the primitives in the scene, even if they
+are completely covered by other objects**.
+
+**The worst issue is the numerical precision: the largest part of the $[0,1]$
+range of $z_s$ is used for the points that are very close to the projection
+plane**. This means that **we need sufficient precision to store the depth
+information for distances that are further away**. Otherwise a problem known as
+"Z Fighting" may occur: when two almost co-planar figures are rendered, the
+final color is determined by the round-off of the two distances.
+
+Since $z_s$ **is normalized with respect to the position of the near and far
+planes**, these two parameters **cannot be set arbitrarily small and large**:
+they should always be appropriate for the considered scene.
+
+### Stencil buffer
+
+Stencil buffer is a **technique similar to z-buffer**, usually **adopted to
+prevent an application from drawing in some region of the screen**. Like
+z-buffering, it is **implemented by storing additional information for every
+pixel on the screen in a special memory area called the stencil buffer**.
+
+The stencil buffer **associates an integer to each pixel**, which is usually
+encoded at the bit level. During rendering, stencil buffer data can be used to
+perform specific tasks on the corresponding pixel.
+
+## Vulkan applications
+
+A large number of steps are essential to exploit all the Vulkan features in an
+application. However, in most of the cases the user will relay on the same
+(solid) start-up sequence.
+
+A typical vulkan has the following skeleton:
+
+```cpp
+void run() {
+  initWindow();
+  initVulkan();
+  initApp();
+  mainLoop();
+  cleanup();
+}
+```
+
+The **screen area where the host operating system allows Vulkan to draw images
+is called the presentation surface**. In order to work properly, a Vulkan
+application should acquire a presentation surface from the o.s. This is system
+dependent. In a desktop system, the presentation surface will always be
+contained inside a window.
+
+### Opening a window
+
+The window is created using **GLFW** in the following way:
+
+```cpp
+void initWindow() {
+  glfwInit();
+
+  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // required since we are not
+                                                // using OpenGL
+  window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+}
+```
+
+### Vulkan's architecture
+
+The Vulkan architecture is a **tree-like architecture**:
+
+1. At the top there is the **vulkan application**
+2. An **application** can have different **instances**; instances allow
+   **different libraries to use the GPU independently** from each other
+3. **Each instance** can use one or more **physical devices**; physical devices
+   are essentially the **GPUs** in the system
+4. **Each physical device** can have **different configurations** that can
+   coexist; **logical devices** represent such a configuration
+5. To maximize parallelization, **all actions** performed by Vulkan are **placed
+   into** **queues**; the user can request multiple queues
+6. Vulkan **operations are stored in command buffers**, which are transferred to
+   GPU memory; each queue may handle several command buffers
+
+Vulkan is **subdivided into different components**:
+
+1. A **fixed component** called **"vulkan loader"**
+2. A set of **GPU dependant drivers called "Installable Client Devices" (ICD)**
+3. **Extension layers**: they expose OS/device-specific functions.
+   - The `vkEnumerateInstanceExtensionProperties` function enumerates available
+     extensions
+
+### Instance creation
+
+In order to create an instance, we need to **specify the list of requested
+extensions, the name and other features of the application**.
+
+```cpp
+VkInstance instance;
+
+VkApplicationInfo appInfo{};
+appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+appInfo.pApplicationName = "Assignment 12";
+appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+appInfo.pEngineName = "No Engine";
+appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+appInfo.apiVersion = VK_API_VERSION_1_0;
+
+VkInstanceCreateInfo createInfo{};
+createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+createInfo.pApplicationInfo = &appInfo;
+createInfo.enabledExtensionCount = glfwExtensionCount;
+createInfo.ppEnabledExtensionNames = glfwExtensions;
+createInfo.enabledLayerCount = 0;
+
+VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
+
+if (result != VK_SUCCESS) {
+  throw std::runtime_error("failed to create instance!");
+}
+```
+
+GLFW has the `glfwGetRequiredInstanceExtensions(uint32_t* count)` helper that
+returns the required extensions (and number) to allow the application to work in
+the considered operating system.
+
+The minimal main loop just waits for the user to close the window, infinitely
+polling events using the relative GLFW helpers:
+
+```cpp
+void mainLoop() {
+  while (!glfwWindowShouldClose(window)) {
+    glfwPollEvents();
+  }
+  cleanup();
+}
+```
+
+**Instances should be released on exit using the appropriate destructors**.
+**GLFW also requires de-initialization** of the window and state.
+
+```cpp
+void cleanup() {
+  vkDestroyInstance(instance, nullptr);
+  glfwDestroyWindow(window);
+  glfwTerminate();
+}
+```
+
+### The presentation surface
+
+The creating a presentation surface requires both a window and a Vulkan
+instance. **GLFW can create the presentation** surface with
+`glfwCreateWindowSurface(instance, window, nullptr, &surface)` and return a
+handle to the surface in the `VkSurfaceKHR*` parameter.
+
+The presentation surface **also needs deallocation on application exit** using
+`vkDestroySurfaceKHR(instance, surface, nullptr)`.
+
+### Physical devices
+
+Since the system may have multiple GPUs, we need a **way to select the most
+appropriate one**. We do this by:
+
+1. **Enumerating** the devices using:
+
+   ```cpp
+   uint32_t count;
+   result = vkEnumeratePhysicalDevices(instance, &count, nullptr);
+   if (result != VK_SUCCESS || deviceCount <= 0) {
+     trow std::runtime_error("failed to find vulkan-capable GPUs");
+   }
+   std::vector<VkPhysicalDevice> device(deviceCount);
+   result = vkEnumeratePhysicalDevices(instance, &count, devices.data());
+   if (result != VK_SUCCESS) {
+     trow std::runtime_error("could not enumerated devices");
+   }
+   // ...
+   ```
+
+2. **Checking their features**: each device is characterized by:
+
+   - Properties
+     - Queried with `vkGetPhyiscalDeviceProperties()`
+     - Structure: `VkPhysicalDeviceProperties`
+   - Features: e.g. support for specific shaders, data types etc...
+     - Queried with `vkGetPhyiscalDeviceFeatures()`
+     - Structure: `VkPhysicalDeviceFeatures`
+   - Memory types: shared, GPU-specific etc...
+   - Memory heaps: available memory
+   - Queue families: which type of operations it can perform
+
+3. **Ranking** them according to our requirements
+4. **Selecting** the one with the **highest rank**
