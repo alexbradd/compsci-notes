@@ -1960,8 +1960,235 @@ appropriate one**. We do this by:
      - Queried with `vkGetPhyiscalDeviceFeatures()`
      - Structure: `VkPhysicalDeviceFeatures`
    - Memory types: shared, GPU-specific etc...
+     - Queried with `vkGetPhyiscalDeviceMemoryProperties().memoryTypes`
+     - Structure: `VkMemoryType`
    - Memory heaps: available memory
+     - Queried with `vkGetPhyiscalDeviceMemoryProperties().memoryHeaps`
+     - Structure: `VkMemoryHeap`
    - Queue families: which type of operations it can perform
 
 3. **Ranking** them according to our requirements
 4. **Selecting** the one with the **highest rank**
+
+### Logical devices and queues
+
+As we have seen logical devices are created from a physical device. Each
+**logical device one contains one or more queues of different types**. The
+selection of the physical device might also be influenced by the queues its
+logical devices can use.
+
+**Queues are grouped into families**, each one supporting different types of
+executable operations. Families supported by a physical device can be enumerated
+with `vkGetPhysicalDeviceQueueFamilyProperties()` into an array of
+`VkQueueFamilyProperties` structures.
+
+When the physical device has been selected, we can use it to create a logical
+device. In the selection process **we must check if there exist queues
+supporting graphics and presentation**, exploiting the `has_value()` method of
+the `std::optional` objects. **Logical devices are created together with their
+queues** in using the `vkCreateDevice()` command, starting from a physical
+device. On success, the `VkDevice` structure containing the device handle passed
+to the command is filled. Queue handles must be retrieved using the
+`vkGetDeviceQueue()` command. **At application exit, logical devices must be
+released**.
+
+### Command buffers
+
+Once queues has been retrieved, command buffers using them can be created.
+**Since the use of several command buffers is common, they are allocated from
+larger groups called command pools. Each command pool is strictly connected to
+the Queue families it uses**.
+
+Command pools are created with the `vkCreateCommandPool()` function. The only
+parameter that needs to be defined in the creation structure is the queue family
+on which its commands will be executed using the `queueFamilyIndex` field. On
+success, the handle to the command pool fills the `VkCommandPool` argument.
+Command Pools must be released when no longer necessary with the
+`vkDestroyCommandPool()` function.
+
+**Command buffers are created from the pools** with the
+`vkAllocateCommandBuffers()` function, and their handle is returned in a
+`VkCommandBuffer` object. The corresponding pool handle is passed in the
+`commandPool` field of the creation structure. **Two types of command buffers
+are available: primary and secondary**. The **purpose is to allow the creation
+of subroutines that can be called from different command buffers**. **Several
+command buffers can be created in the same call**: their number is specified in
+the `commandBufferCount` field (if more than one buffer is required, the return
+value must be an array of sufficient size). **Command buffers are automatically
+destroyed when the corresponding pool is released**, so no explicit action is
+required.
+
+### Screen synchronization
+
+The CPU, the GPU and the screen run at different and independent speeds.
+**Monitors and displays compose the image by updating pixels in a predefined
+order (usually, scanning horizontally left to right, and top to bottom). Tearing
+happens if the graphic adapter reads into video memory when the program has not
+finished yet composing the image.**
+
+Every **graphic adapter sends a `Vsync` interrupt to the processor whenever it
+finishes tracing the screen**. The application can intercept this interrupt and
+start updating the frame.
+
+Using only one buffer obviously would lead to a lot of wasted time and tearing,
+so multiple buffers are used.
+
+#### Double and triple buffering
+
+With double buffering, the video memory has **two frame buffers**: the front
+buffer and the back buffer. **While the video adapter is showing the content of
+one buffer, the application can compose the image in the other**.
+
+In the beginning the **application works on the back buffer**, while the **video
+adapter is showing the other one** (the front buffer). As soon as the new frame
+has been composed, the **application waits for `Vsync` and swaps the two
+buffers** and starts composing a new frame while the monitor is showing the
+finished one.
+
+Double buffering has a **major drawback**: the **application must stop composing
+the image as soon as a frame is completed and wait for `Vsync` to continue**.
+This **limits the frame rate to that of the monitor** and creates locks in the
+application, reducing the utilization of both CPU and GPU.
+
+**Triple buffering solves this issue by allowing the application to draw
+independently from the presentation**. Initially, the **application works on one
+frame buffer, while the system is displaying another. As soon as the application
+has finished composing the screen, it starts working on the next frame in the
+unused buffer**. At the next `Vsync`, the last fully composed frame is shown.
+**While waiting for the `vSync`, the application can switch as many times as
+needed between the two back buffers**. If a frame is completed before the
+`vSync` is received, the previous one is skipped.
+
+**Frame skipping allows having frame rates higher than that of the display**.
+Swapping at the `Vsync`, allows for smooth animations and prevents tearing. The
+**drawbacks** of triple buffering are the **memory requirements** and the
+possibility of the **CPU and GPU wasting a lot of processing power on discarded
+frames**.
+
+### Vulkan swapchain
+
+In Vulkan, **screen synchronization is handled with a generic circular queue,
+called the swapchain**. It can handle Single, double, triple and potentially
+even longer presentation queues.
+
+To allow Vulkan to be as independent as possible from the context, **swapchain
+support must be enabled** by adding the `VK_KHR_SWAPCHAIN_EXTENSION_NAME` device
+extension to the logical device creation procedure.
+
+**Each swapchain is characterized by**:
+
+- A set of **capabilities**: e.g. the size of the framebuffer, and the minimum
+  and maximum number of buffers supported etc...
+- Several **supported formats**: several alternative formats with different
+  color spaces and resolution exist; each graphic adapter can support a variety
+  of them (i.e. 8bpc, 10bpc, 16bpc)
+- Several **presentation modes**: the equivalent of synchronization algorithms,
+  four main presentation modes are supported (single, double and triple buffer)
+
+When no longer needed, **swapchains can be released with the
+`vkDestroySwapchainKHR()` command**.
+
+**Each buffer of the swapchain, is considered by Vulkan as a generic image which
+must be retrieved after creation**. Images are identified by `VkImage` objects,
+and the ones corresponding to the swapchain are retrieved with the
+`vkGetSwapchainImagesKHR` command. **Image Views are the way in which Vulkan
+associates to each image the description on how it can be used and accessed**.
+
+## Light modes
+
+In both scan-line rendering and ray-casting the scene is composed by a finite
+set of light sources. The contributions of all lights are added together to
+compute the final color of the pixel.
+
+Initially, we will ignore the possibility of objects to emit light, further
+simplifying the equation:
+
+$$
+L(x, \omega_r) = \sum_l L_e(l, \vec{lx})f_r(x, \vec{lx}, \omega_r)
+$$
+
+**Each term in the sum is the product of the light model**, that computes the
+quantity and direction of the considered light source, **and the BRDF** which
+accounts how the surface reflects the light.
+
+A **light model** describes **how light is emitted in different directions**. It
+takes as **input the position of a point $x$ of an object**. It **returns two
+elements**: a vector that represents the **direction of the light** and **a
+color** which accounts for the intensity of light received by point $x$ for
+every wavelength.
+
+The direction can be specified with a vector $\vec{lx} = (dx, dy, dz)$: as a
+convention, the **sign of the direction is chosen to make the ray point towards
+the light source**. Moreover, **the direction is also a unitary vector**. A
+**vector** $L(l, l_x = (l_R, l_G, l_B)$ of RGB components defines the **light
+intensity**. The components **do not necessarily need to be in the $[0; 1]$
+range**: larger values can model stronger light sources. They only **need to be
+non-negative**.
+
+As said previously, the rendering equation must be solved for every color
+frequency considered. **Since the light color $L(l, l_x)$ is encoded as a
+vector, the BRDF function $f_r(x, l_x, \omega_r)$ must return a color vector
+too**.
+
+### Direct light
+
+Direct lights are used to **model distant sources such sunlight**. They
+uniformly influence the entire scene.
+
+Due to the distance of the source, **rays are parallel to each other in all
+positions of space and constant in both color and intensity**. The **direction**
+can be specified with a **constant vector** $\mathbf{d}$ that is **independent
+of the position of the object**. **Light color** is also specified by a
+**constant vector** $\mathbf{l}$. This reduces the rendering equation to:
+
+$$
+L(x, \omega_r) = \mathbf{l} * f_r(d, \mathbf{d}, \omega_r)
+$$
+
+Where $*$ is the element-wise product.
+
+### Point light
+
+Point lights are **sources that emit light from fixed points in space and do not
+have a direction**. They are used to model sources that emit light in all
+directions, starting from a specific position in the scene. **They are
+characterized by the position** $\mathbf{p}$ **and color $\mathbf{l}$**.
+
+The **direction** can be written as:
+
+$$
+  \vec{lx} = \frac{\mathbf{p} - \mathbf{x}}{|\mathbf{p} - \mathbf{x}|}
+$$
+
+Point lights also have a **decay factor**, which can be constant inverse-linear
+or inverse-squared.
+
+$$
+  L(l, \vec{lx}) = \left(\frac{g}{|\mathbf{p} - \mathbf{x}|}\right)^\beta \mathbf{l}
+$$
+
+Where **$g$ is the distance at which the intensity decay is exactly 1**. As a
+consequence, **intensity will be higher than $l$ for distances shorter than $g$,
+and it will be dimmer for longer distances**.
+
+The rendering equation becomes:
+
+$$
+  L(x, \omega_r) =
+    \left(\frac{g}{|\mathbf{p} - \mathbf{x}|}\right)^\beta \mathbf{l} *
+    f_r(x, \frac{\mathbf{p} - \mathbf{x}}{|\mathbf{p} - \mathbf{x}|}, \omega_r)
+$$
+
+### Spot lights
+
+Spot lights are special **projectors that are used to illuminate specific
+objects or locations**. They are **conic sources** characterized by::
+
+- A direction $d$
+- A position $p$.
+- $\alpha_{in}$
+- $\alpha_{out}$
+
+The **two angles divide the illuminated area into three zones**: **constant**
+(inside $\alpha_{in}$), **decay** (between the two angles) and **absent**
+(outside $\alpha_{out}$).
