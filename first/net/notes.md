@@ -819,3 +819,177 @@ following algorithm to decide what to do with the packet**:
 This effectively means that **packets filtered through the host are only
 accepted if they belong to a new connection, or if they match a local TCP
 socket**.
+
+## End host networking
+
+Deploying new hardware to end-hosts usually requires a lot of investment,
+deploying only the new functionality is much easier.
+
+From a high level perspective, **every packet has to traverse**:
+
+1. the **NIC**
+2. **PCIe**
+3. NIC **driver**
+4. **Kernel**
+5. **Application**
+
+### The hardware land
+
+The **kernel allocates memory for storing the received packets from the NIC**
+(`Rx` buffers). The **driver populates** the `Rx` queue in the NIC **with
+pointers to the `Rx` buffers** (`Rx` descriptors). The size of `Rx` buffers is
+configurable.
+
+When a packet arrives at the NIC, it is **first stored in its local memory**.
+Then the **NIC fetches one descriptor from the `Rx` queue** so that it will know
+where to transfer the packet in the host memory. The **NIC starts a DMA
+transaction over PCIe to move the packet from NIC to host memory**. Finally the
+**NIC generates an Interrupt ReQuest (IRQ) to inform the driver of new data** to
+be processed. A **CPU core will take the IRQ** and the processing on the host
+starts.
+
+This is a very simplified view into the matter: **high speed transfers can
+generate very frequent interrupts**, reducing performance. Modern NICs provide
+**ways to mitigate the number of interrupts sent** from HW to the CPU:
+
+- **Interrupt coalescing**: delay interrupts and process multiple events at once
+  with a compromise between reaction time and overhead
+- **Polling**: the CPU continuously checks if the device has anything to send.
+  It relies on busy-polling loop potentially wasting resources
+- **NAPI**: adaptively switching between the previous two according to the
+  current workload
+
+Modern NICs provide **multiple hardware queues**. We can **assign each queue to
+a CPU core** and load balance the processing. This is called **Receive Side
+Steering** which assign flows-to-queues **based on hash**. The **problem**? Like
+with all hash-based methods, **hash imbalances**. They also **provide some
+"standard" functionality that the operating system can accelerate in-hardware**:
+
+1. **Checksum calculation**
+2. TCP Segmentation Offload (**TSO**) and UDP Fragmentation Offload (**UFO**):
+   NIC handles segmentation/fragmentation
+3. Large Receive Offload (**LRO**): NIC re-segment incoming packets
+
+Modern CPUs provide the **possibility to directly store the packet in L3 cache**
+(LLC). The CPU core does not have anymore to move data from DRAM to cache when
+processing the packet. The **problem**? New incoming packets repeatedly evict
+not-yet-processed packets from the LLC (**leaky DMA**).
+
+All the operations discussed so far **require PCIe transactions**. When you DMA
+something (e.g., write X to host at address Y), the DMA engine **breaks the
+request in multiple PCIe Memory Write packets** (Transaction Layer Packets).
+**PCIe is almost like a network protocol with packets (TLPs), headers, MTU, flow
+control, addressing etc...**
+
+### The kernel world
+
+The kernel relies on a **specific data structure to handle the packet during its
+journey** towards the application logic: this is called **Socket Buffer**
+(`sk_buff` or `skb`). The **driver allocates a socket buffer for each received
+packet**. They are **organized in circular lists** to speed up certain
+operations.
+
+Some pseudo-C of how the `skb` is laid out (in reality it stores much more
+information).
+
+```txt
+struct skb_list_elem {
+  skb_list_elem* next, prev;
+}
+
+struct skb {
+  mem_ptr head; // Start of buffer
+  mem_ptr data; // Start of packet
+  mem_ptr tail; // End of packet
+  mem_ptr end;  // End of buffer
+}
+```
+
+The **size of the overall buffer is bigger than that of the packet so that new
+headers can be added without the need to allocate new structures**.
+
+How things move up the stack:
+
+1. The **kernel allocates `skb`s** for each packet
+2. The **Generic Receive Offload (GRO) module attempts to reduce the number of
+   `skb`s by merging them** (this is why we have them stored in a circular
+   manner). This operation is the **software counterpart of LRO**.
+3. **`netfilter`** is a framework that offers various functions and operations
+   for **packet filtering, network address translation (NAT), port translation
+   and connection tracking** (`iptables` uses `netfilter` to implement its
+   policies)
+4. The **TPC/IP module** processes all transport-layer stuff
+5. The **`skb`s are appended to the application's socket's receive queue**. The
+   **application performs data copy of the payload** in the `skbs` in the socket
+   receive queue to the userspace buffer (the kernel does not do any memory
+   copying)
+
+**`skb` allocation and processing is expensive. The TCP/IP stack is also very
+expensive. If we employ all in-hardware optimizations, the heaviest operation
+becomes data copy between userspace and kernelspace**.
+
+### Improving software performance
+
+#### DPDK
+
+First option for improving performance is **removing directly the kernel and
+make the NIC write directly in userspace memory**. However, by bypassing the
+kernel **we lose all the features that the kernel gives us** (TCP/IP, NATting,
+firewalling etc...). This means that every application needs to:
+
+1. Implement all the network stack from the metal up
+2. Have total ownership of the DPDK port (we can share resources only by
+   virtualization techniques like SR-IOV)
+
+#### Programmable NICs
+
+What if you could **programmatically change the behavior of the NIC**? We might
+want to do this for **different reasons**. **One is performance, the other is
+that we can separate datacenter functionality from customer functionality**. As
+a datacenter operator, **we put all our functionality in the hardware, ensuring
+that no one can tamper with how the datacenter works**.
+
+#### eBPF
+
+We could **improve the kernel by**:
+
+- **Creating an ad-hoc kernel module**, however this methodology **requires that
+  we maintain a custom kernel or need to upstream the changes**
+  - see OVS
+- **eBPF** enables **dynamic code injection and execution in the kernel** while
+  providing **hard safety guarantees** to preserve system integrity
+  - In mainline linux
+  - **No need for additional modules, neither to recompile the kernel**
+
+Feature overview:
+
+1. **Runtime bytecode injection**: eBPF programs can be dynamically created and
+   injected in the kernel at run-time
+2. **Safeness**: achieved via a **verifier that imposes hard rules on what the
+   program can do** (no invalid accesses, bound on program complexity and
+   loops). This means that we cannot push arbitrary programs in the kernel.
+3. **Efficiency**: **consumes very little resources**, plus it runs in kernel
+   space so **userland-data-copying is avoided**.
+4. **Kernel event reaction**: eBPF code is hooked to a kernel event. When fired,
+   our code (associated to an event handler) is executed. We can use the
+   **following hook points**:
+   - `XDP`: programs run at **driver level**, this means we do not have
+     netfilter or TCP/IP processing. This means that **we can only deal with
+     stateless protocols without breaking things** above us.
+   - `AF_XDP`: packets **are sent directly to the socket skipping all steps
+     after the driver**. It is **equivalent to using DPDK**.
+   - `TC`: hooks at **netfilter level**, useful for traffic-control tasks
+   - `SK_SKB`: hooks at the **socket level**, after TCP/IP processing. Useful
+     for implementing **"application-acceleration" at the kernel level** since
+     we can do similar processing without copying data around
+
+We can **chain different eBPF programs via tail calls**. They are simply
+optimized into a long jump, reusing stack frames. Programs are still verified
+independently and only programs of the same type can be tail called.
+
+**eBPF can call a selected number of kernel functions using helpers**, which
+function like P4 `extern`s.
+
+**eBPF uses a pre-formatted memory layout. Data is accessed using maps. Maps can
+also be used to share data between eBPF programs and userspace or different eBPF
+programs**. Interaction with maps is done through helpers.
