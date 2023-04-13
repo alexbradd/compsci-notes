@@ -977,3 +977,12 @@ declassify or sanitize documents**.
 The Bell-LaPadula model **does not address integrity**, we need **another model
 such as the Biba model (basically just inverts the rules of the
 Bell-LaPadula)**.
+
+## Software security
+
+Good software engineering ideally produces secure software. However, creating
+software is one thing, creating secure software is another and is very hard.
+
+Safety is an implicit non-functional requirement of all software. An unmet
+security specification is a vulnerability (NOTE: vulnerability is not synonymous
+with an exploit).
