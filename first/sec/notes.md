@@ -986,3 +986,44 @@ software is one thing, creating secure software is another and is very hard.
 Safety is an implicit non-functional requirement of all software. An unmet
 security specification is a vulnerability (NOTE: vulnerability is not synonymous
 with an exploit).
+
+Principles for writing secure programs:
+
+1. **Reduce privileged parts to a minimum**
+   - If possible, discard privileges definitely as soon as possible
+2. **KISS**
+3. **Do not rely on security through obscurity**
+4. **Be wary of concurrency and race conditions**
+5. **Fail-safe** and **Default-deny**
+6. **Avoid the use of shared resources or unknown/untrusted libraries**
+7. **Filter input/output**
+8. **Do not write your own cryptographic primitives, password/secret
+   management**
+9. **Use trustworthy RNGs**
+
+### Buffer overflows
+
+Assumptions: `elf`s on linux `>= 2.6` on `x86`. The concepts, however, **apply
+to any kernel/architecture with the appropriate modifications**.
+
+Stack smashing is a well-known idea (see
+[article by aleph1](http://phrack.org/issues/49/14.html#article)). Basically how
+it works is: **function allocates a buffer, buffer is filled _without
+bound-checking_, boom**.
+
+Most common smelly-functions: `strcpy`, `strcat`, `fgets`, `gets`, `sprintf`,
+`scanf`.
+
+To exploit this vulnerability, we can **pass specially formatted strings (via
+environment variables or other user-controlled means) such that we put the
+address that we want to jump into the place we want**.
+
+The **simplest way** is to **reuse the buffer we are smashing the stack with**.
+However, we **do not know the exact address of the buffer**: we only know that
+is **somewhere around the `esp`.**
+
+We could **look it up using `gdb`**, however **different machines/executions can
+produce different results** (due to e.g. different invocation chains/environment
+variables etc...). Moreover, **debuggers often add offsets to the allocated
+process memory** (this means that the `esp` obtained with `gdb` is different to
+the effective one).
