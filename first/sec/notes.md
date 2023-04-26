@@ -953,7 +953,7 @@ Classification is a **partial order relationship that defines a lattice**. The
 order is imposed by the **dominance relationship**:
 
 $$
-  \{C_1, L_1\} \geq \{C_2, L_2\} \iff C_1\geq C_2 \land L_2\seubseteq L_1
+  \{C_1, L_1\} \geq \{C_2, L_2\} \iff C_1\geq C_2 \land L_2\subseteq L_1
 $$
 
 This means that we can have **some combinations that are not comparable between
@@ -1006,6 +1006,28 @@ Principles for writing secure programs:
 Assumptions: `elf`s on linux `>= 2.6` on `x86`. The concepts, however, **apply
 to any kernel/architecture with the appropriate modifications**.
 
+At every function call, the CPU executes the same (depending on calling
+convention) instructions:
+
+```nasm
+  ...                  ; register saving and parameter passing
+  call 0x8048484 <foo> ; equivalent to push eip && jmp 0x8048484
+  push ebp             ; save the current stack base onto the stack
+  mov  ebp, esp        ; the new base is the top of stack
+  sub  esp, 4          ; make room for function variables
+  ...                  ; function code
+```
+
+The same happens on function end:
+
+```nasm
+  ...
+  leave ; Equivalent to: mov esp, ebp
+        ;                pop ebp
+  ret   ; restore the saved eip
+  ...   ; deallocation of saved registers / function arguments
+```
+
 Stack smashing is a well-known idea (see
 [article by aleph1](http://phrack.org/issues/49/14.html#article)). Basically how
 it works is: **function allocates a buffer, buffer is filled _without
@@ -1016,14 +1038,109 @@ Most common smelly-functions: `strcpy`, `strcat`, `fgets`, `gets`, `sprintf`,
 
 To exploit this vulnerability, we can **pass specially formatted strings (via
 environment variables or other user-controlled means) such that we put the
-address that we want to jump into the place we want**.
+address that we want to jump into the place we want**. The **simplest way** is
+to jump into the buffer itself and **reuse the buffer we are smashing the stack
+with**.
 
-The **simplest way** is to **reuse the buffer we are smashing the stack with**.
+> A more elaborate way is to jump into a function that we know will be loaded
+> and at which location > (e.g. `libc` functions).
+>
+> The method described in this notes does not work on new OSs because all pages
+> used for process stacks are marked as non-executable. To make this work we
+> need to pass special flags during compilation.
+
+### `nop` sled
+
 However, we **do not know the exact address of the buffer**: we only know that
-is **somewhere around the `esp`.**
+it is **somewhere around the `esp`.** We could **look it up using `gdb`**,
+however **different machines/executions can produce different results** (due to
+e.g. different invocation chains/environment variables etc...). Moreover,
+**debuggers often add offsets to the allocated process memory** (this means that
+the `esp` obtained with `gdb` is different to the effective one). This
+imprecision can **cause us to misread our buffer and to not execute the
+instructions we want**. Since our imprecision is only of a few bytes, we can
+**add a "landing strip" of `nop` instructions so that we can we can jump in the
+middle of this strip and still execute the correct code**.
 
-We could **look it up using `gdb`**, however **different machines/executions can
-produce different results** (due to e.g. different invocation chains/environment
-variables etc...). Moreover, **debuggers often add offsets to the allocated
-process memory** (this means that the `esp` obtained with `gdb` is different to
-the effective one).
+### Shellcode
+
+What code do we put into our buffer? **Usually we want `execve("/bin/sh")`**.
+Since historically this has always been the case, the **payload of exploit is
+called shellcode**.
+
+In Linux, a syscall invocation follows the following convention:
+
+```nasm
+  movl eax, $syscall_number
+  mov  ebx, arg1             ; syscall arguments
+  ...
+  int 0x80                   ; Switch to kernel mode
+```
+
+To generate our exploit we can write a MW C program and disassemble it:
+
+```c
+int main() {
+  char *hack[2];
+  hack[0] = "/bin/sh";
+  hack[1] = NULL;
+  execve(hack[0], &hack, &hack[1]);
+}
+```
+
+**We need to construct the following structure in memory** to invoke `execve`:
+
+```txt
+    /-------------\
+    v             |
++---------+---+---------+------+
+| /bin/sh | 0 | Address | NULL |
++---------+---+---------+------+
+```
+
+Is **pseudo-assembly** we have the following shellcode (everything is
+**parametrized in function of `ADDRESS`**).
+
+```nasm
+  movl array-offset(ADDRESS), ADDRESS
+  movb nullbyteoffset(ADDRESS), 0x0
+  movl null-offset(ADDRESS), 0x0
+  ;;
+  movl eax, $0xb
+  mov  ebx, ADDRESSS
+  leal ecx, array-offset(ADDRESS)
+  leal edx, null-offset(ADDRESS)
+  int 0x80
+```
+
+**How do we get the exact address of `'/bin/sh'`?** We can use the following
+**trick**: `call` pushes the return on the stack, this means that **executing a
+call just before declaring the string has the side-effect of leaving the address
+of the string on the stack**.
+
+```nasm
+  jmp offset-to-call
+  popl esi
+  ;;
+  movl array-offset(esi), esi
+  movb nullbyteoffset(esi), 0x0
+  movl null-offset(esi), 0x0
+  ;;
+  movl eax, $0xb
+  mov  ebx, esiS
+  leal ecx, array-offset(esi)
+  leal edx, null-offset(esi)
+  int 0x80
+  ;; vvv exit(0) for cleanness vvv
+  movl eax, 0x1
+  movl ebx 0x0
+  int 0x80
+  ;;
+  call offset-to-popl
+  .string \"/bin/sh\"
+```
+
+If we were to translate the real code into binary, **many of the instructions
+have `\0` in them, meaning that they cause string operations to misbehave**. We
+simply need to **use shortened instructions** and **zeroed out registers** (via
+`xorl`) instead of `0x0`.
