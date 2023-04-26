@@ -2175,7 +2175,7 @@ The rendering equation becomes:
 
 $$
   L(x, \omega_r) =
-    \left(\frac{g}{|\mathbf{p} - \mathbf{x}|}\right)^\beta \mathbf{l} *
+    \mathbf{l}\left(\frac{g}{|\mathbf{p} - \mathbf{x}|}\right)^\beta \mathbf{l} *
     f_r(x, \frac{\mathbf{p} - \mathbf{x}}{|\mathbf{p} - \mathbf{x}|}, \omega_r)
 $$
 
@@ -2192,3 +2192,176 @@ objects or locations**. They are **conic sources** characterized by::
 The **two angles divide the illuminated area into three zones**: **constant**
 (inside $\alpha_{in}$), **decay** (between the two angles) and **absent**
 (outside $\alpha_{out}$).
+
+For implementing spot lights, usually **the cosine of the half-angles of the
+inner and outer cones $c_{in}$ and $c_{out}$ are used**. The cosine of the angle
+between the light direction vector $\vec{lx}$ and the direction of the light $d$
+**can be computed by taking the dot product between the two**. The **cone
+dimming effect** is computed as:
+
+$$
+  0 \leq \mathit{clamp}(\frac{\cos\alpha - c_{out}}{c_{in} - c_{out}}) \leq 1
+$$
+
+Spot lights are **implemented by extending other light sources with the dimming
+term** just introduced. In particular, they inherit the light direction
+$\vec{lx}_0$ from the model they derive from, and modulate the color
+$L_0(l, \vec{lx})$ with the dimming term.
+
+$$
+  L(l, \vec{lx}) = L_0(l, \vec{lx})\mathit{clamp}(\frac{\frac{\mathbf{p} -
+  \mathbf{x}}{|\mathbf{p} - \mathbf{x}|}\mathbf{d} - c_out}{c_{in} - c_{out}})
+$$
+
+The **most popular implementation extends the point light**. Light direction is
+computed as for the point light. From now on, when considering spot lights we
+will assume this implementation.
+
+### Special light modes
+
+#### Cosine light
+
+When the **inner cone reduces to zero, and the outer cone is maximized**, the
+dimming **simplifies** to:
+
+$$
+  \mathit{clamp}(\frac{\mathbf{p}-\amthbf{x}}{|\mathbf{p}-\mathbf{x}|}\mathbf{d})
+$$
+
+This special light model is sometimes called the "cosine" light model. Although
+being very simple, it produces interesting diffuse lighting effects.
+
+#### Area light
+
+Most realistic light sources do not have a point origin, but a **surface of
+origin**. Area lights aim at capturing the shape of lights. Due the fact that
+the shape must be considered, **single sources can no longer be considered and a
+full integral must be used**, even in scanline rendering.
+
+**Current implementations of area lights are based on specific approximation of
+the integral and cannot be decoupled from the BRDF of the surfaces**.
+
+## BRDF models
+
+The BRDF used for scan line rendering **does not fulfill the energy conservation
+property in most cases**. Generally, it is expressed as the sum of two terms:
+
+1. The **diffuse reflection**: the main **color** of the object
+2. The **specular reflection**: models the **reflection** of incoming light at a
+   particular angle (specular direction), which depends on the direction from
+   which the object is seen ($\omega_r$)
+
+In scan-line rendering, the **values of the BRDF for each color and component
+are in the $[0,1]$ range**. Due to lights the **final result can be larger than
+1**. The most **common solution is to clamp the values** in the correct range.
+This method creates **effects similar to over-exposition**. Other techniques,
+called **HDR** techniques, **use more advanced computations that can work with
+values outside the $[0,1]$ range and map the final color into the desired
+range**. HDR requires more memory and computation power.
+
+### Diffuse reflection models
+
+#### Lambert
+
+The simplest BRDF has **only a constant diffuse term**. This BRDF is used in
+Radiosity. This constant BRDF causes a shading phenomenon know as Lambert
+reflection.
+
+According to **Lambert's reflection law**, **each point of an object hit by a
+ray of light reflects it with uniform probability in all the directions**. This
+implies that **the reflection is independent of the viewing angle and
+corresponds to a constant value** $f_r(x, \omega_i, \omega_r) = \rho_x$.
+
+The **quantity of light received by an object depends on the angle between the
+ray of light and reflecting surface**. Let us call:
+
+- $n_x$ the unitary normal vector to the surface
+- $d$ the direction of the ray of light
+- $\alpha$ the angle between the two vectors
+
+The incidence of incoming light is maximized when $\alpha = 0^\circ$, and zero
+when $\alpha \geq 90^\circ$. Lambert proved that **the amount of light reflected
+is proportional to** $\cos\alpha$, which can be calculated as the dot product
+between $d$ and $n_x$.
+
+Let us call $m_D$ a **vector that expresses the capability of a material to
+reflect light of each of the primary colors**. We can express the **BRDF** for
+Lambertian reflection **for scan-line rendering with the following expression**:
+
+$$
+f_r(x, \vec{lx}, \omega_r) = m_D\max(\vec{lx}\cdot n_x, 0)
+$$
+
+### Specular reflection models
+
+A **perfect mirror surface reflects light only in a single direction** on the
+same plane as both the light and the normal, but with the opposite angle. This
+means that a **light source would be visible only along this angle** and
+invisible in any other direction.
+
+If a **surface is rough**, the **incoming light will also be reflected at angles
+near the mirror one**. For this reason, the reflected ray **could be visible at
+reduced intensity in an area** near the mirror direction.
+
+**Specular** reflection is the **chance that the reflection occurs in the
+considered viewing direction** $\omega_r$.
+
+As for the diffuse case, the specular component is characterized by a **color**
+$m_S$ that defines the **color of the light reflected**. For most materials,
+this light is white; in certain cases it may be tinted (e.g. some metals).
+
+#### The Phong reflection
+
+In the Phong model, **the mirror reflection direction $r$ is first computed**.
+
+The vector $\omega_r$ can be:
+
+1. **Constant** for parallel projections
+2. The **normalized difference between the point on the surface** $x$ and the
+   **center of projection** $c$
+
+This model **accounts for the angular distance** $\alpha$ between $r$ and
+$\omega_r$: it computes the **intensity of the specular reflection from the
+cosine of the distance**. This way the **specular is maximum if it is aligned
+with the observer** and 0 if the angle is $\geq 90^\circ$. To create **more
+contained highlights, $\cos\alpha$ is raised to an exponent** $\gamma$: the
+greater $\gamma$ is, the smaller the highlight is and the shinier the object
+appears.
+
+To compute the direction of the reflected ray first we compute the projection of
+the light vector over the normal vector $n' = n_x \cdot (d\cdot n_x)$. If we
+subtract $n'$ from $d$ we obtain a vector from $d$ to $n$ perpendicular to $n$.
+If we add $2d'$ to $d$ we obtain the reflected vector. **To summarize**:
+
+$$
+\begin{aligned}
+  r &= d + 2(n_x\cdot (d\cdot n_x) - d) = 2n_x \cdot (d\codt n_x) - d \\
+    &= 2n_x \cdot (\vec{xl}\cdot n_x) - \vec{xl}
+\end{aligned}
+$$
+
+**Many shading languages have this operation builtin**. To do the above in GLSL
+we can do `-reflect(xl, n_x)`.
+
+To compute the **intensity of the specular reflection** term we do something
+**similar as we did for the Lambert diffuse term**:
+
+$$
+  \mathrm{COS}^\gamma \alpha = \mathit{clamp}(\omega_r \cdot r)^\gamma
+$$
+
+#### Simplified parametrization
+
+Since most diffuse and specular light models depend on the direction of the
+normal vector and a main color, we can simplify the BRDFs as such:
+
+$$
+f_D (l, n, v, m_D) \quad f_S(l, n, v, m_S)
+$$
+
+Where:
+
+- $l$ is the direction of the light
+- $n$ is the direction of the normal vector
+- $v$ is the view direction
+- $m_*$ are the other model specific parameters
