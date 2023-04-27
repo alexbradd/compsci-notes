@@ -1144,3 +1144,69 @@ If we were to translate the real code into binary, **many of the instructions
 have `\0` in them, meaning that they cause string operations to misbehave**. We
 simply need to **use shortened instructions** and **zeroed out registers** (via
 `xorl`) instead of `0x0`.
+
+The remaining part is filling the buffer with `nop`s and put the our guess of
+`esp` into the saved `eip`.
+
+### Using environment variables
+
+**Pros**:
+
+- **Easy** to implement ("unlimited" space for the string)
+- **Easy** to target (we can know precisely the location)
+
+**Cons**:
+
+- Works for **local exploits** only
+- The program **may wipe the environment**
+- **Memory must be marked as executable**
+
+Since the addresses will be precise, we might not need the `nop`-sled, however
+it adds a bit of reproducibility. **To activate the exploit we simply need to
+run slam the stack with our envvar's address**.
+
+### Using built-in functions
+
+**Pros**:
+
+- Works **remotely** and **reliably**
+- **No need for executable stack**
+- A function is always executable
+
+**Cons**:
+
+- More **difficult to prepare** (need to craft the stack frame very carefully)
+
+Basically what we need to do is **prepare the stack to trick the `ret` into
+jumping into `system()`**. The stack needs to be setup **as if it has been
+called legitimately**.
+
+### Other ways of jumping
+
+1. Saved `eip` (**direct jump**) (what we done until now)
+2. Function Pointer (**call another function**) (`jmp` into another function)
+3. Saved `ebp` (**frame teleportation**)
+
+### Defending against buffer overflows
+
+We have **three levels to try to block the exploitation** of this vulnerability:
+
+1. **Source code level**: removes the vulnerability
+   - Basically **write good code**:
+     - Use safe functions `strncpy`/`strlcpy`
+     - Do not use C, use a safer language
+2. **Compiler level**: makes vulnerability non-exploitable
+   - **Warnings** at compile-time
+   - **Randomized reordering of stack variables**
+   - Embedding **stack protection mechanisms** at compile time
+     - Verifying, during the epilogue, that the **frame has not been tampered
+       using a canary** inserted between local variables/control values that is
+       checked (c.f.r gcc's StackGuard)
+     - Canaries can be: random, all `\0` or random `xor` canaries (random `xor`
+       canaries are the best protection)
+3. **OS level**: makes exploitation harder
+   - **Non-executable stack**
+     - Bypassable (just don't put code into the stack)
+     - Some programs require executable stack (e.g. jvm)
+   - **Address space layout randomization**: repositions the stack at each
+     execution at random
