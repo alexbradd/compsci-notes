@@ -1001,6 +1001,8 @@ Principles for writing secure programs:
    management**
 9. **Use trustworthy RNGs**
 
+## Binary exploitation
+
 ### Buffer overflows
 
 Assumptions: `elf`s on linux `>= 2.6` on `x86`. The concepts, however, **apply
@@ -1049,7 +1051,7 @@ with**.
 > used for process stacks are marked as non-executable. To make this work we
 > need to pass special flags during compilation.
 
-### `nop` sled
+#### `nop` sled
 
 However, we **do not know the exact address of the buffer**: we only know that
 it is **somewhere around the `esp`.** We could **look it up using `gdb`**,
@@ -1062,7 +1064,7 @@ instructions we want**. Since our imprecision is only of a few bytes, we can
 **add a "landing strip" of `nop` instructions so that we can we can jump in the
 middle of this strip and still execute the correct code**.
 
-### Shellcode
+#### Shellcode
 
 What code do we put into our buffer? **Usually we want `execve("/bin/sh")`**.
 Since historically this has always been the case, the **payload of exploit is
@@ -1148,7 +1150,7 @@ simply need to **use shortened instructions** and **zeroed out registers** (via
 The remaining part is filling the buffer with `nop`s and put the our guess of
 `esp` into the saved `eip`.
 
-### Using environment variables
+#### Using environment variables
 
 **Pros**:
 
@@ -1165,7 +1167,7 @@ Since the addresses will be precise, we might not need the `nop`-sled, however
 it adds a bit of reproducibility. **To activate the exploit we simply need to
 run slam the stack with our envvar's address**.
 
-### Using built-in functions
+#### Using built-in functions
 
 **Pros**:
 
@@ -1181,13 +1183,13 @@ Basically what we need to do is **prepare the stack to trick the `ret` into
 jumping into `system()`**. The stack needs to be setup **as if it has been
 called legitimately**.
 
-### Other ways of jumping
+#### Other ways of jumping
 
 1. Saved `eip` (**direct jump**) (what we done until now)
 2. Function Pointer (**call another function**) (`jmp` into another function)
 3. Saved `ebp` (**frame teleportation**)
 
-### Defending against buffer overflows
+#### Defending against buffer overflows
 
 We have **three levels to try to block the exploitation** of this vulnerability:
 
@@ -1210,3 +1212,82 @@ We have **three levels to try to block the exploitation** of this vulnerability:
      - Some programs require executable stack (e.g. jvm)
    - **Address space layout randomization**: repositions the stack at each
      execution at random
+
+### Format string bugs
+
+Example of vulnerable code:
+
+```c
+#include <stdio.h>
+
+void test(char *arg) {
+  char b[256];
+  snprintf(b, 250, arg); // !!! "naked printf" vulnerability
+                         // correct code should have been: snprintf(b, 250, "%s", b)
+                         // NEVER use a naked variable as a format
+  printf("buffer: %s\n", buf);
+}
+
+int main (int argc, char* argv[]) {
+  test(argv[1]);
+  return 0;
+}
+// ~> ./a.out "%x %x"
+// buffer: b7ff0590 804849b    # We read random variables from stack and printed them on
+//                             # stdout
+```
+
+The above code shows a simple way in which we can read everything we in memory:
+**using `%N$x` we can print the `N`-th integer of the function's arguments (in
+our case the `N`-th integer on the stack)**. This means that **we are not
+limited by the size of the format string and thanks to the power of scripting we
+can scan the whole stack** like this:
+
+```sh
+for i in $(seq 1 150); do
+  echo -n "$i " && ./vuln "AAA %$i\$x"
+done
+```
+
+If we can scan the stack, we can **leak information** (data, addresses).
+
+Fortunately for us, there is a placeholder that can **also write memory**: `%n`
+**writes the number of characters printed so far at the address in the
+corresponding parameter**. How can we abuse this?
+
+1. **Put on the stack the address** of the memory (`address`) cell to modify
+2. Use `%x` (`%N$x`) to **go find on the stack the address we want to modify**
+   (let's call it `pos`)
+3. **Use `%n`** instead of `%x` **to write a number in the cell pointed to by
+   `address`**
+
+**To control the number we are writing we can use `%0Nc`**: writes a character
+trying to fill a `N` character long string. An example format string that writes
+`n` could be:
+
+```txt
+<address>%<n-len(address)>c%<pos>$n
+```
+
+There is a problem in our method: **`%c` can write only 2 bytes at a time**.
+This means **we need to do two writes** to write a full 32-bit integer. **Since
+we can only increment `n`** (if we do not overflow obviously), we **first need
+to write the word with the lower absolute value and then the other.** Let us
+revise our procedure:
+
+1. Put on the stack two addresses, `addr` and `addr + 2`
+2. Use `$x` to go find the two find the first word `pos` (the second one will be
+   `pos+1`)
+3. Use `%c` and `%n` to write the lower absolute value in the cell pointed by
+   `pos` and the other in `pos+1`
+
+```txt
+<addr><addr + 2>%<lower_val>c%<pos>$n<higher_val>c%<pos+1>c$n
+```
+
+**To avoid possible side-effects when writing** with `%n` (since it writes
+dwords and we are using it two times) **we can use `%hn`** (which writes words).
+
+```txt
+<addr><addr + 2>%<lower_val>c%<pos>$hn<higher_val>c%<pos+1>c$hn
+```
