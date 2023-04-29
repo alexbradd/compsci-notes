@@ -2292,6 +2292,37 @@ $$
 f_r(x, \vec{lx}, \omega_r) = m_D\max(\vec{lx}\cdot n_x, 0)
 $$
 
+#### Oren-Nayar model
+
+Some materials are characterized by a **phenomenon called retro-reflection**:
+they tend to **reflect light not only in the reflection direction but also back
+in the direction of the source**. They have **very rough surfaces** and cannot
+be accurately simulated with the Lambertian model. This model has been created
+to more appropriately model such materials. **In most cases, these materials do
+not show specular reflections**.
+
+It uses **three vectors**:
+
+1. The direction of the **light** $d$
+2. The **normal** vector $n$
+3. The direction of the **viewer** $\omega_r$
+
+These vectors form **three angles**:
+
+1. $\theta_i$ between $d$ and $n$
+2. $\theta_r$ between $\omega_r$ and $n$
+3. $\gamma$ between the projections of $\omega_r$ and $d$ on the plane
+   perpendicular to $n$; we call these two projections $v_r$ and $v_i$
+   respectively
+
+The model has **two parameters**:
+
+1. $m_D$: the main diffuse color
+2. $\sigma\in [0;\pi/2]$: the roughness of the material
+
+The **formulas** are quite complex and are **on slides** `L15.53` (`L15.54` for
+the simplified version using some precomputed textures).
+
 ### Specular reflection models
 
 A **perfect mirror surface reflects light only in a single direction** on the
@@ -2365,3 +2396,226 @@ Where:
 - $n$ is the direction of the normal vector
 - $v$ is the view direction
 - $m_*$ are the other model specific parameters
+
+#### Blinn reflection model
+
+The Blinn reflection model is an **alternative to the Phong one**. It uses the
+**half vector** $h$: a vector that is the **bisector of the angle between the
+viewer direction $\omega_r$ and the light $d$**. The angle $\alpha$ between the
+observer and the reflected ray is then **approximated by the angle $\alpha'$
+between the normal vector $n_x$ and the half vector $h$**.
+
+$$
+h_{l,x} = \mathit{normalize}(\vec{lx} + \omega_r)
+$$
+
+The **specular highlight is computed raising to a power $\gamma$ the cosine** of
+$\alpha' = n_x\cdot h_{l,x}$.
+
+The Blinn specular model is usually **slightly more expensive than the Phong
+one**, but still easily achievable in real-time by current hardware. The Blinn
+model usually has a **larger decay area** than the Phong one with similar
+parameters.
+
+#### Ward model (anisotropic reflections)
+
+Some objects are characterized by **grooves on their surface** (e.g. hair, disks
+or brushed metals). In this case, **specular highlights are oriented along the
+grooves**. This surfaces are called **anisotropic**.
+
+This specular model is **derived from physical principles** and **supports both
+normal and anisotropic materials**.
+
+To support anisotropy, **an orientation of the grooves on the surface must be
+specified**: this is **done by assigning two extra vectors** beside the normal
+(the **tangent** $t$ and **bitangent** $b$). Similarly to the Blinn model, it
+**computes the half-vector and then computes the angles between**:
+
+1. This **vector and the normal** ($\delta$)
+2. The **projection on the $bt$-plane and the groove direction** ($\phi$)
+
+The **formula** is quite complex and can be **found on** `L15.59`.
+
+### Toon shader
+
+Toon shading simplifies the output color range, **using only discrete values
+according to a set of thresholds**. In this way it achieves a cartoon-like
+rendering style.
+
+It **can be used both for the diffuse and specular components** of the BRDF:
+
+- For Lambert diffuse, we **define two colors** $m_D1, m_D2$ **and a threshold**
+  $t_D$ **for determining which color we choose**:
+
+  $$
+    f_{diffuse}(\cdot) =
+    \begin{cases}
+      m_D1 & \quad \vec{lx}\cdot n_x \geq t_D \\
+      m_D0 & \quad 0 < \vec{lx}\cdot n_x < t_D \\
+      0    & \quad \vec{lx}\cdot n_x < 0
+    \end{cases}
+  $$
+
+- For the specular we can **use either Phong or Blinn with $\gamma = 1$**, we
+  **define a color** $m_S$ and **a threshold** $t_S$ for **determining the color
+  we choose**:
+
+  $$
+    f_{specular}(\cdot) =
+    \begin{cases}
+      m_S & \quad \omega_r\cdot r_{l,x} \geq t_S \\
+      0   & \quad \omega_r\cdot r_{l,x} < t_S
+    \end{cases}
+  $$
+
+To achieve **better results**, **more than two colors are used for both the
+specular and diffuse parts**. Moreover **small gradients are added to smooth the
+transitions** between different colors. This is **usually implemented by using a
+color that is function of the cosine of the angles between the considered
+rays**.
+
+**Functions are implemented as 1D textures** since texture-lookup is much faster
+than branching.
+
+### Cook-Torrance model
+
+Real objects have a soft fall-off area, our reflection models produce very sharp
+ones. Moreover, due to the Fresnel principle, objects tend to have a larger
+specular reflection when the light is almost parallel to the surface. These and
+other effects motivated the introduction of **more complex specular illumination
+models that can better capture these features**. The Cook-Torrance reflection
+model aims at **computing both the specular and diffuse components in a physical
+accurate way**.
+
+The **diffuse component follows the Lambert diffusion model**. However, to
+achieve a physically accurate behavior, it is **balanced with the specular part
+via linear interpolation**, according to a coefficient $k$:
+
+$$
+f_r(\cdot) = k f_{diffuse}(\cdot) + (1-k)f_{specular}(\cdot)
+           = m_D \cdot\mathit{clamp}(\vec{lx}\cdot n_x) + (1-k)f_{specular}(\cdot)
+$$
+
+The **specular term is computed as the product of three terms**:
+
+- $F$: the **Fresnel** term
+- $G$: the **geometric** term
+- $D$: the **distribution** term
+
+$$
+f_{specular}(\cdot) = m_S
+  \frac{D\cdot F\cdot G}{4\cdot\mathit{clamp}(\omega_r\cdot n_x)}
+$$
+
+The model uses a **$\rho$ parameter** to indicate **how rough the material** is:
+$\rho = 0$ is a perfectly smooth material while $\rho = 1$ is a perfectly
+diffuse material.
+
+**Each of the three terms has different implementation**, we will see only the
+most used for each. Many formulation use the half-vector defined in the Blinn
+model.
+
+#### Distribution term
+
+It accounts for the **roughness of the surface**.
+
+The **Blinn version adapts the one used in the Blinn model** to the
+Cook-Torrance framework. In particular it replaces $\gamma$ with $\rho$ and adds
+a normalization term.
+
+$$
+D = \frac{(h_{l,x}\cdot n_c)^{\frac{2}{\rho^2}-2}}{\pi\cdot\rho^2}
+$$
+
+The **Beckmann version uses $\rho$ to define the average slope of the surface at
+a microscopic level**.
+
+$$
+\begin{gathered}
+  \alpha = \cos^{-1}(h_{l,x}\cdot n_x) \\
+  D = \frac{e^{-\left(\frac{\tan\alpha}{\rho}\right)^2}}{\pi\rho^2\cos^4\alpha}
+\end{gathered}
+$$
+
+The **GGX** version uses the following definition:
+
+$$
+D = \frac{\rho^2}{\pi(\mathrm{clamp}(n_x\cdot h_{l,x})^2 (\rho^2 -1)+1)^2}
+$$
+
+It has been proven to **provide the most realistic results which keeping
+realtime complexity**.
+
+#### Fresnel term
+
+The Fresnel term **depends on** $F_0\in [0;1]$, a parameter that **defines how
+light reacts depending on the angle of incidence**. It can be **approximated
+with the following definition**:
+
+$$
+F=F_0 + (1-F_0)(1-\mathrm{clamp}(\omega_r\cdot h_{l,x}))^5
+$$
+
+This version **does not work well for conductor materials**, which require an
+extended version for a proper representation. That formula however, is too
+complex and outside our scope.
+
+#### Geometric term
+
+The **microfacet version** of the geometric term G, is not characterized by any
+parameters and **depends only on the angles**.
+
+$$
+G = \min\left(1,
+      \frac{2(h_{l,x}\cdot n_x)(\omega_r\cdot n_x)}{\omega_r\cdot h_{l,x}},
+      \frac{2(h_{l,x}\cdot n_x)(\vec{lx}\cdot n_x)}{\omega_r\cdot h_{l,x}}
+\right)
+$$
+
+The **GGX version** for the geometric term **depends on the roughness of the
+surface** and uses a helper function that is called first with the light and
+then with the view direction.
+
+$$
+\begin{gathered}
+  g_{GGX}(n,a) = \frac{2}{1+\sqrt{1+\rho^2 \frac{1-(n\cdot a)^2}{(n\codt a)^2}}} \\
+  G = g_{GGX}(n_x, \omega_r)\cdot g_{GGX}(n_x, \vec{lx})
+\end{gathered}
+$$
+
+## Material emission
+
+The emission term of a material **accounts for small amounts of light emitted
+directly by an object** and corresponds to the emissive part of the rendering
+equation.
+
+The emission term is **summed to the other parts of the rendering equation**.
+The main difference with ambient light is that **it does not depend on the
+environment** but only on the considered object. For Phong we have:
+
+$$
+L(x, \omega_r) =
+  \mathrm{clamp}(l_d\cdot (m_D\cdot\mathrm{clamp}(d\cdot n_x) +
+  m_S\cdot\mathrm{clamp}(\omega_r\cdot r_X)^\gamma) + m_E)
+$$
+
+**Realistic rendering techniques try also to consider indirect lighting**, i.e.
+illumination caused by light bounces from other objects. **Ambient lighting is
+the simplest approximation for indirect illumination**.
+
+### Ambient light
+
+The ambient light emission is specified by a **constant RGB color value** $l_A$.
+
+The BRDF of the object is then **extended by adding another component**
+$f_A(x, \omega_r)$ that considers ambient lighting. Such component **does not
+depend on the light direction**.
+
+$$
+L(x, \omega_r) = \sum_l L(l, \vec{lx})f_r(x, \vec{lx}, \omega_r) + l_a f_a(x, \omega_r)
+$$
+
+**In most cases the BRDF for the ambient term is a constant known as the ambient
+light reflection color** $m_A$. Generally, $m_A$ corresponds to the main color
+of the object, but it can be tuned to obtain special lighting for particular
+objects.
