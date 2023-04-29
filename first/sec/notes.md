@@ -1289,5 +1289,35 @@ revise our procedure:
 dwords and we are using it two times) **we can use `%hn`** (which writes words).
 
 ```txt
-<addr><addr + 2>%<lower_val>c%<pos>$hn<higher_val>c%<pos+1>c$hn
+<addr><addr + 2>%<lower_val>c%<pos>$hn<difference between the two halves>c%<pos+1>c$hn
 ```
+
+#### What to edit
+
+We have **different options**:
+
+1. The **saved EIP** (like in the buffer overflow case)
+2. The Global Offset Table (**GOT**)
+   - Dynamically relocate functions
+3. C **library hooks**
+4. **Exception handlers**
+5. **Other** structures/pointers
+
+#### Countermeasures
+
+The **memory error countermeasures seen previously can help** against these
+attacks. Moreover, **modern compilers will warn** when they detect a naked
+`printf`. There also exist **patched versions of `libc` that mitigate** the
+problem (count-and-check and FormatGuard).
+
+**Conceptually**, format string bugs **are not specific to formatting
+functions**. In theory, **any function with the same unique combination of
+characteristics is potentially affected**:
+
+1. **Variadic** function
+2. A **mechanism** (e.g. placeholders) **to indirectly read/write arbitrary
+   locations**
+3. The **ability of the user to control them**
+
+Remember: `printf`-like functions interpret input that **has been proven to be
+Turing complete**, so we are basically injecting arbitrary code in memory.
