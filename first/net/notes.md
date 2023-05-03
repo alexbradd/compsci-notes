@@ -993,3 +993,187 @@ function like P4 `extern`s.
 **eBPF uses a pre-formatted memory layout. Data is accessed using maps. Maps can
 also be used to share data between eBPF programs and userspace or different eBPF
 programs**. Interaction with maps is done through helpers.
+
+## Congestion control
+
+**Recap** on how TCP congestion control works:
+
+- Three way handshake (`syn`-`syn ack`-`ack`) (connection oriented)
+- Data is split into segments
+- Byte oriented
+- Number of segments sent is dependent on the TCP window
+- The TCP window is increased using two policies:
+  1. Slow start: $W = W + 1$ per `ack` until `W <= SSTHRESH`
+  2. Congestion avoidance: $W = W + \frac{1}{W}$ per `ack`
+- `ack`s can be lost and the un-`ack`ed are resent after a timer (`RTO`) and the
+  congestion window is reduced
+- Packets can be lost, subsequent packets are `ack`ed with the last sequence
+  number received; retransmission works similarly to lost `ack`s
+  - Fast retransmit: after three identical `ack`, trigger retransmission
+    immediately without waiting for `RTO`
+- `ack`s can be delayed and sent cumulatively after a timeout (smaller than
+  `RTO`)
+- Packets can be reordered
+  - `ack`s for out-of-order packets carry the same `seq` as the last in-order
+    packet, easily triggering fast-retransmit
+  - TCP behaves badly for out-of-order packets
+
+**TCP does not adapt well to datacenter networking requirements**. Many large
+scale applications are built on **the partition/aggregate design pattern:**
+basically a hierarchy where each layer manages the layers below (
+**worker-aggregators** ).
+
+Problems:
+
+1. **Incast**: if **many flows converge on the same switch** interface over a
+   short period of time, **they might saturate the buffer and induce packet
+   loss**. Packet loss **causes a reduction of the TCP window**, meaning we go
+   slower.
+
+   We can **de-synchronise the workers** by deliberately delaying their answer
+   randomly (**jittering**). This, while avoiding incast and **improving the
+   99-th percentile, increases the median response time** since we are bounding
+   ourself to a delay.
+
+   Why don't we **reduce the `RTO`**? Reducing the `RTO` makes us able to
+   respond to packet losses more quickly.
+
+2. **Queue buildup**: **short and long flows compete for space in the output
+   queue** buffer of a switch:
+
+   - **Short flows** need **low latency**, meaning empty queues
+   - **Long flows** need **high-throughput** and big congestion windows
+
+   We have **two** possible outcomes:
+
+   - **Packet loss** (incast)
+   - **Queue buildup**: short flows experience increased latency as they're in
+     queue behind packets from large flows
+
+   **Reducing the `RTO` does not help** since resending packets means that new
+   resent packets get queued behind big flows.
+
+3. **Buffer pressure**: in switches, **buffer space is shared between ports**.
+   **Long flows build up queues** and since buffer space is a shared resource,
+   there is **less space for other flows**.
+
+**Datacenter needs**:
+
+1. **High burst** tolerance (solves incast)
+2. **Low latency** (for short flows)
+3. **High throughput** (for large flows)
+
+The **challenge is achieving these three things together** since the interests
+of some conflict with those of others (e.g. deep buffers guarantee (1) and (3)
+but make (2) worse).
+
+### Explicit Congestion Notification (ECN)
+
+Is an **extension of TCP** that **allows end to end notification of network
+congestion without dropping packets**. It **requires support at the IP layer**.
+It signals impending congestion of the link.
+
+Basically: if the **ECN bit is set** in the IP header, then the **path is
+congested**. The **receiver will `ack`** the data and piggyback the ECN bit,
+while the **sender will react by halving the TCP window**.
+
+### DCTCP
+
+**Built to work with legacy switches on top of commodity ECN features**. The
+idea is to **extract feedback from single-bit streams of ECN marks and react in
+proportion to the extent of the congestion**.
+
+The **only difference** between DCTCP and TCP is **how we convey information
+about congestion back to the sender**: DCTCP **tries to accurately convey the
+exact sequence of marked packets back to the sender using only 1-bit congestion
+information**. We cannot `ack` every packet, but we can **exploit delayed `ack`s
+to implement something like a state machine in the receiver**:
+
+1. If we receive a lot of non-ECN packets we send only a cumulative-`ack`
+2. As soon we receive a packet with the ECN bit set, we flush the `ECN=0` `ack`
+   and then send the `ack` for the `ECN=1` packet
+3. Then we continue sending delayed `ack`s but with `ECN=1`
+4. If we receive an `ack` with `ECN=0` we flush the ack for `ECN=1` and start
+   delay-`ack`ing for `ECN=0`
+
+TCP always halves the window size in response to a marked `ack`, **DCTCP starts
+reducing it gently**. When **high congestion** is found, **DCTCP behaves like
+TCP**, however with very low congestion, DCTCP reduced the window very slowly
+(for the formulas for computing the window see the slides or the DCTCP paper).
+
+DCTCP also **uses big buffers** so they can be almost always empty and guarantee
+high burst tolerance.
+
+**DCTCP works** since we can have:
+
+1. Low latency: by having **low buffer occupancy**
+2. High throughput: by having **smooth window adjustments**
+3. High burst tolerance:
+   - By **keeping** the **buffers mostly** empty
+   - By using **aggressive marking**, so **source react** before we start
+     dropping packets
+
+DCTCP however is not optimal: latency-sensitive parallel **short flows can get
+stuck waiting behind resource-intensive, long flows in switch queues**. We need
+to **handle flow prioritization at the switch level**.
+
+### pFabric
+
+**Decouples rate control and flow scheduling** enabling a **new transport
+protocol** that provides near-optimal flow completion times. **Needs specific
+functions at switches**.
+
+pFabric's **essential idea**:
+
+1. **Packets** carry a single **priority number**
+2. **pFabric switches** have **very small buffers** and **process only high
+   priority** packets while dropping lower priority ones
+3. **pFabric hosts send/retransmit very aggressively with minimal rate control**
+4. We **do not care about fairness**, we need to **complete flows as quickly as
+   possible** (i.e. **meeting overall computing objectives**)
+5. The **network fabric should be designed** to schedule flows **to maximize
+   application level objectives**
+
+Let us **abstract** a datacenter as a **gigantic switch**: with these
+abstraction we can see that:
+
+1. The objective is minimizing flow-completion-time
+2. Datacenter transport is just flow-scheduling on a giant switch
+3. Ingress and Egress are the capacity constraints
+
+The **optimal algorithm** for **minimizing average FCT** when scheduling over a
+**single link** is the **Shortest Remaining Processing Time** (SRPT) which
+**schedules the flow that has the least work remaining**. We are not scheduling
+over a single link, however **prioritizing small flows over large flows
+end-to-end across the fabric can provide near-ideal average FCT**.
+
+The first roadblock with our policy is **dealing with starvation**: blindly
+dropping low priority packets means that those flows will never complete as long
+as there are higher priority ones. The **solution** is not blindly sending
+high-priority packets, but **dequeueing only the earliest packets from the flow
+with the higher priority**.
+
+**pFabric's rate control is very simple, but if we make it too simple it can
+lead to wasted resources** (packet traverses almost all hops only to be dropped
+on the last). We need to **prevent congestion collapse** due to colliding big
+flows on hops. The **solution** is a **diet-TCP protocol**:
+
+1. **Start at line rate** (use an initial window size equal to the BDP of the
+   link)
+2. There are **no fast-retransmits** or any other similar mechanisms. **Packet
+   drops are only detected by timeouts** (fixed and small, e.g., 3x the fabric
+   RTT).
+3. **Upon a timeout, the flow enters into slow start and `SSTHRESH` is set to
+   half** the window size before the timeout occurred.
+
+Why it works?
+
+- **When a packet is dropped**, it has the **lowest priority among all
+  buffered** packets. **Even if it were not dropped, its "turn" would not be
+  until at least all the other buffered packets have left the switch**
+- **Consequence** of the previous point: a **packet can safely be dropped if
+  rate control is aggressive** and **ensures** that it **retransmits the packet
+  before all the existing packets depart the switch**
+  - This can easily be **achieved** if the **buffer size is at least one BDP**
+    and hence **takes more than a RTT to drain**, providing the end-host enough
+    time to detect and retransmit dropped packets
