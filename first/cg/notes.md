@@ -2619,3 +2619,147 @@ $$
 light reflection color** $m_A$. Generally, $m_A$ corresponds to the main color
 of the object, but it can be tuned to obtain special lighting for particular
 objects.
+
+### Hemispheric lighting
+
+An **extension** of ambient lighting is **hemispheric lighting**. In this
+technique, we use **two ambient light colors** (the “upper” or “sky” color, and
+the “lower” or “ground” color) and a **direction vector**. This model
+**simulates the fact that both the color of the sky and that of the ground have
+a big impact on the indirect light component** and **creates** the ambient light
+color **by blending the two colors with respect to the orientation of the
+object**.
+
+The two colors, **$l_U$ and $l_D$, represent the color of the ambient light at
+the two extremes** and the direction vector **$d$ orients the blending** of the
+two colors. The rendering equation is modified to have the **ambient light term
+$l_A(x)$ depend on the orientation of the surface** of the object in the
+considered point $x$.
+
+The **orientation** of the object is characterized by **$n_x$ the normal
+vector** to the surface in point $x$.
+
+If the **normal vector** is **aligned** and in the **same direction** as $d$,
+**$l_U$ is used**. If the **normal vector** is **aligned** but in the **opposite
+direction** of $d$, **$l_D$ is used** instead. For **normal vectors oriented in
+other directions**, the two colors are **blended proportionally to the cosine**
+of their angle with vector $d$.
+
+$$
+l_A(x) = \frac{n_x\cdot d + 1}{2}l_U + \frac{1-n_x\cdot d}{2}l_D
+$$
+
+### Image based lighting
+
+Hemispheric lighting computes the light received by an object as a function of
+the normal vector of the points of an object. The function is just an
+interpolation of two colors according to relative orientation with respect to a
+given direction.
+
+A **better method** is having a **generic function $l_A(x_i)$** that returns
+**the color received from the outside environment by a point $x_i$** on a
+surface oriented in the direction described by its normal vector $n_i$. A
+function such as this can be **computed either from specially taken pictures or
+from off-line high-quality rendering** of the environment and encoded in a way
+such that it can be used in real time.
+
+The **approximation of the rendering equation remains the same as the one seen
+for the hemispheric lighting**: only the light function changes to return the
+values computed from our image.
+
+**Encoding the function** is not easy, the **two main approaches** are:
+
+1. **Cube maps**
+2. **Spherical harmonics**: requires only four values (a basic color $l_C$ and
+   three derivation terms for each of three axes
+   $\Delta l_x,\Delta l_y, \Delta l_z$) and can be computed as such
+
+   $$
+   l_A(x) = l_C + n_x.x\Delta l_x +
+                  n_x.y\Delta l_y +
+                  n_x.z\Delta l_z +
+   $$
+
+## Smooth shading
+
+As introduced, meshes are polygonal objects with sharp edges that, with special
+rendering techniques, can appear smooth. The smoothing effect implies
+performance issue, since it changes how many times the rendering equation is
+solved. The solution can be computed per-vertex or per-pixel. Solving the
+rendering equation per pixel provides more visually appealing images, at the
+expense of performance reductions of one order of magnitude.
+
+The two most common smooth shading techniques are:
+
+1. Gouraud shading (per-vertex): smoothing occurs by blending the colors
+   generated
+2. Phong shading (per-pixel): smoothing occurs by interpolating the parameters
+   passed to the shaders involved
+
+Let us consider a curved surface. A mesh can approximate the surface by sampling
+it in a finite set of points. The higher is the sampling, the closer will be the
+approximation to the real surface. To improve rendering of curved surfaces, the
+encoding of a vertex is extended to 6 values, which define both the position of
+the vertex and the direction of the normal vector to the surface in that 3D
+point.
+
+When considering a mesh surface, the rendering equation can now determine the
+colors for the pixels of the object in the three vertices of a triangle,
+according to the associated normal vectors. The colors of the internal pixels of
+the triangles can then be computed using different interpolation techniques.
+
+### Gouraud shading
+
+The Gouraud shading technique, first computes the color of each vertex, then the
+colors of the inner pixels of a triangle are determined by interpolation of the
+vertex colors.
+
+Geometrically the position of a point inside a triangle can be computed with a
+convex linear combination of its vertices. The same interpolation coefficients
+used for the position, can be used for the colors. The interpolation
+coefficients define the baricentric coordinates.
+
+For objects that are static in the scene, which are illuminated by static
+lights, and whose material BRDF does not depend on the direction of the observer
+(i.e. just diffuse component following the Lambert model), vertex colors can be
+pre-computed and stored with the geometry. Computation of the light model can
+then be disabled during real-time rendering, and vertex normal vectors can be
+replaced by vertex colors.
+
+Color pre-computation is usually done in 3D authoring software such as Blender.
+Moreover, vertex color usually occupy less memory than normal vector directions
+(i.e. 4 vs. 12 bytes).
+
+### Phong shading
+
+The Phong shading algorithm computes the color of each internal pixel
+separately. This is thus a per-pixel shading algorithm. In this case, vertex
+normal vectors are interpolated to approximate the normal vector direction to
+the actual surface in the internal points of a triangle.
+
+Interpolation is performed by considering the x, y, z components of the normal
+vector separately. This however may lead to interpolated vectors that are no
+longer unitary; For this reason, interpolated normal vectors must be normalized
+at every step.
+
+The illumination model is then computed for every pixel, using the interpolated
+normal vectors together with the other constants required by the light model and
+BRDF in the rendering equation.
+
+### Vertex normals
+
+Note that the stored normal vector might be different from the geometric one
+determined by the triangle to which that vertex belongs. In general, it can be
+an arbitrary vector, that might have nothing to do with the associated surfaces.
+However, normal vectors completely uncorrelated with the geometry are rarely
+useful.
+
+Note also that, with our definition, the normal vector direction is a property
+of a triangle, and not of a vertex: two triangles might have a vertex in the
+same spatial position, but characterized by a different normal vector direction.
+Modelers can exploit this property to encode both smooth and sharp surfaces. The
+vertices in the same position of two adjacent triangles can have the same normal
+vector direction to produce a smooth surfaces or different normal vector
+direction, to produce sharp surfaces.
+
+## Not finished due to lack of time, see slides
