@@ -1321,3 +1321,82 @@ characteristics is potentially affected**:
 
 Remember: `printf`-like functions interpret input that **has been proven to be
 Turing complete**, so we are basically injecting arbitrary code in memory.
+
+## Web applications
+
+Web applications are built **on top of HTTP(S)**: a **plain-text**,
+**stateless** and **almost unauthenticated** protocol with **statefulness and
+authentication bolted on as extensions**. Crafting malicious requests is very
+easy.
+
+The golden rule of web application security is that the **client is never
+trustworthy**. We need to **filter and check carefully anything** that is sent
+to us. The challenge is that with JavaScript, clients have become a
+(cooperative) part of the application.
+
+How do we filter the input? It is not easy. The **sequence of
+validation/filtering** is:
+
+1. **Allowlisting**: only allowing through what we expect
+2. **Blocklisting**: on top of that discard known-bad stuff
+3. **Escaping**: transform special characters into something else which is less
+   dangerous
+
+General rule: **allowlisting is safer than blocklisting**.
+
+### Cross-site scripting (XSS) and Same-Origin Policy
+
+Cross site scripting is a **vulnerability** by means of which **client-side code
+can be injected in a page**. There are three types of XSS:
+
+1. **Stored** (persistent) XSS: the **attacker's input is stored on the target
+   server in a database**; then a victim retrieves the stored malicious code
+   from the web application without that data being made safe to render in the
+   browser
+2. **Reflected** (non-persistent) XSS: (Attacker) **Client input is returned to
+   the client (Victim) by the web application in a response**; the response
+   includes some or all of the input provided in the request, without being
+   stored and made safe to render in the browser.
+3. **DOM-based** XSS: **user input never leaves the victim’s browser**; the
+   malicious payload is **directly executed by client-side script**
+
+JavaScript is **sandboxed**, but **can also do some malicious things** like:
+
+1. **Cookie theft** or **session hijack**
+2. **Manipulation** of a **session** and execution of **fraudulent transaction**
+3. **Snooping** on private information
+4. **Drive by Download**
+5. Effectively **bypass the same-origin policy**
+
+The **same-origin policy** is implemented by all web clients and it **mandates
+that all client-side code load from origin `A` should only be able to access
+data from origin `A`**. An origin is defined as a `<protocol, host, port>`
+tuple. Modern web has **blurry boundaries** on this, like **CORS** and
+**client-side extensions**.
+
+A gut reaction to prevent XSSs is to block the `<script>` tag (since we cannot
+know a-priori what users want to write), however that is not enough:
+
+- `<applet>`, `<frame>` and `<iframe>` all execute code
+- Even "safe" tags are not safe: we can inject JS using event handlers like
+  `onerror` and `onload` or using `javascript:`:
+
+  ```html
+  <img src="/asdf" onerror="alert('XSS');" />
+  <svg onload="alert('XSS');" />
+  <a href="javascript:alert('XSS')">Totally safe link, click me!</a>
+  <a
+    href="javas
+  cript:alert('XSS')"
+    >Totally safe link, click me!</a
+  >
+  <a href="javasc&#09;ript:alert('XSS')">Totally safe link, click me!</a>
+  ```
+
+**The potential blocklist becomes infinite. The solution is to escape text**:
+
+- `<` becomes `&lt;`
+- `>` becomes `&gt;`
+- `&` becomes `&amp;`
+
+So that it will _never_ be interpreted as JS but still be rendered correctly.
