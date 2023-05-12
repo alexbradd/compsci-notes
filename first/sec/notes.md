@@ -1400,3 +1400,78 @@ know a-priori what users want to write), however that is not enough:
 - `&` becomes `&amp;`
 
 So that it will _never_ be interpreted as JS but still be rendered correctly.
+
+### Content Security Policy
+
+It is a W3C specification to **inform the browser on what should be trusted and
+what not**. It creates an **allow list of safe-sites from which we can load
+code** relaxing and making SOP more flexible.
+
+Technically, it's a **set of directives sent by the server to the client in the
+form of HTTP response headers**:
+
+```txt
+Content-Security-Policy: script-src 'self' http://necst.it
+```
+
+It is a **very effective remedy against XSS**, but **strict policies break
+functionality** while very **relaxed policies can be easily bypassed**.
+Moreover, the **policies need to be kept up to date manually** (most of the
+time) since pages and resources change. CSP can also break browser extensions
+that inject code into pages.
+
+For the reasons above, it is **very rarely used**.
+
+### SQL injection
+
+**DON'T DO THIS**:
+
+```java
+SqlCommand cmd = new SqlCommand(String.Format(
+  "SELECT * FROM Users WHERE username='{0}' AND password='{1}';",
+  txtUser.Text, txtPassword.Text));
+SqlDataReader reader = cmd.ExecuteReader();
+```
+
+Use **`PreparedStatement` with placeholders and proper
+sanitization/permissions**.
+
+**Injections** can:
+
+1. Be **done on single tables**
+2. Be **done on different tables** with compatible columns using **`union`**
+3. **Insert multiple data** with one insert
+4. Be done **blindly**: we **don't need to necessarily retrieve data, but we
+   could exploit some other characteristics of the response** (delay or errors)
+   to infer the ability to do injections
+
+### Recap on code injection problems
+
+The **root** of the problems outlined here is the **mixture between data with
+code** due to two conflicting requirements: the **functional requirement wants
+them mixed while the security one doesn't**.
+
+The consequence is that **if at any point there is a parsing routine that reacts
+to some control sequences in the data, we have a vulnerability**.
+
+### Information leaks
+
+Unintentional information leaks due to:
+
+1. **Too detailed error messages**
+   - **Useful** to have **in development** but should be turned off when in
+     production
+2. **Debug traces left active in production**
+   - Can **reveal sensitive information** about client/server versions, DB names
+     and structures etc...
+3. **Insertion of user-supplied data in errors** (risk of reflected XSS)
+4. **Side-channels** (e.g. "User not found" vs. "Password mismatch")
+
+### Password security
+
+1. Passwords should **ALWAYS be salted and hashed**
+2. **Password reset schemes** are **very sensitive** since it is **basically an
+   alternate password**:
+   - **DO**: Send private, temporary reset link to registered email
+   - **DON'T**: send temp password, send the password (implies that you store it
+     unhashed), ask only security questions
