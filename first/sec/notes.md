@@ -1475,3 +1475,95 @@ Unintentional information leaks due to:
    - **DO**: Send private, temporary reset link to registered email
    - **DON'T**: send temp password, send the password (implies that you store it
      unhashed), ask only security questions
+
+### Bruteforcing protection
+
+1. `fail2ban` to avoid bruteforcing passwords
+2. Make accounts not enumerable (avoids reverse bruteforcing)
+3. Blocking IPs is not a good idea (can be easily circumvented with proxies,
+   VPNs etc.)
+
+### Cookies
+
+Cookies provide **client-side information storage**. Original idea was to allow site
+personalizations, however they **become dangerous if we use them to keep track of
+user authentication and sessions**.
+
+**Session cookies** need to be totally **random and not guessable**. They **may be
+encrypted (+MAC)** if they contain sensible information (not needed anymore due to
+TLS). **Any token (not only session) need to have a reasonable expiration date**.
+
+Since server-side sessions require storage space, we can **send all the needed
+variables to the client, signing them with a server-side private key** (basically
+encrypted JWTs).
+
+Session pose some **challenges**:
+
+1. **Concurrency**: what if we have a replicated server and a user logs into one of
+   them
+2. **Session termination**: when/how do we terminate a session?
+3. **Storage**: on disk or in RAM (do not). Saving to secondary storage has
+   performance implications, even in a replicated case (see concurrency)
+
+**Session hijacking** is somehow obtaining a session (XSS or bruteforcing session
+IDs).
+
+### Cross-site request forgery (CSRF)
+
+It is an attack that **forces an user to execute unwanted actions (state-changing)
+on a web application in which they are currently authenticated with ambient
+credentials** (credentials sent automatically every request, i.e. cookies).
+
+Key concepts:
+
+- All requests originating from the user's browser come with the user's cookie
+  jar
+- Malicious requests are routed to the vulnerable web application through the
+  victim's browser (via e.g. a redirect or a crafted request)
+- Websites cannot distinguish if requests are coming from an authenticated user
+  have originated by an explicit user action
+
+**CSRF tokens** are a remedy: they are a **random challenge token unique to each user
+session that is regenerated at each request and has an expiration**. The client
+sends it to the server, which then checks that it has the value it expected. The
+token is **_not_ stored in cookies**.
+
+Another mitigation is trying to **not send cookies when going from the
+malicious link to our website**. In the modern web, we can use the **`SameSite`
+attribute** to specify this behaviour:
+
+- `SameSite=strict`: don't send the cookie for **any cross-site usage**
+- `SameSite=lax`: send cookies only for **cross-domain navigation**
+
+## Network protocol attacks
+
+We will see three typical types of attacks:
+
+1. **Denial of Service**: attack on availability
+2. **Sniffing**: attack on confidentiality
+3. **Spoofing**: attack on integrity an authenticity
+
+### DoS
+
+It is not solvable. Some types+examples are:
+
+1. **Killer packets**: one malformed packet and we crash the kernel
+   - **Killer ping**: `ICMP` echo request have a maximum size (`65535`). If we
+     create a bigger buffer (like `65527`), we may cause a buffer-overflow in
+     the server's kernel and and panic.
+   - **Teardrop**: exploits vulnerabilities in TCP reassembly (we send packets with
+     overlapping offsets); this can cause kernel hangs/crashes.
+   - **Land attack**: a TCP packet with `src IP == dst IP` and a `SYN` flag set
+     could loop the kernel and lock up the TCP/IP stack.
+2. **`SYN` flood**: flooding does DoS by wasting a server's memory
+   - The servers needs to keep track to each `SYN` packet it receives since it
+     needs to ways for an `ACK` from the initiator. If we generate a lot of
+     `SYN`, we saturate the server's memory, making it impossible to open new
+     connections (note the asymmetry of resource usage between the two parties).
+   - A **remedy to this are `SYN`-cookies** (usually crytographically hashed
+     sequence numbers). It offloads some memory
+     usage to the client since the server opens a connection only is it receives
+     a valid the `SYN`-cookie in the last `ACK` message. This avoids filling
+     memory with half opened connections
+3. Smurf, multiplication of amplification attacks
+4. DDoS
