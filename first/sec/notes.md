@@ -1485,34 +1485,36 @@ Unintentional information leaks due to:
 
 ### Cookies
 
-Cookies provide **client-side information storage**. Original idea was to allow site
-personalizations, however they **become dangerous if we use them to keep track of
-user authentication and sessions**.
+Cookies provide **client-side information storage**. Original idea was to allow
+site personalizations, however they **become dangerous if we use them to keep
+track of user authentication and sessions**.
 
-**Session cookies** need to be totally **random and not guessable**. They **may be
-encrypted (+MAC)** if they contain sensible information (not needed anymore due to
-TLS). **Any token (not only session) need to have a reasonable expiration date**.
+**Session cookies** need to be totally **random and not guessable**. They **may
+be encrypted (+MAC)** if they contain sensible information (not needed anymore
+due to TLS). **Any token (not only session) need to have a reasonable expiration
+date**.
 
 Since server-side sessions require storage space, we can **send all the needed
-variables to the client, signing them with a server-side private key** (basically
-encrypted JWTs).
+variables to the client, signing them with a server-side private key**
+(basically encrypted JWTs).
 
 Session pose some **challenges**:
 
-1. **Concurrency**: what if we have a replicated server and a user logs into one of
-   them
+1. **Concurrency**: what if we have a replicated server and a user logs into one
+   of them
 2. **Session termination**: when/how do we terminate a session?
 3. **Storage**: on disk or in RAM (do not). Saving to secondary storage has
    performance implications, even in a replicated case (see concurrency)
 
-**Session hijacking** is somehow obtaining a session (XSS or bruteforcing session
-IDs).
+**Session hijacking** is somehow obtaining a session (XSS or bruteforcing
+session IDs).
 
 ### Cross-site request forgery (CSRF)
 
-It is an attack that **forces an user to execute unwanted actions (state-changing)
-on a web application in which they are currently authenticated with ambient
-credentials** (credentials sent automatically every request, i.e. cookies).
+It is an attack that **forces an user to execute unwanted actions
+(state-changing) on a web application in which they are currently authenticated
+with ambient credentials** (credentials sent automatically every request, i.e.
+cookies).
 
 Key concepts:
 
@@ -1523,13 +1525,13 @@ Key concepts:
 - Websites cannot distinguish if requests are coming from an authenticated user
   have originated by an explicit user action
 
-**CSRF tokens** are a remedy: they are a **random challenge token unique to each user
-session that is regenerated at each request and has an expiration**. The client
-sends it to the server, which then checks that it has the value it expected. The
-token is **_not_ stored in cookies**.
+**CSRF tokens** are a remedy: they are a **random challenge token unique to each
+user session that is regenerated at each request and has an expiration**. The
+client sends it to the server, which then checks that it has the value it
+expected. The token is **_not_ stored in cookies**.
 
-Another mitigation is trying to **not send cookies when going from the
-malicious link to our website**. In the modern web, we can use the **`SameSite`
+Another mitigation is trying to **not send cookies when going from the malicious
+link to our website**. In the modern web, we can use the **`SameSite`
 attribute** to specify this behaviour:
 
 - `SameSite=strict`: don't send the cookie for **any cross-site usage**
@@ -1551,8 +1553,8 @@ It is not solvable. Some types+examples are:
    - **Killer ping**: `ICMP` echo request have a maximum size (`65535`). If we
      create a bigger buffer (like `65527`), we may cause a buffer-overflow in
      the server's kernel and and panic.
-   - **Teardrop**: exploits vulnerabilities in TCP reassembly (we send packets with
-     overlapping offsets); this can cause kernel hangs/crashes.
+   - **Teardrop**: exploits vulnerabilities in TCP reassembly (we send packets
+     with overlapping offsets); this can cause kernel hangs/crashes.
    - **Land attack**: a TCP packet with `src IP == dst IP` and a `SYN` flag set
      could loop the kernel and lock up the TCP/IP stack.
 2. **`SYN` flood**: flooding does DoS by wasting a server's memory
@@ -1561,9 +1563,119 @@ It is not solvable. Some types+examples are:
      `SYN`, we saturate the server's memory, making it impossible to open new
      connections (note the asymmetry of resource usage between the two parties).
    - A **remedy to this are `SYN`-cookies** (usually crytographically hashed
-     sequence numbers). It offloads some memory
-     usage to the client since the server opens a connection only is it receives
-     a valid the `SYN`-cookie in the last `ACK` message. This avoids filling
-     memory with half opened connections
-3. Smurf, multiplication of amplification attacks
-4. DDoS
+     sequence numbers). It offloads some memory usage to the client since the
+     server opens a connection only is it receives a valid the `SYN`-cookie in
+     the last `ACK` message. This avoids filling memory with half opened
+     connections
+3. **DDoS**: like a DoS, but distributed among multiple different attackers
+   (more difficult to detect)
+   - **Botnet**: a **network of compromised computers** (called bots) that are
+     **connected to a command-and-control infrastracture** that allows the
+     attacker (botmaster) to send commands to the bots
+     - Botnets are not only used for DDosing, but also other malicious attacks
+       (spamming, phishing, information stealing etc.)
+   - **Smurfing**: the **attacker is outside the LAN** that connects a lot of
+     hosts to a target; the **attacker can send a spoofed ICMP ping with the
+     target's IP in broadcast**, meaning that **all hosts in the LAN will reply
+     to the victim**
+     - The phenomenon of creating a lot of requests from a single request is
+       called **amplification** (of bandwith or of packet size)
+     - ICMP is not the only protocol that allows amplification
+     - This attack is **not possible anymore**:
+       - Block broadcast requests or block them for hosts outside the LAN
+       - Disable the abusable protocols (e.g. ICMP)
+
+### Sniffing
+
+Normally, **a NIC intercepts and passes to the OS only the packets directed to
+the host's address. However, we can configure it to pass ALL packets to the OS**
+(**promiscuous mode**).
+
+To **mitigate** sniffing is using **switched networks** instead of hub-based
+networks, since switches selectively relay traffic while hubs broadcast it.
+
+### Spoofing
+
+#### ARP Spoofing (or Cache poisoning)
+
+The ARP cache maps 32-bits IPv4 addresses to 48-bits MAC addresses. Each host
+**caches the ARP replies and can only trust its entries**. Entries are
+**refreshed every ~30 seconds** due to changes in the network with broadcast
+messages on the LAN.
+
+This cache works in a **"first-come first-trusted"** way and **lacks
+authentication**: this means that an attacker can **forge** replies and **if it
+wins the race** with the real host, we can **spoof the real MAC address and
+redirect traffic**.
+
+Some **mitigations**:
+
+1. **Check responses before trusting**
+2. Adding a `SEQ` number, or other kinds of **unknowns for each request**
+
+#### Filling the CAM tables
+
+Switches use **CAM tables to know which MAC addresses are on which ports**. If
+this table **gets full**, the **switch cannot cache any more** addresses and
+**resorts to forwarding everything** (MAC flooding).
+
+We can also **abuse the Spanning Tree Protocol**: switches decide how to build
+the ST by exchanging **BPDU** (bridge protocol data unit) packets to elect the
+root node, which are **obviously not authenticated**. This means that **an
+attacker can change the shape of the tree for sniffing/spoofing purposes**.
+
+### IP address spoofing
+
+The **IP source address is not authenticated. Changing it in UDP or ICMP packets
+is easy**. However, the **attacker will not see the answers** (e.g., they are on
+a different network), because they will be sent to the spoofed host (blind
+spoofing). But **if the attacker is on the same network**, they can sniff the
+rest, or **use ARP spoofing**.
+
+For **TCP** things are **more complicated**. We need to guess **correctly guess
+a `SEQ` number to hijack a connection. Initial sequence numbers (`ISN`) should,
+however, be random**.
+
+**If we spoof the source IP and initiate a connection, we must be sure that the
+spoofed machine does not receives the `SYN-ACK`, otherwise it would `RST` and
+break everything**. To avoid this, we could **DoS the spoofed machine**, to make
+it impossible to respond to packets, and guess the starting `ACK` number of the
+server.
+
+**TCP session hijacking** works **similarly** to what is outlined above, the
+**difference is that the attacker sniffs both `SEQ` and `ACK` before disrupting
+the original connection** and putting himself in the middle.
+
+The attacker can **avoid disrupting the spoofed connection** and just inject
+things in the flow **only if he is a man in the middle**, i.e. if he can
+control/resync all the traffic flowing through.
+
+### Man In The Middle (MITM)
+
+It is a broad category of attacks where an **attacker can impersonate the server
+with respect to the client and vice-versa**. It can be:
+
+1. Physical or logical
+2. Full or half-duplex
+
+### DNS cache poisoning
+
+Like ARP caches, **non-authoritative DNS servers store the DNS records in a
+first-arrives-first-trusted fashion**. This means that by:
+
+1. Sending a DNS query to the server to attack makes it ask an authoritative
+   server for a resolution
+2. **Being faster than the authoritative server** to respond
+
+We can **poison the DNS** record making anyone who uses the DNS server receive a
+malicious IP.
+
+The above version of the poisoning attack **has been fixed thanks to some weak
+authentication**, however we can **still do it by slightly changing the way** we
+do it:
+
+1. The attacker makes a recursive query to the victim DNS server
+2. The victim (non authoritative) DNS server contacts the authoritative server
+3. The attacker, impersonating the authoritative DNS server, spoofs the answer
+   (before the legitimate one)
+4. The victim DNS server trusts and caches the malicious record
