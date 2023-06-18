@@ -1679,3 +1679,120 @@ do it:
 3. The attacker, impersonating the authoritative DNS server, spoofs the answer
    (before the legitimate one)
 4. The victim DNS server trusts and caches the malicious record
+
+### DHCP poisoning
+
+DHCP is unauthenticated. The attacker can then intercept the DHCP requests and
+be the first to answer. The client will trust the first to respond.
+
+Whit a spoofed DHCP response the attacker can set IP addresses, DNS addresses
+and the default gateway of the victim client.
+
+### ICMP and ICMP redirects
+
+ICMP is a control protocol used by IP. Some interesting commands are:
+
+1. Echo: pinging
+2. Redirect: sent by routers, informs hosts about better routes/gateways
+   - This feature is not used any more and every system will have ICMP redirect
+     turned off
+
+The attacker can forge a spoofed ICMP redirect to re-route traffic. ICMP
+includes some weak authentication: it includes the IP header and a portion of
+the payload of the original IP datagram to prove that it received the message.
+Of course this doesn't stop attackers since they can just sniff packets and try
+to win the race condition with the router.
+
+### Route mangling
+
+If the attacker can announce routes to a router, they can play a number off
+magical tricks since:
+
+- IGRP, RIP, OSPF: no/weak authentication
+- EIGRP, BGP: authentication available but seldom used
+
+## Secure network architectures
+
+### Firewalls
+
+They are network access control system that verifies all the packets flowing
+through it. Their main functions are usually IP packet filtering and Network
+Address Translation (NAT).
+
+A firewall checks **all** the traffic flowing through it, and **only** the
+traffic flowing through it. This means that they are powerless against
+local-network attacks or unchecked path attacks. The firewall itself is a
+computer: it could have vulnerabilities and be violated. Most of the times it is
+a single purpose machine, an embedded appliance with just a firmware, and offer
+few or no services (to reduce attack surface).
+
+A firewall acts like a bouncer: it just applies some rules to packets
+enter/leaving through it. This means that bad policies lead to bad security.
+Policies must be built on a default-deny basis.
+
+There are two main types of firewalls:
+
+1. Network layer firewalls:
+   - Packet-filters: looks up to the IP layer (and partially transport)
+   - Stateful packet-filters: can track state and manage protocols such as TCP
+2. Application layer firewalls:
+   - Circuit level firewalls (legacy): basically TCP-level proxies, not
+     transparent to users
+   - Application proxies: normal proxies, not transparent to users
+
+#### Packet filters
+
+Every packet filter allows us to express the following concept: "if packet
+matches certain condition, block/allow/log/etc...".
+
+Stateless packet-filters do packet-by-packet processing and cannot track the
+state of connections. They do not inspect the payload. In some configurations,
+it may require relaxing policies to let through some connections:
+
+- For example, in a web-server, we would need to allow traffic in both
+  directions (from outside to server and viceversa), meaning we can be allow
+  leakage of info from the local network to the outside
+
+Stateful packet-filters do everything that stateless packet filters do, plus
+they implement the TCP state machine. This means that we can track connection
+without adding a "response" rule, making deny-rules safer:
+
+- Using the same example as before, we could deny packets from the local network
+  while still allowing connections from the outside to work
+
+The main problem of stateful packet filtering is performance: performance is
+bounded on a per-connection basis, not on a per-packet basis. This means that
+the firewall is more vulnerable to DoS.
+
+Stateful packet filtering allows some more advanced tecniques:
+
+1. Tracking (logging/accounting)
+2. Deep content inspection: we are able to reconstruct application-layer
+   protocols and inspect them
+   - This means that we can instruct the firewall to analyze packets and
+     recognize attacks
+3. Packet defragmentation and reassembly
+4. NAT:
+   - for TCP, see first-year FCI lecture on NAT
+   - in UDP, we do not have connections meaning we need to infer connections
+     based on context with something like timeouts (abusable and not always
+     reliable)
+   - Some protocols transmit network information at application layer,
+     requiring application layer inspection for NAT to work:
+     - FTP is particularly a pain to deal with since it does things kinda
+       backwards (client sends a free port to the server and then the server
+       initiates a connection)
+
+#### Application proxies
+
+Proxies act as servers to clients and clients to servers (basically a MITM).
+They are almost never transparent to clients, which may require modifications.
+Moreover, each application protocol requires its own proxies.
+
+Proxies can do a bunch of useful stuff:
+
+1. Authenticate users
+2. Apply specific filtering policies
+3. Content filtering/scanning
+4. Expose a subset of the protocol to defend clients or servers (if a server is
+   being defended we call them reverse-proxies).
