@@ -1728,9 +1728,8 @@ few or no services (to reduce attack surface).
 
 A firewall acts like a bouncer: it just applies some rules to packets
 enter/leaving through it. This means that bad policies lead to bad security.
-Policies must be built on a default-deny basis.
-
-There are two main types of firewalls:
+Policies must be built on a default-deny basis. There are two main types of
+firewalls:
 
 1. Network layer firewalls:
    - Packet-filters: looks up to the IP layer (and partially transport)
@@ -1777,8 +1776,8 @@ Stateful packet filtering allows some more advanced tecniques:
    - in UDP, we do not have connections meaning we need to infer connections
      based on context with something like timeouts (abusable and not always
      reliable)
-   - Some protocols transmit network information at application layer,
-     requiring application layer inspection for NAT to work:
+   - Some protocols transmit network information at application layer, requiring
+     application layer inspection for NAT to work:
      - FTP is particularly a pain to deal with since it does things kinda
        backwards (client sends a free port to the server and then the server
        initiates a connection)
@@ -1796,3 +1795,143 @@ Proxies can do a bunch of useful stuff:
 3. Content filtering/scanning
 4. Expose a subset of the protocol to defend clients or servers (if a server is
    being defended we call them reverse-proxies).
+
+### Architecture of secure networks
+
+#### Multi-zoned networks
+
+The firewall model is called "castle-model": we build a wall around us to block
+all traffic. However, we cannot completely isolate ourselves from the outside
+(basically just cut the internet cable) and we cannot assume that what is inside
+is "good" and what is outside is "bad" (e.g. remote login to internal network or
+web servers hosted in the internal network that should be available to all
+users). If we mix externally accessible servers with internal clients, we lower
+the overall security (need to punch holes in the castle walls); the solution is
+to split the network by privilege levels and use firewalls to regulate access.
+
+In practice, we create a semi-public zone called DMZ (demilitarized zone) that
+will host public servers but NOT critical or irreplaceable data. The DMZ is
+almost as risky as the internet.
+
+```txt
+         FW1                    FW2
+---------++---------------------++----------------------
+Internet ||         DMZ         || Private network
+---------++---------------------++----------------------
+         ||                     ||
+         || Web server          || IMAP + Outbound mail
+         ||                     ||
+         || Inbound mail server || Database
+         ||                     ||
+         ||                     || Workstations
+         ||                     ||
+```
+
+The above diagram kinda explain why firewalls are called firewalls: they do not
+stop attackers (once we get access to the local network we can do whatever
+(spoof and sniff packets)), but they contain a break-in for just enough for us
+to prepare a defense.
+
+#### VPNs
+
+How can we allow authenticated access to internal services form the outside
+(e.g. remote login for employees)? The solution is to use a VPN, which is an
+encrypted overlay connection over a public network.
+
+```txt
+         FW1                    FW2
+---------++---------------------++----------------------
+Internet ||         DMZ         || Private network
+---------++---------------------++----------------------
+         ||                 +----------+
+Employee------------------->|VPN server|
+         ||                 +----------+
+         ||                     ||
+         || Web server          || IMAP + Outbound mail
+         ||                     ||
+         || Inbound mail server || Database
+         ||                     ||
+         ||                     || Workstations
+         ||                     ||
+```
+
+VPNs can work in two modes:
+
+1. Full tunnelling: Every packet goes through the VPN tunnel
+   - Multiplies traffic, could be inefficient
+   - Single point of control and application of all security policies as if the
+     client were in the corporate network
+2. Split tunnelling: Traffic to the internal network goes through the tunnel,
+   everything else goes through the ISP as normal
+   - More efficient, less to control
+   - Firewall is not the only point of contact between the internal network and
+     the internet
+
+Some VPN protocols:
+
+1. PPTP: proprietary Microsoft protocol, variant of PPP with cryptography and
+   authentication
+2. IPSEC: security extension of IPv6 backported to IPv4, very flexible but very
+   complicated
+3. VPN over TLS: most used (see OpenVPN for a open source implementation)
+4. SSH tunnelling
+
+## SSL, TLS and SET
+
+HTTP over SSL (HTTPS) was the initial usage of SSL (developed by Netscape). It
+provides communication confidentiality and integrity, mutual authentication but
+no guarantees on data usage and no strict authentication of the client. SET was
+an alternative that offered guarantees on data usage and transaction security
+enforcement, however it never gained traction. SSL would eventually be
+standardized by the IETF as TLS after SSL version 3. Today we are at TLS 1.3,
+versions of TLS up to 1.1 are insecure and should be avoided.
+
+TLS enforces confidentiality and integrity of the communications, server
+authentication and optionally client authentication too. It uses both symmetric
+and asymmetric cryptography for performance reasons.
+
+Everything starts with the TLS handshake:
+
+1. The client starts the connection with the server by sending a cipher suite
+   plus some random data
+   - The cipher suites (one for each party, can be different; the standard
+     mandates a minimal cipher set) are compared during handshake to agree on a
+     shared algorithm; it is composed of :
+     - Key exchange/encapsulation algorithm
+     - Symmetric encryption algorithm
+     - Digital signature algorithm
+     - Hash function
+2. The server responds with:
+   - The cipher selection
+   - Some other random data
+   - A server certificate (which the public key and the identity of the server)
+3. The client checks the server certificate (validity, trusted root CA, name of
+   the server)
+4. If the certificate is ok, the client generates a pre-master secret, encrypts
+   it with the servers public key and sends it
+   - If we want client authentication, we need to sign this secret with the
+     clients private key and also send the client certificate
+5. Both parties compute the shared secret by hashing the pre-master secret, the
+   client random data and server random data
+6. The communication then proceeds on an symmetrically-encrypted channel
+
+What can a MITM do to break it:
+
+1. Sniff: the MITM can see the traffic, but cannot decrypt it since it lacks the
+   pre-master secret
+2. Intercept the original certificate and send a spoofed one:
+   - Sending a fake certificate (i.e. signed by a non-root CA) will be rejected
+     by the client
+   - Sending a good certificate with a fake name will be rejected by the client
+   - Sending a good certificate with a modified public key (making it invalid)
+     will be rejected by the client
+
+TLS is by design resistant to MITM... if the client behaves correctly. If the
+client can be fooled into trusting the invalid certificate everything is moot.
+This means that complimentary to TLS, we need good user interfaces that
+correctly communicate the dangers of trusting forged certificates. Moreover,
+TLS:
+
+1. Does not provide protection before or after transmission (on server, on client
+   or by an abuser)
+2. Relies on PKI (if a certificate violates the trust everything is moot)
