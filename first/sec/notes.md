@@ -1878,6 +1878,8 @@ Some VPN protocols:
 
 ## SSL, TLS and SET
 
+### SSL/TLS
+
 HTTP over SSL (HTTPS) was the initial usage of SSL (developed by Netscape). It
 provides communication confidentiality and integrity, mutual authentication but
 no guarantees on data usage and no strict authentication of the client. SET was
@@ -1932,6 +1934,149 @@ This means that complimentary to TLS, we need good user interfaces that
 correctly communicate the dangers of trusting forged certificates. Moreover,
 TLS:
 
-1. Does not provide protection before or after transmission (on server, on client
-   or by an abuser)
+1. Does not provide protection before or after transmission (on server, on
+   client or by an abuser)
 2. Relies on PKI (if a certificate violates the trust everything is moot)
+   - HSTS (HTTP Strict Transport Security): a header to tell the browser to
+     always connect to that domain using HTTPS; browsers often implement a HSTS
+     preload list; defends against SSL stripping
+   - HPKP (HTTP Public Key Pinning): Deprecated, a header to tell the browser to
+     "pin" a specific public key hashes for that origin for a period of time, if
+     the origin does not use one of the pinned key, an error is shown; defends
+     against trust cert mis-issuances
+   - Certificate Transparency: when a CA issues a certificate, it lists its
+     metadata to a pubicly available log; this can help against certificate
+     misissue
+
+### SET
+
+Secure Electronic Transaction, was a joint effort by VISA+MasterCard consortium.
+It protects transactions and not connections. The high level approach is:
+
+1. The card holder sends the merchant only the order of goods
+2. Send the payment data to a payment gateway
+3. Empower the gateway to verify correspondence
+
+It uses the concept of a dual signature, i.e. a signature that joins together
+the two pieces of a message, directed to two distinct recipients.
+
+```txt
++------------+  H    +--------+
+| Order info | ----> | Hash 1 | \              Encrypt with
++------------+       +--------+  \   H         holder info
+                                  | ---> Dual hash --\
++--------------+ H   +--------+  /                   |
+| Payment info | --> | Hash 2 | /                    v
++--------------+     +--------+                Dual signature
+```
+
+Using the above names, we have that the data flow is the following:
+
+```txt
++------------+----------+
+|            | Hash 2   | Enc. with merchant pub key   +---+
+| Order info +----------+ ==========================>  | M |
+|            | Dual sgn |                              | e |
++------------+----------+                              | r |
+                                                       | c |
++----------+----------+                                | h |
+|          | Hash 1   | Enc. with payment gate. key    | a |
+| Pay info +----------+ ============================>  | n |
+|          | Dual sgn |                                | t |
++----------+----------+                                +---+
+                                                        ||
+++-----------------++    Payment info still encrypted   //
+|| Payment gateway || <==================================
+++-----------------++
+```
+
+The merchant can verify the correctness of the information by checking the
+double signature:
+
+1. Calculate the hash of the order info
+2. Calculate the dual hash
+3. Check that it corresponds with the received hash
+
+The payment gateway can do the dual verification.
+
+SET failed since it does require that each of the three parties have a
+certificate. For the payment gateway and the merchant is ok, but giving a
+certificate for each card holder does not scale at all (it requires
+pre-registration, making it less convenient meaning that people will not bother
+and use the less secure method).
+
+Nowadays the problem is solved with a simple redirect with a token to the bank's
+site, or with 3-D secure.
+
+## Malicious software
+
+Malicious software, or malware, is code that is intentionally written to violate
+a security policy. There are different "categories"/features of malware, some
+are:
+
+1. Viruses: code that self-propagates by infecting other files, usually
+   executables; it is not a standalone program
+2. Worms: standalone programs that self-propagates, even remotely, often by
+   exploiting vulnerabilities/social engineering
+3. Trojan horse: apparently benign programs that hide functionality and allow
+   remote control
+
+Initially malware was created for demonstration purposes (research basically),
+around the 2000s the mail driving factor shifted to monetization (ransomware to
+hit the mass population). After the 2010s we slowly seen the rise of viruses
+that target high profile targets/infrastructure created by organized crime
+groups, sometimes sponsored by state and not only driven by monetary incentives.
+
+### Viruses
+
+Fred Cohen ('83), theorized the existence and produced the first examples of
+viruses. It is impossible to build the perfect virus detector (propagation
+detector):
+
+- Let `P` be a perfect detection program
+- Let `V` be a virus that uses `P` as a subroutine:
+  - `if P(V) = True; then halt;` implies that `V` doesn't spread, thus it is not
+    a virus
+  - `if P(V) = False; then spread` implies that `V` spreads and is a virus
+  - We have a contradiction, thus `P` is not a perfect detection program
+
+Thus we can only create programs that detect a specific virus.
+
+The general life cycle of malware is the following:
+
+1. Reproduce: most modern does not self-propagate, however the choice of the
+   infection vector is still relevant to the reproducction of the malware
+2. Infect: we need to balance infection and detection possibility
+   - Boot viruses: stored in the MBR of hard drives, quite old tech but
+     regaining traction
+   - File infectors:
+     - Overwrite original program with virus
+     - Parasitic virus (append code and modify program's entry point)
+     - multi-cavity virus (inject code into unused parts of the program's code)
+3. Stay hidden
+4. Run payload
+
+"Macro" viruses are the most common virus today. They are data files
+traditionally considered safe but with "macro" functionality that allows
+arbitrary code execution. They are very difficult to deal with and remove,
+especially in a corporate environment since they often infect documents stored
+on shared drives.
+
+### Worms
+
+Today worms propagate via emails/social networks by emailing/messaging to others
+in the infected computer's address book. They usually attach files with
+executables or executables masquerading as data.
+
+The modern version of the original idea of worms are called mass scanners. The
+basic pattern is the same: infect a computer and seek out new targets. They
+spread very fast to large number of hosts. They employ scanning techniques to
+choose the next target:
+
+- Trying random addresses
+- Local preference: do more scans to local networks
+- Permutation scanning: divide the address space to spread more efficiently
+- Hit-list scanning: hard-code a list of vulnerable machines in the work to
+  lift-off faster
+- Warhol worm: hit-list + permutation
+
