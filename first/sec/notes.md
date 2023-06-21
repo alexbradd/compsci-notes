@@ -2073,10 +2073,108 @@ basic pattern is the same: infect a computer and seek out new targets. They
 spread very fast to large number of hosts. They employ scanning techniques to
 choose the next target:
 
-- Trying random addresses
-- Local preference: do more scans to local networks
-- Permutation scanning: divide the address space to spread more efficiently
-- Hit-list scanning: hard-code a list of vulnerable machines in the work to
+- Trying random addresses (with the rise in internet usage it became more
+  viable)
+- Local preference: do more scans to local networks since they usually are
+  faster that the wide internet
+- Permutation scanning: divide the address space between machines to spread more
+  efficiently
+- Hit-list scanning: prepare a list of vulnerable machines in the work to
   lift-off faster
-- Warhol worm: hit-list + permutation
+- Warhol worm: hit-list + permutation, created to demonstrate that it can infect
+  the whole internet in less than 15 minutes
 
+Since 2004, however, there has been a silence: no more worm outbreaks have been
+seen. Moreover, no one has ever tried to take down the whole internet, even
+though there have been opportunities to do so. The reason for the lack of
+attacks to the basic infrastructure is a lack of motivation: the attackers need
+internet to spread the worm! The growing interest in monetization also put worms
+out of favour: the best way to monetize is not a hyper-spreading worm, but
+slowly propagate malware and make it as persistent/undetectable as possible to
+gather info/sell as a botnet/run a crypto miner.
+
+### Botnets
+
+A botnet is a network that consists of several malicious bots that are
+controlled by a commander, commonly known as botmaster (botherder).
+
+Bots do not self-replicate and are persistent on the computer. They are a threat
+for:
+
+1. The infected host: information harvesting
+2. The rest of the internet: spam, DDoS, propagation or support infra for
+   organized crime
+
+### Anti-malware
+
+We can defend against malware by:
+
+1. Patching vulnerabilities: most worms exploit known vulnerabilities, useless
+   against zero-days
+2. Signatures: must be developed automatically since worms operate faster than
+   human response
+3. Intrusion/anomaly detection
+
+Antiviruses/Anti-malware software can use different methods to detect malware:
+
+1. Signature-based detection (seen previously): requires a database of
+   byte-level/intruction-level signatures that match known malware (wildcards
+   are often used)
+   - Basically a blocklist, thus somewhat ineffective
+2. Heuristics: useful against worms and older viruses, checks for signs of
+   infections for example
+   - Code execution starts in last section
+   - Incorrect header size in PE header
+   - Suspicious code section name
+   - Patched import address table
+3. Behavioural detection: detect the common behaviour of known malware
+
+Anti-malware software is not the solution to everything: if your only tool is a
+hammer every problem is a nail.
+
+### Virus stealth techniques
+
+Virus scanners quickly discover viruses by searching around entry point. This
+means we need entry-point obfuscation (via multicavity, or by hijacking control
+later in the program).
+
+Some stealth techniques used by all malware that self-replicates is:
+
+1. Polymorphism: change the layout/shape of every infection
+   - A way is to encrypt the payload with a different key for each infection
+2. Metamorphism: create different "versions" of code that look different but do
+   the same things
+
+Some general stealth techniques are:
+
+1. Having a dormant period
+2. Having a event-triggered payload (like a C&C channel for botnets)
+3. Encryption/packing (similar to polymorphism but more advanced)
+   - Uses a small encryption routine that changes the key at each execution
+4. Anti-virtualization:
+   - If a program is not run natively on a machine, chances are high that it is
+     being analyzed/scanned or debugged
+   - Modern malware detects the execution environment to complicate analysis
+     - Virtual machines are easily detected
+     - Hardware supported virtual machine are still easily detected
+     - Theoretically emulators are undetectable, however practically emulators
+       are not perfect and these imperfection can be detected
+5. Rootkits: once we become root, we plant a kit to remain root (thus root-kit)
+   like making the files/processes/users/directories disappera or making the
+   attacker invisible
+   - Can be either in userland or kernel-space:
+     - Userland: trojanized system-administration programs or backdoored login
+       - easier to build but easier to detect
+     - Kernel-space: more difficult to build, but can hide anything effectively
+       - One of the main methods is syscall-hijacking, which basically consists
+         in altering the SYS_CALL/Interrupt/Global descriptor tables and
+         inserting trojanized versions
+     - More complicated like BIOS-based, firmware based or embedded in
+       virtualization systems
+   - Rootkits are very difficult to detect, the main methods are:
+     - A sysadmin that notices some discrepancis in the system's behaviour
+     - A trusted computing base (e.g. Secure Boot)
+     - Cross-layer examination: examining the same element at different layers
+       of the stack (e.g. comparing listing a directory with `ls` with
+       physically reading the filesystem from the disk with the help of clean
+       computer)
