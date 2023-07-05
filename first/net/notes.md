@@ -312,6 +312,12 @@ structure to efficiently create rules without using much memory.
 
 ### Some data structures
 
+#### Hash maps
+
+You know how they work, here are some numbers ($N$ elements for $M$ cells):
+
+1. Probability of collision: $P(N,M) = \prod_{i=1}^{N-1}(1-\frac{i}{M})$
+
 #### Bloom filters
 
 A traditionally implemented set is not very well suited to our case: the output
@@ -1177,3 +1183,272 @@ Why it works?
   - This can easily be **achieved** if the **buffer size is at least one BDP**
     and hence **takes more than a RTT to drain**, providing the end-host enough
     time to detect and retransmit dropped packets
+
+## Seminars
+
+### SD-Fabric
+
+The first generation was more focused on achieving scalability and
+fault-tolerance for the traditional L2-L3 fabric. It is built by adhering to
+classic SDN principles: control plane out-of-box, no distributed protocols and a
+high level API for apps (the fabric controller was one of the applications). It
+is built on white-boxes and merchant silicon with minimal switch software
+(controlled via OpenFlow). It was put into production at Comcast with great
+savings on deployment and operational costs by consolidating servers and
+offering more scalability headroom.
+
+Eventually, the system migrated from OpenFlow to P4Runtime and a
+fully-programmable leaf-spine fabric and gRPC based APIs (like gNMI
+(management)and gNOI (operations)). Multi-tenancy was introduced and many more
+advanced features directly on the switch in P4, including INT. Having INT
+enabled data report collection and analysis by operators to optimize/fix
+problems by pushing new configurations using the SDN controller.
+
+Some advanced features are possible only thanks to centralized management. This
+management can scale thanks to the use of DevOps tools and practices like:
+
+1. Extensible model-based config: from switch ports to policies
+2. Continuous software updates with CI/CD automation:
+   - New code gets pushed to a git repo through a MR and then automatically
+     integrated by a CI pipeline after automated tests and code review:
+     - Pre-merge checks: License check, various tests and the peer review
+     - Post-merge checks: Validation tests and other tests to avoid regressions
+
+#### Pre-merge
+
+Unit tests are specifically for the control plane. Some SD-fabric specific tests
+are dataplane tests:
+
+1. We control a virtual switch with P4Runtime and start injecting hand-crafted
+   packets, testing the packet output
+2. First we tests on 100% virtual models (like V1) and then on emulated real
+   architectures (Tofino)
+
+E2E tests (sanity tests) are done by emulating a real network using mininet (all
+in software for speed). The goal of these tests is not test every possible
+functionality, but verify that no major defect/regression have been introduced.
+
+There are also some manually-triggerable tests that are more long-running (like
+tests requiring physical hardware) so they are triggered only in specific
+circumstances.
+
+#### Post-merge
+
+After merging the PR, all tests are re-run to verify that the tip of main
+functions as expected and then artifacts are published.
+
+Nightly tests, which are more long-running and advanced tests (even on real
+hardware) are run to further validate the new features and ensure that there are
+no new regressions. Other periodic tests are:
+
+1. Scale tests: ensure that the new features do not impede and lower performance
+2. Soak tests: validate the system behaviour under production use
+
+#### Releases
+
+After everything has been validate, we can release a version by tagging a commit
+in a repo in order to have a reproducible and deployable version. Semantic
+versioning is used.
+
+### OVS
+
+OVS is a software network switch. It is built to be:
+
+1. Sophisticated: Biased toward difficult cases.
+2. Fast: Especially in those difficult cases.
+3. Automated: All features remotely controllable.
+4. Software: Only requires ordinary NICs.
+
+It is programmed using OpenFlow to program flow tables, which are basically
+glorified if-else with conditions and actions.
+
+The hard part is not implementing all of this, but making it fast.
+
+Keys to speed in any software switch:
+
+1. Fast packet I/O
+   - It is important, and orthogonal to switch architecture
+   - Just use the best one (the OVS module, eBPF or DPDK)
+2. Low per-packet overhead
+   - A software switch are structured in a series of stages, which are
+     independent and can be parallelized. OVS adds a parsers to the pipeline,
+     which increases overhead
+3. Low per-packet processing cost
+   - Each stage in the pipeline needs to be cheap
+   - They usually are just a function call, or nothing at all
+   - OVS stages are general-purpose flow-table lookups, which are expensive on
+     general purpose hardware
+
+One way to make OVS fast in spite of all the overhead it requires is caching.
+
+The simplest way to add a cache is to add some to each stage. But this is done
+by everything, so OVS still has the performance disadvantage. A better way is to
+cache the entire pipeline, meaning a single cache hit skips all the stages; this
+cannot be done by other software switches.
+
+For small pipelines, simple caching is faster, however it scales badly with big
+pipelines. Compound caching on the other hand scales better for deeper pipelines
+(which is the use-case for which OVS is optimized), surpassing simple caching.
+
+Caches have a long history with networking (e.g. ARP or route caches). However
+they are also infamous:
+
+- Hit rate depends on traffic, leading to unpredictable performance
+- Invalidation can be tricky to handle
+
+#### DBSP
+
+DBSP is a system for incremental view maintenance (recall what views are in e.g.
+SQL). Incremental view update is a technique that allows a database to update
+the view without recomputing every entry. DBSP does exactly that: it takes a
+change to a table and translates it into a change to the various views.
+
+Let us define a new relational operator called "network classifier join" that
+takes as input a flow table and a set of packet headers and outputs the best
+match for each header in the table. With DBSP we can also apply this operators
+to deltas ($\Delta$ flow tables etc...).
+
+The ability to work with deltas means that we can incrementally update the cache
+for each packet that doesn't hit/network change without needing a full rebuild.
+
+#### Offloading more packet processing to hardware
+
+As network speeds increase, core counts remain roughly the same. This means that
+software would need to process more packets with with the same number of cores
+available.
+
+In OVS we have two paths:
+
+1. Slow path: taken for the first packet in a connection
+2. Fast path: taken for subsequent packets
+
+Originally, the slow path run through userspace and fast patch in kernel,
+however the kernel does not meet speed demands anymore. Now the fast path is:
+
+1. Passed through a DPDK userspace to speed up packet processing
+   - Uses more CPU, so not exactly useful
+2. Offloaded to a NIC asic (smart NICs)
+
+Now only userspace remains slow. So eventually smart NICs integrated some
+general purpose CPU controller with offload capabilities, meaning we can offload
+the slower "userspace" onto it. The problem is that NIC cpus are generally
+slower than the host one, bringing us to square 1.
+
+The slow path does 3 expensive things:
+
+1. Flow setup
+2. Flow cache revalidation
+3. Control protocols
+
+If we can move any of them to hardware (a domain specific architecture), we
+could speed the path very much.
+
+### Optics for the cloud
+
+To support high speed transfers for long distances (> 2m), data centers use
+high-speed optical transceivers that convert back and forth optic signal to
+electric signals. This electrical conversion + the general end of Moore's law
+due to slow speed improvements w.r.t. power consumption prompted the research of
+new ways to keep up with the speed increase due to the increasing use of optics.
+
+One way to keep up is the use of optical switches controlled by tunable lasers,
+which are basically mirrors that do switch on a wavelength basis. This has
+several advantages:
+
+1. Future scaling in the post-Moore’s law era (bandwidth agnostic)
+2. Ultra-low and predictable latency (no buffers in the core)
+3. Sustainability: very low power (no transceivers or switches in the core)
+
+However this design requires innovation across the whole cloud stack since most
+assumption of networking would change: no more buffers (so no TCP for example),
+predictable latency and the possibility for a synchronous system.
+
+The trend of using optics is not limited to networking since other components
+are also facing end-of-Moore's-law-problems:
+
+1. Storage: we have the need for ultra-low power, ultra-high density storage for
+   archiving very "cold" data
+   - Optical storage can provide solutions
+2. Compute: we are reaching the limits of how small a transistor can be and
+   hitting the wall of quantum mechanics
+   - Optical CPUs can provide solutions for this
+
+Any of this changes will, however, require a holistic approach to the
+data-center stack: we do not need to optimize components in isolation, but to
+imagine the datacenter as a giant computer.
+
+### Considerations for end-host networking
+
+#### Smart NICs
+
+Ethernet traffic is usually 25 to 100Gbps. Data centers are moving rapidly to
+200-400Gbps. The minimum frame size is of 64B, maximum is 1518B (with Jumbo
+frames up to 9000B). Datacenter traffic is typically encapsulated, usually with
+Geneve/VXLAN (L2 frame in UDP) with a min size of 54+B.
+
+Considering a simple 1GHz NIC processor that executes 1 instruction per
+nanosecond and a 100Gbps with 256B frames, we would have 22 instructions at
+disposal per frame. We can do more stuff in the same amount of time with the
+help of multi-cores and some specialized hardware for some offload.
+
+Memory bandwidth is also getting tight, but less than compute power (memory
+bandwidth is still much bigger than peak network bandwidth). Memory access
+latency is however very tight: at 100Gbps-256B frames we would not have enough
+time to even access L3 on state of the art hardware. To hide latency we need to
+heavy multi-core and, to reduce even further, hardware accelerators.
+
+Let say that accessing a simple Hashtable requires 460ns per packet of memory
+latency and 100 instructions. With a simple 1Ghz processor:
+
+1. Single core: we can handle 1.7Mpps, which is line rate for 7000B@100Gbps
+   - Pretty far from the max Ethernet frame sizes
+2. 16 cores: we can handle 27.2Mpps, which is line rate for ~512@100Gbps
+   - Multicore hides memory latency
+   - Multicore introduces packet-reordering problems
+
+This quick math is an oversimplification since in reality a packet would require
+much more computation/lookups.
+
+Some common acceleration used by commercial programmable NICs is:
+
+1. Fast(er) packet memory
+2. Programmable classification engines
+3. Lookup engines (near memory): like TCAM
+4. Queue engines
+5. Stats engines (fire and forget stats updates)
+6. Inline and look aside crypto
+7. Compression engines
+
+#### PCIe
+
+PCIe is the defacto standard to connects high-performance IO cards. It is
+implemented on the host side in the Root complex. PCIe devices transfer data
+to/from host memory via DMA. DMA engines on each device translate requests like
+"Write these 1500 bytes to host address 0x1234" into multiple PCIe Memory Write
+(MWr) “packets”. PCIe is almost like a network protocol with packets (TLPs),
+headers, MTU (MPS), flow control, addressing and switching (and NAT). Each TLP
+has 3 layers worth of headers and a max length of 256B (typically).
+
+PCIe adds overhead. The various generations mostly define encoding/speed on the
+wire while having multiple lanes increases bandwidth. For each Memory Write
+packet, we have at least 10% header overhead. Doing some quick math+graphs, we
+can see that with PCIe gen4x8 we can barely keep up with 100Gbps Ethernet for
+longer MTUs.
+
+The overhead, however, increases since NICs do not simply write/read data, but
+handle descriptor rings for buffers, which requires more transactions. This
+means that we go well-below 100Gbps Ethernet (only for very large MTUs we come
+close to line rate) even with a well-optimized driver or DPDK when using Gen4x8.
+
+PCIe also adds latency overhead, which needs to be accounted for. DMA engines in
+NIC need to manage many in-flight DMA packets to hide this latency. Latency
+overhead also increases due to the need to perform address translation
+(Bandwidth can drop by 20% when thrashing the TLB).
+
+SmartNICs have evolved towards including more functionality than just
+networking, becoming more generic Data Processing Units. Some functionality
+implemented is:
+
+1. Network attached/local storage
+2. RDMA, which is DMA to the memory of a different computer
+3. Control plane for virtualised servers
