@@ -159,8 +159,8 @@ However, this is a simplistic view since the attacker is considered passive.
 In a **perfect cipher**, for all plaintexts and ciphertexts:
 
 $$
-P(\mathit{plain sent is our plaintext}) =
-  P(\mathit{plain sent is our plaintext}|\mathit{cipher sent is the ciper})
+P(\text{plain sent is our plaintext}) =
+  P(\text{plain sent is our plaintext}|\text{cipher sent is the ciper})
 $$
 
 In other words: **seeing a ciphertexts gives us no information on what the
