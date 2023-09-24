@@ -112,3 +112,7 @@ voltage and frequency, with the possibility to be switched off (power gating).
   - Cons: low pump efficiency and reliability
 
 Cooling becomes even more complex since chips are becoming multi-layer.
+
+## Microprocessors
+
+See **ACA notes**.
