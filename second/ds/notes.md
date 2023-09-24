@@ -32,6 +32,8 @@ And some common problems for DSs are:
 
 ## Modeling
 
+### Software architecture
+
 We have **two usual architectures**:
 
 1. **Network OS based**:
@@ -74,6 +76,8 @@ We have **two usual architectures**:
    │└───────┘││└───────┘││└───────┘│
    └─────────┘└─────────┘└─────────┘
    ```
+
+### Run-time architecture
 
 The runtime-architecture is usually one of a small set of very well-known
 architectural styles like:
@@ -189,3 +193,183 @@ architectural styles like:
     different environments (like code on-demand and remote evaluation).
 
   **Pros**: the **mobility**; **Cons**: the **security**
+
+### Interaction model
+
+Traditional programs can be described in terms of the algorithm they implement,
+however distributed systems are composed of many processes, which interact in
+complex ways. The behaviour of a distributed system is described by a
+distributed algorithm:
+
+> A distributed algorithm is a definition of the steps taken by each process,
+> including the transmission of messages between them.
+
+To formally **analyze the behavior of a distributed system we must distinguish**
+(at least in principle) between:
+
+1. **Synchronous** distributed systems:
+   - **The time to execute each step of a process has known lower and upper
+     bounds**
+   - **Each message transmitted** over a channel is received within a **known
+     bounded time**
+   - **Each process has a local clock whose drift rate** from real time has a
+     **known bound**
+2. **Asynchronous** distributed systems:
+   - There are **no bounds** for process execution speeds, message transmission
+     delays, clock drift rates
+
+**Any solution that is valid for an asynchronous distributed system is also
+valid for a synchronous one** (but the vice versa is clearly false)
+
+### Failure model
+
+Both processes and communication channels may fail. The **failure model defines
+the ways in which failure may occur**. We distinguish between:
+
+1. **Omission failures**:
+   - Processes: fail stop
+   - Channels: send omission, channel omission, receive omission
+2. **Byzantine failures**:
+   - Processes: may omit intended processing steps or add more
+   - Channels: message content may be corrupted, non-existent messages may be
+     delivered or real messages may be delivered more than once
+3. **Timing failures** (only for synchronous systems):
+   - occur when one of the time limits defined for the system is violated
+
+Distributed consensus has been formally demonstrated to be impossible. To make
+the problem possible we need to either:
+
+1. Change the assumptions (e.g. make links reliable)
+2. Reduce the guarantees (e.g. only probabilistic instead of deterministic)
+
+**We can describe algorithms only for synchronous systems, with bounds large
+enough that they work even in the asynchronous world with high enough
+probability**.
+
+## Communication
+
+Middleware includes common services and protocols that can be used by many
+different applications. We can see the **middleware layer as a protocol layer**.
+
+Middleware may **offer different form of communication** like:
+
+- **Transient/persistent**: transient is communication that requires both
+  parties to be available at the same time (e.g. a phonecall)
+- **Synchronous/asynchronous**: synchronicity w.r.t the middleware software,
+  reception or response
+
+We will se some communication methods.
+
+### RPC
+
+In a local procedure call, parameters are passed on the stack, in different ways
+(value, reference, copy/restore). **What if the procedure we executed was on a
+remote machine**? The **remote communication can be hidden by the procedure call
+mechanism**.
+
+```txt
+                              Procedure execution
+                             ┌╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶┐
+╭─────────────────────╮     ╭┼───────────────────┼╮
+│┃    app code       ▲│     │┃      app code     ▲│
+│┃───────────────────┃│     │┃───────────────────┃│
+│▼   client stub     ┃│     │▼    server stub    ┃│
+│┃   (middleware)    ▲│     │┃    (middleware)   ▲│
+│┃───────────────────┃│     │┃───────────────────┃│
+│▼ network transport ┃│     │▼ network transport ┃│
+╰─────────────────────╯     ╰─────────────────────╯
+ ╏                   ┗╺╺╺╺╺╺╺┛                   ▲
+ ╏                   Reply msg                   ╏
+ ╏                                               ╏
+ ┗╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺╺┛
+                 Invocation message
+```
+
+In RPC **parameter passing** poses **two problems**:
+
+1. **Structured data must be flattened** in a byte stream (**serialization**)
+2. **Hosts may use different data representation** and proper conversions are
+   needed (**marshalling**)
+
+**Middleware** provides **automated support** by automatically generating
+marshalling/serialization code **from the function signature**.
+
+RPC is enabled by a **platform and language independent representation of the
+procedure's signature**, a Interface Definition Language (**IDL**), **and a data
+representation format** to be used during communication. It **separates the
+service interface from its implementation**. The IDL comes with mappings onto
+target programming languages.
+
+We still have the **problem of passing parameters by reference**/pointer. Often
+this is **unsupported**. A possibility is to change the semantics and make the
+passing by value/result.
+
+The gold standard is Sun Microsystem's RPC (also called Open Network Computing
+RPC). The Distributed Computing Environment is another set of standards, more
+modern than sun's.
+
+#### Binding
+
+RPC poses the problem of **finding which server provides a given method**
+(binding the cline to the sever). This problem is divided in **two other
+sub-problems**:
+
+1. Find out **where the server process is**
+2. Find out **how to establish communication** with it
+
+**Sun's solution** is to include a daemon (`portmap`) that is basically a
+forwarding table: it **maps procedures to server/port couples**. This solution,
+however, **solves only the second problem** because the client needs to know in
+advance where the service resides.
+
+**DCE's solution** is a **directory service**, aka a binder daemon, that enables
+location transparency. Client need to know only the location of the directory
+service. It can then query the directory to get the service's location. Servers
+simply register their presence in the directory.
+
+#### Dynamic activation
+
+To start the server process on demand, we can use a standard daemon (`inted`)
+that **launches the needed process only when a packet arrives on the configured
+port**.
+
+#### Lightweight RPC
+
+**RPC can be used in any case where there is a need for communication between
+processes**. If the two processes are **running on the same machine**, we can
+build a **lightweight variant** of the RPC protocol **using e.g. shared memory
+maps** for communication.
+
+#### Asynchronous RPC
+
+**RPC is by definition synchronous** since it is trying to emulate the natural
+call behaviour. We can also **make RPC async by modifying the call semantics**
+(introducing callbacks on procedure termination etc).
+
+**We can also implement batched/queued RPC to achieve very efficient
+communication and high performance**.
+
+### RMI
+
+It starts from the **same idea as RPC**, but it uses different programming
+constructs. The **aim is to obtain the advantages of OOP in the distributed
+setting**.
+
+An important difference w.r.t RPC is that **remote object references can be
+passed around: we need to maintain the aliasing relationship**. This is easier
+in a OOP setting since **we interact with objects only through their
+interfaces**. This means that **passing a reference to an object is equivalent
+to passing a reference to a proxy implementing the remote call procedure**. In
+contrast to RPC, **in RMI true pass-by-value is instead impossible**.
+
+In RMI, we can use the fact that the separation between interface and
+implementation is a basic principle and have **very rich IDLs that can model
+complex relationships and behaviours** (e.g. inheritance, exceptions).
+
+Implementation is similar to that of RPC, so much so that often it is
+implemented on top of a RPC layer.
+
+Two popular RMI middlewares are:
+
+1. Java RMI (everything must be java)
+2. OMG Corba (multilanguage/multiplatform)
