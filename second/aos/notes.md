@@ -185,16 +185,18 @@ files) instead of the imperative one (scripts) of sysv:
 
 ## Scheduling
 
+### Basics and CFS
+
 See Love's Linux Kernel Development Ch. 4 <!-- Get used to it -->
 
-### Runqueues
+#### Runqueues
 
 The **central data structure** of the scheduler is known as the run queue. There
 is **one per CPU** in order to avoid contention over task selection.
 
 Each runqueue has **different run queues for each scheduling class**.
 
-### Scheduling classes
+#### Scheduling classes
 
 A **scheduling class is an API that includes policy-specific** code to:
 
@@ -236,7 +238,7 @@ Ordering between processes is implemented with a priority $\pi$:
   - Priority of normal processes is a function of the **niceness**
     $v\in [-20;=19]$ and is calculated as $\pi = 120+v$
 
-### Cgroups
+#### Cgroups
 
 CFS is not enough to guarantee optimal CPU usage, so we need a **mechanism to
 throttle and account for the CPU usage by various tasks**.
@@ -254,6 +256,132 @@ Linux build a corresponding **hierarchy of schedule entities** (per CPU). When a
 task is accounted for time, also the parent group's entity is and so on until we
 arrive at the root entity. `__pick_next_entity()` **picks the entity with the
 smallest virtual runtime until a real task is selected**.
+
+### Task scheduling in depth
+
+A task, in this context, can be thought of as a **synonymous of a thread**.
+However remember that it has no fixed definition: it is **simply the basic
+scheduling unit**.
+
+A **scheduler** is the OS component in charge of **establishing the execution
+order of tasks**. The **ordering algorithm** is the **scheduling policy**.
+
+```txt
+                                preemption
+                        ╭───────────────────────╮
+                        ▼                       │
+╭─────╮ activation ┌─────────┐ dispatching ╭─────────╮ termination
+│Tasks│───────────>│ │ │ │ │ │────────────>│Execution│────────────>
+╰─────╯            └─────────┘             ╰─────────╯
+                   ready queue           ┏━━━━━━━━━━━━━┓
+                        ^                ┃  processor  ┃
+                   ┌─────────┐           ┗━━━━━━━━━━━━━┛
+                   │ │ │ │ │ │<─────────────────╯
+                   └─────────┘
+                    I/O queue
+```
+
+**Preemption** is the operation of **temporarily suspending the execution of a
+task in order to execute another task**. Can be task-triggered (unusual) or
+OS-triggered (more common). Preemption is performed via a context switch.
+
+#### Task model
+
+We can model a task $i$ with the following **parameters**:
+
+- $a_i$: **Arrival time** (or Request time); the time instant at which task is
+  ready for execution and put into the ready queue
+- $s_i$: **Start time**; the time instant at which execution actually starts
+- $W_i$: **Waiting time**; the time spent waiting in the ready queue
+  ($W_i = s_i-a_i$)
+- $f_i$: **Finishing time**; time instant at which execution terminates
+- $C_i$: **Computation time**; amount of time necessary for the processor to
+  execute the task without interruptions
+- $Z_i$: **Turnaround time**; difference between finishing and arrival time (not
+  necessarily $W_i + C_i$)
+
+  In case of preemption/suspension $Z_i$ also contains interferences from other
+  tasks and the time the task is interrupted
+
+Depending on the type of operations dominating the lifetime of a task, we may
+identify **two bounds** for a task:
+
+- **CPU-bound**: spends most of the time executing
+  - $Z_i \approx W_i + C_i$ excluding preemptions
+- **I/O-bound**: spends most of the time waiting for I/O
+  - $Z_i \gg W_i + C_i$ excluding preemptions
+
+#### Platform model
+
+A computing system is composed of:
+
+1. $m$ **processing elements** (PEs) $\{CPU_1, \ldots, CPU_m\}$
+   - Each PE, at each $t$, is assigned zero or one task
+     $A_{cpu}(CPU_k, t) = \tau_i \lor \emptyset$
+   - A task $\tau_i$ can execute at time $t$ only if
+     $\exists A(CPU_k, t) = \tau_i$
+2. $s$ **additional resources** $\{R_1, \ldots, R_s\}$
+   - Each resource, at each $t$, is assigned to zero or more tasks:
+     $A\_{cpu}(CPU_k,t)=\{\tau_i,\tau_j,\ldots\}\lor\emptyset\}$
+   - Depending on the type of resource, it may be exclusive
+   - A task $\tau_i$ can execute at time $t$ if $\tau_i\in A(R_k, t)$ for all
+     $R_k$ requires to run the task
+
+#### Problem statement
+
+Given:
+
+1. A set of $n$ tasks $T$
+2. A set of $m$ PEs
+3. A set of resources
+4. (Optionally) A set of precedent relationships and constraints
+
+Compute an optimal schedule and allocations.
+
+It is a **NP-complete problem** (usually reduced to the knapsack problem).
+
+#### Metrics
+
+The scheduler aims at **optimizing one or more objectives**. Some metrics that
+help to determine if a policy is good are:
+
+- **Processor utilization**: percentage of time the CPU is busy
+- **Throughput**: number of tasks completing their execution per time unit
+- **Waiting time**: time the tasks spends in the ready queue
+- **Fairness**: do the tasks have a fair allocation of processor resources?
+- **Overhead**: amount of time spent taking scheduling decisions and
+  context-switches
+- **Energy, power, temperature** and many more
+
+Of course, some **trade-offs** have to be made since:
+
+- We want to maximize utilization, throughput and fairness
+- While we minimize the turnaround, waiting and completion time and overhead
+
+And these goals clash with each other.
+
+Whatever is the algorithm/policy, **the scheduler must guarantee that all tasks
+are served**. **Starvation is the perpetuated condition where one or more tasks
+cannot execute due to the lack of resources**.
+
+#### Algorithm classification
+
+- **Preemptive vs non preemptive**
+  - Preemptive: tasks can be interrupted by the os at any time to make room for
+    other tasks
+  - Non-preemptive: once started, tasks are executed to completion, guaranteeing
+    the lowest overhead
+- **Static vs dynamic**
+  - Static: scheduling decisions are based on fixed parameters
+  - Dynamic: scheduling decisions are based on parameters that change at runtime
+- **Offline vs online**
+  - Offline: the scheduler is executed on a set of known tasks before their
+    activation, the output is the sequence of tasks (the scheduler must also be
+    static)
+  - Online: the scheduler executes at runtime
+- **Optimal vs heuristic**
+  - Optimal: based on an algorithm optimizing a given cost (high overhead)
+  - Heuristic: based on heuristic functions
 
 ## IPC
 
@@ -430,3 +558,156 @@ int mkfifo(const char *pathname, mode_t mode);
 
 Then we just read from the file like normal.
 
+### Message queues
+
+IPC method suitable for **multiple readers and multiple writers**. Based on a
+**priority-queue where producers enqueue messages and consumers dequeue
+messages**. The **status of the message queue can be observable** (all files
+available in `/dev/mqueue`). Requires linking with the POSIX real time library
+(`-lrt`).
+
+```c
+#include <mqueue.h>
+
+struct mq_attr {
+  long mq_flags;   // 0 or NON_BLOCK
+  long mq_maxmsg;  // max nr. messages in the queue
+  long mq_msgsize; // max message size in bytes
+  long mq_curmsgs; // nr. messages currently in the queue
+};
+
+// Open/create a message queue
+// Params:
+// - name:  Unique name for the queue (starts with /)
+// - oflag: Opening flags
+// - mode:  The file permissions to give to the file
+// - attr:  Attributes
+mqd_t mq_open(const char *name, int oflag, mode_t mode, struct mq_attr *attr);
+
+int mq_close(mqd_t mqdes);
+int mq_unlink(const char* name);
+int mq_getattr(mqd_t mqdes, struct mq_attr *attr);
+int mq_setattr(mqd_t mqdes, const struct mq_attr *newattr, struct mq_attr *oldattr);
+
+// Send a message
+// Params:
+// - mqdes:    descriptor
+// - msg_ptr:  pointer to the message to send
+// - msg_len:  size of the message
+// - msg_prio: priority of the message [0;31]
+//    - higher msg_prio means higher priority
+//    - messages of the same priority are handled in FIFO order
+int mq_send(mqd_t mqdes, const char *msg_ptr, size_t msg_len, unsigned int msg_prio);
+
+// Receive a message
+// Params:
+// - mqdes:    descriptor
+// - msg_ptr:  output param - pointer to where to write the mesasge
+// - msg_len:  size of the buffer
+// - msg_prio: output param - priority of the read message
+int mq_receive(mqd_t mqdes, char *msg_ptr, size_t msg_len, unsigned int *msg_prio);
+```
+
+### Shared memory
+
+Shared memory is an IPC mechanism that allows **two processes to share a memory
+segment**. In POSIX the shared memory is based on the **memory mapping**
+concept. It requires the linking to the POSIX real-time extension library
+(`-lrt`).
+
+Like message queues, **opening/creation of shared memory segments are referenced
+by name**. In Linux a **special file is created under** `/dev/shm/<name>`.
+
+```c
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/fcntl.h>
+#include <unistd.h>
+#include <sys/types.h>
+
+// Open/create a shared memory area
+// Params:
+// - name:  unique name (starting with /)
+// - oflag: opening flags
+// - mode:  the permissions
+// Return: a file descriptor
+int shm_open(const char *name, int oflag, mode_t mode);
+
+// Setting the size of the shared segment
+// Params:
+// - fd:     descriptor
+// - length: length in bytes
+int ftruncate(int fd, off_t length);
+
+// Map the memory to the VA space og the calling process
+// Params:
+// - addr:   starting address (null to let the kernel choose a value)
+// - length: size of the mapped segment
+// - prot:   memory protection flags
+// - flags:  visibility of the updates w.r.t other processes
+//   - MAP_SHARED: updates visible to other processes and carried out through an
+//     update of the inderlying file
+//   - MAP_PRIVATE: CoW updates
+// - fd:     file descriptor
+// - offset: offset to skip from the beginning of the fd
+// Returns: pointer to the mapped area
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+
+// cleanup
+int munmap(void *addr, size_t length);
+int shm_unlink(const char *name);
+```
+
+### Synchronization: semaphores
+
+The `wait()/waitpid()` based approach is clearly very limited. POSIX provides
+**semaphores**:
+
+- Semaphore **counter = 0: wait**
+- Semaphore **counter > 0: GO**
+
+When the counter is maximum 1, the semaphore is called binary and behaves
+similarly to a mutex.
+
+Semaphores work with **two atomic functions**:
+
+- `wait()`: **block until counter > 0, then decrement and proceed**
+- `post()`: **increment the counter**
+
+Similarly to pipes, POSIX semaphores can be **named or unnamed**. They require
+the `-pthread` flag.
+
+```c
+#include <semaphore.h>
+
+// Create an unnamed semaphore
+// Params:
+// - sem: output parameter - semaphore struct to init
+// - pshared: 0 if shared among threads, otherwise shared among processes
+// - value: initial value
+// Returns: 0 on success, -1 on error
+int sem_init(sem_t *sem, int pshared, unsigned int value);
+
+// Destroy a semaphore
+int sem_destroy(sem_t *sem);
+
+// Create a named semaphore
+// Params:
+// - name
+// - oflags
+// - mode
+// - value
+// Returns: pointer to the semaphore object or SEM_FAILED in case of error
+sem_t * sem_open(const char *name, int oflags);
+sem_t * sem_open(const char *name, int oflags, mode_t mode, unsigned int value);
+
+// Close and delete a named semaphore
+int sem_close(sem_t *sem);
+int sem_unlink(const char *name);
+
+int sem_wait(sem_t *sem);
+int sem_trywait(sem_t *sem); // non-blocking version of wait
+int sem_timedwait(sem_t *sem, const struct timespec *timeout); // wait for timeout
+
+int sem_post(sem_t *sem);
+```
