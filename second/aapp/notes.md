@@ -134,3 +134,84 @@ In normal algorithms (some sequential and some parallel parts) **speedup has an
 asymptotic upper bound** that it approaches with the increase in the number of
 processors (calculated with **Amdahl's law**). The **efficiency**, however,
 **tends to 0** with the increase in the number of processors.
+
+Some variants of the PRAM machine are:
+
+- Bounded number of shared memory cells
+- Bounded number of processor small pram
+- Bounded size of a machine word
+- Handling access conflicts
+
+##### Lemma
+
+Assume $P' < P$. Any problem that can be solved for a $P$ processor PRAM in $T$
+steps can be solved in a $P'$ processor PRAM in
+$T' = \mathcal{O}(\frac{TP}{P'})$ steps.
+
+##### Lemma
+
+Assume $M'<M$. Any problem that can be solved for a $P$ processor and $M$-cell
+PRAM in $T$ steps can be solved on a $\max\{P,M'\}$-processor $M'$-cell PRAM in
+$\mathcal{O}(\frac{TM}{M'})$ steps.
+
+Is the PRAM **implementable**? **Yes**, there are ways; it can also be **used as
+an ideal model for theoretical algorithms** that then can be converted to real
+machine models.
+
+For implementations, concurrent r/w can be a bit challenging:
+
+- Concurrent read can be implemented by detect-and-multicast
+- Concurrent write is a bit more difficult, some methodologies are:
+  - Common CRCW: detect-and-merge
+  - Priority CRCW: detect-and-prioritize
+  - Arbitrary CRCW: arbitrary resolution
+
+### Amdahl’s law vs Gustafson’s law
+
+Amdahl's law assumes that **computing happens in interleaved segments of two
+types**:
+
+1. **Serial** segments that cannot be parallelized
+2. **Parallelizable** segments
+
+This means that the **maximum speedup is bounded by the un-parallelizable
+part**. Let us assume that the parallelizable part is a fixed fraction $f$ of
+the program, we have that:
+
+$$
+\begin{aligned}
+  \mathrm{SU}(P,f) &= \frac{T_1}{T_1(1-f) + \frac{T_1 f}{P}} = \frac{1}{(1-f)+\frac{f}{p}} \\
+  \lim_{P\to\infty} \mathrm{SU}(P,f) = \frac{1}{1-f}
+\end{aligned}
+$$
+
+Amdahl's law has been **often used as an argument against massively parallel
+architectures**: given a problem with $f=0.9$ parallelizability, there is no
+point in using more than 10 cores.
+
+**Gustafson proposed that the assumptions of Amdahl's law were wrong**:
+
+1. **Parallel portion $f$ is not fixed: it increases with the increase in data**
+2. **Serial time is usually the same**
+
+We thus have two **invariants**:
+
+1. Fixed **serial time** $S$
+2. Fixed **parallel time** ($1-S$)
+
+Thus obtaining a fixed-time model, instead of a fixed-size model like that of
+Amdahl. We can then **reformulate** the speedup:
+
+$$
+\mathrm{SU}(P) = \frac{S + P(1-2)}{S + (1-S)} = S + P(1-S)
+$$
+
+This implies a parallel speedup in the number of cores.
+
+To recap:
+
+- **Amdahl's law presupposes that the computing requirements will stay the same,
+  given increased processing power**. In other words, an analysis of the same
+  data will take less time given more computing power.
+- **Gustafson, on the other hand, argues that more computing power will cause
+  the data to be more carefully and fully analyzed**
