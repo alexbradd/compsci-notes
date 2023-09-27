@@ -254,3 +254,179 @@ Linux build a corresponding **hierarchy of schedule entities** (per CPU). When a
 task is accounted for time, also the parent group's entity is and so on until we
 arrive at the root entity. `__pick_next_entity()` **picks the entity with the
 smallest virtual runtime until a real task is selected**.
+
+## IPC
+
+### Fork-wait
+
+**Forking** is the operation whereby **a process spawns a new process which is a
+copy** of itself. When we call `fork()`:
+
+1. A new process is created and runs concurrently
+2. The virtual address space is copied: All the variables have the same value
+   with the exception of the `fork()`'s return value
+3. Most of the physical pages in the memory are marked as "CoW"
+
+**Every process** has exactly **one parent** and may have an **arbitrary number
+of children**. The only exception is the **init process which is the ancestor of
+all processes**. Every process has a:
+
+- `PID`: Process ID
+- `PPID`: Parent Process ID
+
+In Linux the PID is of type `pid_t`.
+
+The `exec*` family of functions allow us to **load a new program** and replace
+the current process memory with it. The syscall they call is `execve`.
+
+The **simplest synchronization** method between parent and child is the `wait()`
+function.
+
+```c
+#include <sys/types.h>
+#include <sys/wait.h>
+
+// Suspend execution until one of the children exits
+// Param:
+// - status: pointer to a varaible where to return the exit status of the child
+//
+pid_t wait(int *status);
+
+// Suspend the execution until a specific child process terminates (or changes
+// state)
+// Param:
+// - pid: pid of the child to wait
+// - status: pointer to a varaible where to return the exit status of the child
+pid_t waitpid(pid_t pid, int *status, int options);
+```
+
+When a **process terminates**, the Linux kernel changes the **state to "zombie"
+and saves its return value**, which is **returned to the parent when the parent
+calls** `wait()` (or `waitpid()`) on the child process.
+
+If the **parent terminates before calling** `wait`-ing, the child is **adopted
+by** `init`. The `init` process `wait`-s on all children freeing the memory and
+the PID number.
+
+### Signals
+
+A signal is an **asynchronous, unidirectional "message" with no data transfer**.
+The **only information sent is the signal type**. Signals are used for
+**communication between processes** (not threads). They can be sent either by
+other processes or by the OS.
+
+Most common signals:
+
+| SIG       | Number | Action             | Description                                    |
+| --------- | ------ | ------------------ | ---------------------------------------------- |
+| `SIGHUP`  | 1      | Terminate          | Terminal disconnected                          |
+| `SIGINT`  | 2      | Terminate          | Terminal interrupt                             |
+| `SIGILL`  | 4      | Terminate and dump | Illegal instruction                            |
+| `SIGABRT` | 6      | Terminate          | Process abort signal                           |
+| `SIGKILL` | 9      | Terminate          | Process killed                                 |
+| `SIGSEGV` | 11     | Terminate and dump | Segmentation fault                             |
+| `SIGSYS`  | 12     | Terminate and dump | Invalid syscall                                |
+| `SIGPIPE` | 13     | Terminate          | Write on a pipe with no readers                |
+| `SIGTERM` | 15     | Terminate          | Process terminated                             |
+| `SIGUSR1` | 16     | Terminate          | User-defined                                   |
+| `SIGUSR2` | 17     | Terminate          | User-defined                                   |
+| `SIGCHLD` | 18     | Ignore             | Child process terminated, stopped or continued |
+| `SIGSTOP` | 23     | Suspend            | Process stopped                                |
+
+```c
+#include <signal.h>
+#include <sys/types.h>
+
+// Send signal to process
+int kill(pid_t pid, int sig);
+
+// Specify how to handle a signal
+// Params:
+// - signum: signal to catch
+// - act: new settings
+// - oldact: output variable - old settings
+int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
+
+struct sigaction {
+  void (*sa_handler)(int);                        // handler function
+  void (*sa_sigaction)(int, siginfo_t *, void *); // alternative handler,
+                                                  // available with POSIX
+                                                  // real-time extension
+  sigset_t sa_mask;                               // mask to block certain signals
+  int sa_flags;                                   // various options
+  void (*sa_restorer)(void);                      // DO NOT USE
+};
+```
+
+The POSIX real-time extension adds some new functionality:
+
+- `sigqueue()`: send a queued signal
+- `sigwaitinfo()`: synchronously wait a signal
+- `sigtimedwait()`: synchronously wait a signal, with timeout
+- the `sa_sigaction` field allows us to specify a handler that accepts input
+  data; flags must contain `SA_SIGINFO`
+
+**A signal can be masked to avoid disruption**: it is similar to `SIG_IGN`, but
+the **signal is not dropped and is instead enqueued to be managed later** when
+the signal is unmasked. `SIGKILL` and `SIGSTOP` cannot be masked.
+
+```c
+// Mask a signal
+// Params:
+// - how:
+//  - SIG_BLOCK: add to the mask
+//  - SIG_UNBLOCK: remove from the mask
+//  - SIG_SETMASK: replace the mask
+// - set: set of signals
+// - oldset: output variable - previous set of signals
+int sigprocmask(int how, const struct sigset_t *set, struct sigset_t *oldset);
+```
+
+### Unnamed pipes
+
+Based on the **producer/consumer pattern: one producer writes, one consumer
+reads** (guaranteed by the OS in Linux). It is unidirectional. Data is written
+and read in **FIFO order**.
+
+```c
+#include <unistd.h>
+#include <fcntl.h>
+
+// Create an unnamed pipe
+// Params:
+// - pipefd: arry of 2 integers to be filled with two file descriptors:
+//  - [0]: fd for the read end of the pipe
+//  - [1]: fd for the write end of the pipe
+// - flags:
+//  - O_CLOEXEC:  close fds if exec*() is called
+//  - O_DIRECT:   perform I/O in "packet mode"
+//  - O_NONBLOCK: avoid blocking in case of an empty pipe
+int pipe(int pipefd[2]);
+int pipe2(int pipefd[2], int flags);
+
+// Low level read/write
+ssize_t write(int fildes, const void *buf, size_t nbyte);
+ssize_t read(int fildes, void *buf, size_t nbyte);
+
+// Or we can transform our FS into a stream and use all stdio functions with it
+FILE *fdopen(int fildes, const char *mode);
+```
+
+### Named pipes (FIFO)
+
+**Same behaviour of unnamed pipes**, but instead of working with raw fds, we are
+**using special files created by the OS. Note: no disk I/O is done**, the file
+is just an abstraction.
+
+```c
+#include <sys/types.h>
+#include <sys/stat.h>
+// Create a new named pipe
+// Params:
+// - pathname: name of the pipe
+// - mode: permissions of the file (e.g. S_IWUSR for 0200)
+int mkfifo(const char *pathname, mode_t mode);
+```
+
+Then we just read from the file like normal.
+
