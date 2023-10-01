@@ -373,3 +373,159 @@ Two popular RMI middlewares are:
 
 1. Java RMI (everything must be java)
 2. OMG Corba (multilanguage/multiplatform)
+
+### Message oriented communication
+
+RMI/RPC foster a synchronous model: it is natural but works only in a
+point-to-point synchronous mode that couples tightly caller and callee limiting
+to rigid architectures.
+
+**Message oriented architecture are**:
+
+- Centered around the (simpler) notion of **one-way message/event**
+- Usually **async**
+- Often **supporting persistent communication** and **multi-point
+  communication**
+- Brings **more decoupling**
+
+#### MPI
+
+The **most straightforward way** of doing message oriented communication is
+**message passing** (see UDP et al). They are typically mapped on/provided by
+the **OS** (with e.g. **sockets**) **or by middleware** providing an interface
+(**MPI**).
+
+**Message queueing and publish/subscribe** are provided at the **middleware
+layer** by several communication servers, nowadays called an **overlay
+network**, which form a **network on top of the network**.
+
+Since **sockets are lowlevel and protocol independent**, they can be hard to
+use. In high performance networks, **we may need higher level primitives for
+specific types of communication** providing different services besides pure r/w.
+**MPI** is the **platform independent answer**.
+
+**Communication takes place within a known group of processes**. Each process
+within a group is assigned a local ID:
+
+1. The **pair** `(groupID, procID)` represents a **source/destination address**
+2. Messages can be also sent in **broadcast**
+
+There is **no** support for **fault tolerance**.
+
+#### Message queuing
+
+It is a mechanism to enable **asynchronous point-to-point communication**.
+Typically it **only guarantees eventual insertion into the recipient queue**,
+not its behaviour. Communication is **decoupled in time and space**. Each
+component holds an **input queue and an output queue, which are named**.
+
+We can look at the architecture more in depth:
+
+1. **Queues** are **identified** by **symbolic names**
+   - We have the **need for a lookup service** that converts queue addresses
+     into network addresses
+2. Queues are **manipulated by queue managers** (acting like relays)
+3. Relays are **organized in an overlay network**
+   - Messages are **routed by using application level criteria and by relying on
+     partial knowledge of the network**. This **improves fault tolerance** and
+     provides applications with **multi-point without relying on IP multicast**
+     at the price of coupling.
+4. **Message brokers provide application level gateway supporting message
+   conversion**
+
+#### Publish-subscribe
+
+Application components can **publish asynchronous event notification and/or
+declare their interest in event classes by issuing a subscription**.
+**Subscriptions** are **collected** by an **event dispatcher component**
+(centralized of distributed), **responsible for routing events to all matching
+subscribers**.
+
+Communication is **transiently asynchronous, implicit and multipoint**. It also
+offers a **high degree of decoupling among components**.
+
+To **describe a subscription**, we use a **subscription language**. The
+expressiveness of it allows one to distinguish between **two types of
+subscriptions**:
+
+1. **Subject/topic based**: the **set of subjects is determined a-priori**
+   (analogous to multicast).
+2. **Content based**: subscriptions contains **expressions** (event filters)
+   that allow clients to **filter events based on the content**
+
+These two types of subscriptions can be **combined**. The **trade-off** between
+the two is mainly in complexity vs. expressiveness.
+
+In event-based systems a special component of the architecture, the **event
+dispatcher**, is **in charge of collecting subscriptions and routing event
+notifications based on such subscriptions**. Its implementation can be:
+
+1. **Centralized**: a **single component** is in charge of collecting
+   subscriptions and forward messages to subscribers
+2. **Distributed**: a **set of message brokers organized in a overlay network**
+   cooperate to collect subscription and route messages
+
+In case of a distributed event dispatcher, the **topology of the overlay network
+can be either acyclic or cyclic**. This influences how we deliver messages:
+
+1.  **Acyclic**:
+    - **Message forwarding**: every broker stores only subscriptions coming from
+      directly connected clients, message are forwarded broker to broker and
+      delivered to clients only if there are subscribed
+    - **Subscription forwarding**: complementary to message forwarding, every broker
+      forwards subscriptions to the others (never twice on the same link); each
+      time a broker receives a message it must match it against the list of
+      received filter to determine the list of recipients
+    - **Hierarchical forwarding**: we elect one broker as the root of the acyclic
+      graph (we can now treat it as an overlay tree); both messages and
+      subscriptions are forwarded by brokers towards the root of the tree,
+      messages flow downwards only if a matching subscription had been received
+      along that route
+2.  **Cyclic**:
+
+    - **Distributed hash table based approach**: a DHT organizes nodes in a
+      structured overlay allowing efficient routing toward the node having the
+      smaller ID greater or equal than any given ID. We can easily build a
+      subject based system using this.
+
+      To subscribe for messages having a given subject $S$:
+
+      - Calculate a hash of the subject $Hs$
+      - Use the DHT to route toward the node $\mathit{succ}(Hs)$
+      - While flowing toward $\mathit{succ}(Hs)$ leave routing information to
+        return messages back
+
+      To publish messages having a given subject $S$:
+
+      - Calculate a hash of the subject $Hs$
+      - Use the DHT to route toward the node $\mathit{succ}(Hs)$
+      - While flowing toward $\mathit{succ}(Hs)$ follow back routes toward
+        subscribers
+
+    - **Content based routing**: we try to emulate a network by using routing and
+      forwarding strategies.
+
+      Forwarding strategies:
+
+      - Per-source forwarding: every source defines a shortest path tree,
+        forwarding tables keep information (next-hop and predicate) organized
+        per source
+      - Per-receiver forwarding: the source of the messages calculates the set
+        of receivers and adds them to the header of the message (thus every node
+        know the subscription state of all the network); at each hop the set of
+        recipients is partitioned in two tables:
+        - The routing table
+        - A forwarding table with the predicate for each network
+
+      Routing strategies: distance vector and link-state
+
+##### Complex event processing
+
+CEP systems adds the **ability to deploy rules that describe how composite events
+can be generated from primitive (or composite) ones**. Open issues:
+
+1. The **rule language**: need for balance between expressiveness and processing
+   complexity
+2. **Processing engine**: how to efficiently match incoming (primitive) events to
+   build complex ones
+3. **How to distribute processing**
