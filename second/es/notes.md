@@ -314,3 +314,231 @@ Multistage watchdog timeout **doesn't immediately restart MCU**; it merely
 **schedules a restart to occur at a future time**. A multistage watchdog **must
 work in concert with special circuitry that will switch outputs to safe states
 upon timeout**, prior to the computer/MCU restart.
+
+## Boot
+
+The boot process for a processor based system is long. Despite the complexity,
+**one step is crucial and all processors must do it: the BIOS starts execution**
+(hardware startup finished, first firmware instruction is executed).
+
+**On a system with a microcontroller**, a flash and RAM the **process is
+simpler**. The **code is stored on the flash, which may be the BIOS, a
+bare-metal application or an application + OS**. The code is **executed directly
+from the flash**. The flash is **divided in sections** (like in ELF formats) and
+code is spread among these sections.
+
+The `TEXT` section contains **3 logically different types of information**:
+
+1. **Interrupt vector table**: a fixed size table containing
+
+   - **Initial SP**
+   - **The address of the "reset handler"**
+
+     - The **reset handler is code that executes after the microcontroller
+       exists from the reset phase**. Its main duties are:
+
+       1. Copy the initial stack pointer into the SP register
+       2. Invoke a system init function (usually for configuring clocks and for
+          stabilizing PLLs)
+       3. Prepare memory for execution (copying `DATA` section in RAM and
+          zeroing `BSS`)
+       4. Jump to the main function
+
+   - **The addresses of the interrupt service routine**
+
+   The base of the IVT may not be fixed but stored in a register.
+
+2. **Startup code**: portion of code that initializes the system
+3. **Application code**
+
+### Bootloaders
+
+The **bootloader is an application loaded to the MCU flash with a programmer**.
+It has this main functionality:
+
+- **Receive a firmware binary** from some communication system
+- **Copy the new firmware in flash**, replacing the old one
+- **Execute** the new firmware
+
+It is the **first software being executed by the MC**. Its **vector table is at
+the default location** (the **application IVT is different**!) and its code has
+a **dedicated flash area**, coexisting with the firmware.
+
+Suppose the bootloader has received new firmware, has copied it in the correct
+position and has verified the integrity of the new firmware. The bootloader must
+now **switch to the correct IVT and start execution** of the firmware. There are
+two possible scenarios:
+
+1. MCU has a **dedicated register for the IVT offset**
+   - We prepare the firmware execution by **disabling interrupts and clear
+     pending ones**
+   - **Flush all memory ops**
+   - Execute the firmware by **assigning the new values** to the IVT, to the SP
+     (from the newly installed IVT) and **jump** into the reset handler
+2. MCU **doesn't have a dedicated register for the IVT offset**
+   - We operate in a similar way, however we need to **load the firmware in RAM
+     and use memory remapping**
+
+## OTA device firmware updates
+
+Why OTA updates:
+
+1. Users want new features
+2. To fix bugs/vulnerabilities
+3. To ship products to market faster by pushing lower priority features to after
+   release
+4. Required by customers even if they'll never use it
+
+**Device Firmware Updates (DFU) rely on the existence of a bootloader** and
+sometimes **involve multiple parts of the system that can all be** (even
+partially) **updated** with the firmware update process.
+
+The **bootloader** is preferred to be the **most minimal possible** in order to
+reduce possible bugs and leave as much room as possible for application
+firmware. We need to provide the **following functionality for DFU**:
+
+1. Updating the firmware (duh), even the bootloader itself if necessary
+2. Verify firmware **integrity**
+3. **Downgrade prevention**
+4. **Verify hardware compatibility**
+5. **Decrypting** encrypted data
+6. Support for **updating over different mediums**
+
+To provide a robust end secure OTA infrastructure we need to provide:
+
+1. **Security**: encryption and verification (through signatures)
+2. **Reliability**: verifying integrity + failure recovery
+3. **Version management**: rollback prevention and in general a versioning
+   system
+
+The **generic steps** are the following:
+
+1. An **encrypted, signed image + manifest is uploaded** on the firmware update
+   server
+2. **End-device queries the firmware update server and fetches** new firmware
+   image and manifest
+3. The **package will be decrypted, validated and applied**
+
+### Challenges
+
+- Memory:
+  - We need to organize the software into volatile/non-volatile memory of the
+    client so that it can be executed once the update process is complete
+  - We need to keep the old version as fallback
+  - We need to keep the state of the client between resets and power cycles
+- Communication:
+  - The new software must be downloaded in packets, each targeting a specific
+    address in the client's memory
+  - The scheme for packetizing, the packet structure and the protocol must be
+    taken in in account when we are designing the system
+- Security:
+  - We need to provide authentication, integrity and confidentiality
+
+### Second state boot loaders
+
+The **primary boot loader** is a software application that permanently resides
+on the microcontroller in a read-only memory region known as **"info space"**
+(**sometimes it is not even accessible** to users). **If the primary boot loader
+does not have any support for OTA** updates, it is necessary to have a
+**second-stage boot loader**. Like the primary boot loader, **the SSBL will run
+every time a reset occurs**, but will **implement a portion of the OTA update**
+process.
+
+```txt
+┏━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┓
+┃         ┃           ┃╭─────╮╭─────╮   ┃
+┃ Primary ┃ Secondary ┃│App A││App B│...┃
+┃         ┃           ┃╰─────╯╰─────╯   ┃
+┗━━━━━━━━━┻━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┛
+```
+
+**Not having a SSBL** would lead only to **problems**:
+
+1. The OTA update would be done by a user application. Since micro-controllers
+   usually run **RTOS**, the **only way to replace the running code would be a
+   reset** (we cannot simply branch into another program with other tasks in the
+   background)
+2. **Primary bootloaders often branch at a fixed address**, so asking the
+   primary bootloader to branch directly into application B would be impossible.
+   On most systems the BL will branch into into the application has its IVT at
+   address 0. Changing this table requires power cycle and could leave the
+   controller in a broken state
+
+If we have the SSBL fixed at address 0, we can solve these problems since:
+
+1. The **SSBL is not an RTOS program**, so it can safely branch into other
+   applications
+2. We **never relocate the IVT** so no problem
+
+To determine which applications are present and where to jump, the **SSBL keeps
+a "Table of Contents" region of memory that applications and bootloader can use
+to communicate**.
+
+In the scenario described, the SSBL is very simple and the OTA logic must be
+done by each application, leading to code duplication. We could **push the OTA
+update mechanism in the SSBL**, however this will make it more complicated and
+less verifiable.
+
+### Caching and compression
+
+The **new application's permanent storage part** (text and fixed data) **will be
+downloaded** (compressed or not) **into SRAM and eventually flashed into
+permanent storage**. When and how much we flash in one go depends on how much of
+the downloaded app we flash:
+
+1. **No caching: every time a packet arrives, we flash it**
+
+   Simple, minimizes OTA logic complexity but wears down the flash very fast
+
+2. **Partial caching: reserve a buffer region** and flash only when said buffer
+   fills up
+
+   Can get complex when packets arrive out of order. A good approach is to have
+   a buffer mirror a flash page (minimal erasable unit in flash memory),
+   allowing us to go one page at a time and flush the page when it fills up or
+   we need to bring up another page.
+
+3. **Full caching: store the whole application** in SRAM and flash at the end
+
+### Software and protocol
+
+Many systems have a communication protocol implemented in HW and SW for normal
+(non-OTA update related) system behavior like exchanging sensor data. This means
+that there is a method of (possibly secure) wireless communication already
+established between the server and the client.
+
+How much abstraction does the implementation provide?
+
+1. If it has facilities for sending and receiving files between the server and
+   client that the OTA update software can simply leverage for the download
+   process, we are OK
+2. If the communication protocol is more primitive and only has facilities for
+   sending raw data, the OTA update software may need to perform packetizing and
+   provide metadata along with the new application binary
+3. The onus may be on the OTA update software to decrypt the bytes being sent
+   over the air for confidentiality if the communication protocol does not
+   support this
+
+### Security
+
+We need cryptographic operation (encryption and hashing). **Asymmetric
+encryption rarely has hardware acceleration**, so it has to be implemented in
+software. This makes asymmetric encryption harder to use and slower. **Hashing
+(SHA-256) and symmetric ciphers (AES-128) have plenty of accelerator chips**.
+
+To implement all our security requirements we need the hashing plus the PKI of
+asymmetric encryption. However this is slow so we need to make due with what we
+have. **A hash chain ties together a stream of packets** and can help alleviate
+the requirements:
+
+1. The **first packet** contains the **digest of the next packet**. Instead of
+   software, the **payload of this packet is the signature**
+2. The **second packet payload contains a portion of the binary and the digest
+   from the next packet**
+3. The **client verifies the signature in the first packet and caches the digest
+   for later use**. When the **next packet arrives the client hashes the payload
+   and compares it against the hash it has**. If they **match, the client can be
+   sure that the packet came from the trusted server** without the overhead of a
+   signature check
+
+   The expensive task of creating the chain is left to the server.
