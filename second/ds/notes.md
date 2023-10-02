@@ -472,12 +472,12 @@ can be either acyclic or cyclic**. This influences how we deliver messages:
     - **Message forwarding**: every broker stores only subscriptions coming from
       directly connected clients, message are forwarded broker to broker and
       delivered to clients only if there are subscribed
-    - **Subscription forwarding**: complementary to message forwarding, every broker
-      forwards subscriptions to the others (never twice on the same link); each
-      time a broker receives a message it must match it against the list of
-      received filter to determine the list of recipients
-    - **Hierarchical forwarding**: we elect one broker as the root of the acyclic
-      graph (we can now treat it as an overlay tree); both messages and
+    - **Subscription forwarding**: complementary to message forwarding, every
+      broker forwards subscriptions to the others (never twice on the same
+      link); each time a broker receives a message it must match it against the
+      list of received filter to determine the list of recipients
+    - **Hierarchical forwarding**: we elect one broker as the root of the
+      acyclic graph (we can now treat it as an overlay tree); both messages and
       subscriptions are forwarded by brokers towards the root of the tree,
       messages flow downwards only if a matching subscription had been received
       along that route
@@ -502,8 +502,8 @@ can be either acyclic or cyclic**. This influences how we deliver messages:
       - While flowing toward $\mathit{succ}(Hs)$ follow back routes toward
         subscribers
 
-    - **Content based routing**: we try to emulate a network by using routing and
-      forwarding strategies.
+    - **Content based routing**: we try to emulate a network by using routing
+      and forwarding strategies.
 
       Forwarding strategies:
 
@@ -521,11 +521,148 @@ can be either acyclic or cyclic**. This influences how we deliver messages:
 
 ##### Complex event processing
 
-CEP systems adds the **ability to deploy rules that describe how composite events
-can be generated from primitive (or composite) ones**. Open issues:
+CEP systems adds the **ability to deploy rules that describe how composite
+events can be generated from primitive (or composite) ones**. Open issues:
 
 1. The **rule language**: need for balance between expressiveness and processing
    complexity
-2. **Processing engine**: how to efficiently match incoming (primitive) events to
-   build complex ones
+2. **Processing engine**: how to efficiently match incoming (primitive) events
+   to build complex ones
 3. **How to distribute processing**
+
+### Stream-oriented communication
+
+The main concept is the **data-stream**, which is a **sequence of data units**.
+**Time usually does not impact the correctness of the communication, just the
+performance** (but it is **not always** the case). We have various
+**transmission modes**:
+
+1. **Asynchronous**: the data items in a stream are transmitted one after the
+   other without timing constraints
+2. **Synchronous**: there is a maximum end-to-end delay for each unit
+3. **Isochronous**: there are both a maximum and minimum end-to-end delay for
+   each unit
+
+The stream can be **simple or complex** (i.e. composed of different substreams).
+
+Non-functional requirements are often expressed as **Quality of Service** (QoS)
+requirements:
+
+- Required **bit rate**
+- Maximum **delay to setup** the session
+- Maximum **end-to-end delay**
+- Maximum variance in delay (**jitter**)
+
+**IP is a best-effort protocol**. It supports a Differentiated Services field in
+its header (TOS bits), but it is not necessarily supported by routers. This
+means that we need to **enforce QOS at the application level**. We have several
+**techniques**:
+
+1. **Buffering**: control max jitter by sacrificing session setup time
+2. **Forward error correction**: once we recognize that an error occured (e.g.
+   packet drops), we try to correct it and bring the application in a correct
+   state
+
+   This is the opposite of backward error correction, which is basically what
+   TCP does on packet drops.
+
+3. **Interleaving data** to mitigate the impact of lost packets
+
+**Synchronizing** two or more streams is **challenging**:
+
+1. Depending on the type of stream it can mean different things
+2. Synchronization may take place at the sender or the receiver side
+3. It may happen either in middleware of in application code.
+
+## Naming
+
+**Names** are used to **refer to entities**, which are usually **accessed
+through an access point**, which is itself a **special entity characterized by
+an address**. An address is a special case of name. The same **entity can be
+accessed through several access points** at the same time and it **can change
+its access points during its lifetime**. Thus, it is not convenient to use the
+address of its access point as a name for an entity but it is better to use
+**location-independent names**.
+
+We can distinguish between:
+
+1. **Global and local names**
+   - Global denotes the same entity everywhere, local names only in the context
+     where it is used
+2. **Human-friendly vs machine-friendly**
+
+**Resolving a name directly into an address does not work with mobility**.
+**Identifiers** are names such that:
+
+- They **never change**
+- **Each entity** has exactly **one identifier**
+- An identifier is **never assigned to another entity**
+
+Using identifiers enables to **split the problem of mapping a name to an entity
+and the problem of locating the entity**.
+
+**Name resolution** is the process of **obtaining the address of a valid access
+point of an entity having its name**. The way we do it depends on the nature of
+the **naming schema** employed:
+
+1. **Flat naming**
+2. **Structured naming**
+3. **Attribute-based naming**
+
+### Flat naming
+
+In a flat scheme **names are simple strings with neither structure nor
+content**. The name resolution process can be:
+
+1. **Simple**: designed for small-scale environments
+
+   - **Broadcast** based: similar to ARP, send find messages in broadcast and
+     interested hosts reply
+   - **Multi-cast** based: same as broadcast, but use multi-cast to reduce the
+     scope of the search
+   - **Forwarding pointer** based (for mobile nodes): leave reference to the
+     next location at the previous location; example:
+
+     ```txt
+     A wants to contact C which waas previously at address B.
+
+     ╭─╮    Request    ╭─╮
+     │A│──────────────>│B│
+     ╰─╯       ┌───────╰─╯
+        Forward│        ╏
+               ∨        ╏ Reference
+              ╭─╮       ╏
+              │C│◀╺╺╺╺╺╺┛
+              ╰─╯
+     ```
+
+     This method can lead to long chains a high latencies due to dereferencing
+
+2. **Home based**: rely on one home node (assumed stable) that knows the
+   location of the mobile unit
+
+   This extra call to the home increases latency and has bad scalability (two
+   entities near by still need to call the home which may be far away). Moreover
+   the address of the home is fixed and must live for the whole lifespan of the
+   entity.
+
+3. **Distributed hash table**: it is a very nice way to store names since it is
+   a key-value store (the key is the name, value is the address)
+
+   An implementation can be with different topologies organized in an overlay
+   network
+
+4. **Hierarchical approach**: the network is divided into a hierarchy of domains
+   with the root domain spanning the entire network. Each domain has an
+   associated directory that keeps track of the entities in that domain.
+
+   The root has entries for every entity, entries point to the next sub-domain.
+   A leaf domain contains the address of an entity (entities may have different
+   names in different leaf domains).
+
+   Lookup may start anywhere. We first look locally; if we do not find anything
+   we forward the lookup to the parent; if we find something we forward to the
+   child leaf holding the concrete entry.
+
+   With this method we achieve locality, however higher levels of the tree have
+   more and more information, with the root having information on all entries.
