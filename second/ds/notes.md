@@ -666,3 +666,170 @@ content**. The name resolution process can be:
 
    With this method we achieve locality, however higher levels of the tree have
    more and more information, with the root having information on all entries.
+
+   Updates to the hierarchy are done through insert request form the new
+   location. Records can be created bottom up or top down. Deletion proceeds
+   from the old node up until a node with multiple children is reached.
+
+   Caching can reduce lookup times. Also it is possible to shortcut search if
+   information about mobility patterns are available. The root node can be
+   distribute to avoid bottlenecks.
+
+### Structured naming
+
+Names are **organized in a name space**, a **labeled graph composed of leaf and
+directory nodes**. A **leaf** represents a **named entity**. A **directory** has
+a **number of labeled outgoing edges**, each pointing to a different node.
+**Resources are referred to through path names** (absolute or relative).
+**Multiple path names may refer to the same entity** (hard linking) or **leaf
+nodes may store absolute path names of the entity they refer to instead of their
+identifier/address** (symbolic linking).
+
+**Name spaces** for a large scale, possibly worldwide, distributed system are
+often **distributed among different name servers, usually organized
+hierarchically**. Name spaces are made of **layers**:
+
+1. **Global level**: high-level directory nodes; these directory nodes have to
+   be jointly managed by different administrations
+2. **Administration level**: mid-level directory nodes that can be grouped in
+   such a way that each group can be assigned to a separate administration
+3. **Managerial level**: low-level directory nodes within a single
+   administration; main issue is effectively mapping directory nodes to local
+   name servers
+
+The **higher part of the graph is very stable** so we can use caching to improve
+performance. The **lower parts are more volatile** so its better to achieve
+faster lookups than to use caching.
+
+The best known example of structured naming is **DNS**. Lets have a look at what
+DNS does:
+
+| Item                      | Global    | Administration | Managerial |
+| ------------------------- | --------- | -------------- | ---------- |
+| Scale                     | Worldwide | Organization   | Department |
+| N. of nodes               | Few       | Many           | Vast       |
+| Responsiveness to lookups | Seconds   | Milliseconds   | Immediate  |
+| Update propagation        | Lazy      | Immediate      | Immediate  |
+| N. of replicas            | Many      | None or few    | None       |
+| Client-side caching used? | Yes       | Yes            | Sometimes  |
+
+We have two way of resolving DNS names:
+
+1. Iterative: we iteratively go down the hierarchy until we find an
+   authoritative server
+2. Recursive: The root server recursively asks child directories to find the
+   authoritative server and then responds to the query
+
+Recursive resolution has some advantages: communication costs may be reduced and
+caching is more effective. However it puts higher load on servers
+
+DNS has very poor performance if we do not use neither caching or replication.
+However it uses those, so its fast. The root servers uses IP anycast to route
+queries among the various replicas.
+
+DNS works well on the assumptions that:
+
+1. The lower levels are stable
+2. Content of the managerial layer changes often, but requests are server by
+   name servers in the same zone, therefore updates are efficient
+
+If we allow a host to move, we do not have major problems if it remains in the
+same domain. If it moves to another domain we get several problems affecting
+locality and the speed of lookups.
+
+### Attribute based naming
+
+**Problem**: as more information is made available, it becomes **important to
+effectively search for items**.
+
+**Solution**: **refer to entities** not with their name but with a **set of
+attributes**, which encode their properties.
+
+Attribute based naming systems are **usually called directory services** and
+usually **implemented by using DBMS technology**.
+
+Best know example of this naming is **LDAP**. Each LDAP directory consist of a
+number of records and is made of `<attribute, value>` pairs. Each attribute has
+a type and can be single-values or multiple-valued. The collection of all
+records in a LDAP directory servisse is called Directory Information Base (DIB).
+Each record has a unique name defined as a sequence of naming attributes (aka
+relative distinguished name). This allows us to build a directory information
+tree, meaning a node in a LDAP naming graph can simultaneously represent a
+directory in a traditional sense (in a hierarchical name space).
+
+### Removing unreferenced entities
+
+Entities accessed through stale bindings should be removed. Automatic garbage
+collection is common in conventional systems. **Distribution greatly complicates
+matters**, due to lack of global knowledge about who’s using what, and to
+network failures.
+
+#### Reference counting
+
+**The object** (e.g., in its skeleton) **keeps track of how many other objects
+have been given references**. Reliability (**exactly-once message delivery**)
+must be ensured. **Race condition** when passing references among processes are
+possible (not a problem in non-distributed systems).
+
+**Weighted reference counting tries to circumvent the race condition by
+communicating only counter decrements**. It requires an additional counter.
+Removing a reference subtracts the proxy partial counter from the total counter
+of the skeleton: when the total and partial weights become equal, the object can
+be removed. The problem of this method is that **only a fixed number of references
+can be created**. To circumvent it we would need to create a chain of
+indirection.
+
+#### Reference listing
+
+Instead of keeping track of the number of references, **keep track of the
+identities of the proxies**. Advantages:
+
+1. **Insertion/deletion of a proxy is idempotent**
+   - Insertion and deletion of references must still be acknowledged, but
+     requests can be issued multiple times with the same effect
+2. Easier to **maintain the list consistent w.r.t. network failures** by e.g.
+   periodically pinging clients
+
+Still suffers from **race conditions** when copying references.
+
+#### Identifying unreachable entities
+
+To find unreachable entities we have **two main approaches**:
+
+1. **Tracing-based** garbage collection techniques: require knowledge about all
+   entities, therefore they have inherent **poor scalability**
+2. **Mark-and-sweep**:
+
+   - On centralized systems:
+     1. First phase marks accessible entities by following references
+        - Initially nodes are white
+        - A node is colored gray when reachable from a root
+        - A node is colored black after it turned gray and all its outgoing
+          references have been marked gray
+     2. Second phase exhaustively examines memory to locate entities not marked
+        and removes them
+   - On distributed systems: garbage collectors run on each site, in theory it
+     can work however we need to freeze the distributed system and maintain the
+     reachability graph stable.
+
+     **In practice it is never done**.
+
+## Fault tolerance
+
+To have a dependable system we need: **availability, reliability, safety,
+maintainability**. Note that availability and reliability are different: if a
+system goes down for one millisecond every hour, it has an availability of
+99.999%, but is still highly unreliable.
+
+A system fails when it is not able provide its services. **A failure is the result
+of an error. An error is caused by a fault**. Some faults can be avoided, others
+cannot. Building a **dependable system demands the ability to deal with the
+presence of faults**. A system is said to be **fault tolerant if it can provide its
+services even in the presence of faults**.
+
+**Faults** can be **classified according to the frequency** at which they occur:
+
+1. **Transient** faults occur once and disappear
+2. **Intermittent** faults appear and vanish with no apparent reason
+3. **Permanent** faults continue to exist until the failed components are repaired
+
