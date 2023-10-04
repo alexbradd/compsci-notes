@@ -975,7 +975,7 @@ equal to that computed by the others.
 
 #### Agreement in asynchronous systems
 
-Let us consider the problem of reaching an agreement between $n4 processes with
+Let us consider the problem of reaching an agreement between $n$ processes with
 1 faulty process in an asynchronous system.
 
 **Fischer, Lynch, and Paterson proved that no solution exists**. The **result
@@ -984,3 +984,201 @@ failures** since a byzantine program can simulate a crashed one, implying that
 if a solution existed for byzantine faults it would also exists for crash
 faults.
 
+### Reliable group communication
+
+It is of critical importance if we want to exploit process resilience by
+replication. **Achieving reliable multicast through multiple reliable
+point-to-point channels may not be efficient or enough**.
+
+We assume **two cases**:
+
+1. **Fixed groups, non-faulty processes**
+2. **Faulty processes, groups are allowed to change**
+
+#### Non-faulty processes
+
+It is **easy to implement on top of unreliable multi-cast** with either:
+
+- **Positive acknowledgment**: doesn't scale well since since we could DoS
+  ourselves with ACKs
+- **Negative acknowledgment**:
+  - **Non-hierarchical feedback control**: assume messages are delivered
+    correctly and broadcast a NACK after a random timeout in case something goes
+    wrong. The NACK broadcast is also be used by other senders to suppress their
+    feedback in case they also encountered some problem
+  - **Hierarchical feedback control**: receivers are recursively organized in
+    subgroups headed by coordinators. The coordinator can adopt any strategy in
+    the group and can request retransmissions to parent coordinators. The
+    problem is that the hierarchy has to be established and maintained.
+
+#### Faulty processes
+
+To address this we **need that a message is delivered either to all the members
+of a group or to none and that the order of messages is the same at all
+receivers**. This requirement is called **atomic multicast**.
+
+**Ideally** we would like that **any two processes that receive the same
+multicast messages or observe the same group changes to see the corresponding
+events in the same order** and that a **multicast be delivered to the full
+membership**. This is called **close synchrony** and **cannot be achieved** in
+the presence of failures.
+
+A mechanism for detecting failures is needed. However, even if we can detect
+failures correctly we cannot know whether a failed process has received and
+processed a message.
+
+We can **weaken our model** to:
+
+1. **Crashed processes are purged** from the group and have to join again
+2. **Messages** from a correct process are **processed by all correct
+   processes**
+3. **Messages from a failing process** are processed **either by all** correct
+   member **or by none**
+4. **Messages are received in a specific order**
+
+To our multicast primitive it is useful to adopt a model which distinguishes
+between receiving and delivering a message: **messages received by the
+communication layer are buffered there and later delivered, when some condition
+holds**.
+
+A **group view** is the **set of processes to which a message should be
+delivered as seen by the sender** at sending time. The minimal ordering
+requirement is that **group view changes be delivered in a consistent order with
+respect to other multicasts and with respect to each other**.
+
+This, together with the previous requirements, leads to a form of reliable
+multicast which is said to be **virtually synchronous**.
+
+We say that a **view change occurs when a process joins or leaves the group**,
+possibly crashing. **All multicast must take place between view changes**, which
+themselves can be seen as another form of multicast messages. We must guarantee
+that **messages are always delivered before or after a view change**. If the
+**view change is the result of the sender** of a message `m` **leaving**, the
+**message is either delivered to all group members before the view change is
+announced or it is dropped**.
+
+Retaining the virtual synchrony property, we can identify **different
+orderings** for the multicast messages:
+
+- **Unordered**
+- **FIFO**
+- **Causally** ordered
+
+In addition, the above orderings can be combined with a **total ordering
+requirement**: whatever ordering is chosen, **messages must be delivered to
+every group member in the same order**. **Atomic multicast** is defined as a
+**virtually synchronous reliable multicast offering totally-ordered delivery of
+messages**.
+
+One implementation of virtual synchronicity is ISIS. In practice, although each
+transmission is guaranteed to succeed, there are no guarantees that all group
+members receive it; the sender may fail before completing its job. ISIS must
+**make sure that messages sent to a group view are all delivered before the view
+changes**:
+
+1. **Every process keeps a message `m` until it is sure that all the others have
+   received it**. Once this happens, `m` is said to be **stable**
+2. We assume that **processes are notified when messages become stable** and
+   that **they keep them in a buffer until that time**
+
+To ensure that multi-casts are between view changes, we follow this generic
+scheme:
+
+1. We assume that processes are notified of view changes by some (possibly
+   distributed) component
+2. When a process receives a view change message, it stops sending new messages
+   until the new view is installed and it multicasts all pending unstable
+   messages to the non faulty members of the old view, marks them as stable and
+   multicasts a flush message
+3. Eventually all the non faulty members of the old view will receive the view
+   change and do the same
+4. Each process installs the new view as soon as it has received a flush message
+   from each other process in the new view. Now it can restart sending new
+   messages
+
+If we **assume** that the **group membership does not change during the
+execution of the above protocol** we have that at the end all non faulty members
+of the old view receive the same set of messages before installing the new view.
+
+### Recovery
+
+When processes resume working after a failure, they have to be **taken back to a
+correct state**. We have two methods:
+
+1. **Backward recovery**: The system is brought back to a **previously saved
+   correct state**
+2. **Forward recovery**: The system is brought into a **new correct state** from
+   which execution can be resumed
+
+Recovering a previous state is only possible if that state can be retrieved. We
+have two methods of retrieving a previous state:
+
+1. **Checkpointing** consists in **periodically saving the distributed state**
+   of the system to stable storage
+
+   - It is **very expensive**
+   - Each node of the system takes snapshots of its private state. The problem
+     is finding the most recent **consistent cut** (i.e. a moment where the
+     overall state of the system is consistent), which is a cut where all
+     messages have been sent and delivered. This means that **we may need to
+     roll back each system until we find a set of checkpoints that form a
+     consistent cut (domino effect)**
+
+     This is **not trivial to implement** since we need:
+
+     1. **Tag intervals** between two checkpoints
+     2. **Each message exchanged** by the process must **record a reference** to
+        the **interval**
+     3. Implement **dependency information between intervals** (constructed by
+        each node with info embedded in messages)
+
+     When a **failure** occurs, the **recovering process broadcasts a dependency
+     request to collect dependency information**. The **recovery line is
+     computed** starting from **two graphs computed from the info received**:
+     dependency graph and checkpoint graph.
+
+   - We can also do **coordinated checkpoints**: the **coordinator sends a
+     checkpoint request** and on receive the nodes take a checkpoint, ACKing
+     when done. This requires electing a coordinator.
+
+2. With **logging, events (messages) are recorded to stable storage so that they
+   can be replayed** when recovering from a failure. We can also **combine it
+   with checkpointing** by starting from a checkpoint and replaying it from the
+   log.
+
+   Logging **works if the system is piecewise deterministic**: execution
+   proceeds deterministically between the receipt of two messages. Logging must
+   be done carefully.
+
+   **Each message's header contains all necessary information to replay** it. We
+   define a **message to be stable when it can no longer be lost**. For **each
+   unstable message** we define **two sets of processes**:
+
+   - $DEP(m)$: **processes that depend on the delivery of** $m$, i.e., those
+     which $m$ has been delivered or to which $m'$ dependent on $m$ has been
+     delivered
+   - $COPY(m)$: **processes that have a copy of** $m$, **but not yet in stable
+     storage**. They are those processes that **hand over a copy of** $m$ **that
+     could be useful to replay it**
+
+   An **orphan process is a process survived after one or more crashes** in the
+   system **such that** $\exists m : Q \in DEP(m)$ **and all processes in**
+   $COPY(m)$ **have crashed**. This means that there is **no way for an orphan
+   to replay the lost message**.
+
+   If **each process in** $COPY(m)$ **has crashed then no surviving processes
+   must be left in** $DEP(m)$. This can be **achieved by ensuring** that
+   $COPY(m) \supseteq DEP(m)$.
+
+   Based on this we can have **two schemes**:
+
+   1. **Pessimistic**: ensure that **any unstable message $m$ is delivered to at
+      most one process**
+      - **Prevents orphans**, can also require logging the messages on the
+        sender side
+   2. **Optimistic**: messages are **logged asynchronously, with the assumption
+      that they will be logged before any faults occur**
+      - **Can allow orphans**, we need to force them to roll back until they are
+        not orphans anymore
+
+   Logging **works very well in conjunction with coordinated checkpoints**
