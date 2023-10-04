@@ -775,8 +775,8 @@ possible (not a problem in non-distributed systems).
 communicating only counter decrements**. It requires an additional counter.
 Removing a reference subtracts the proxy partial counter from the total counter
 of the skeleton: when the total and partial weights become equal, the object can
-be removed. The problem of this method is that **only a fixed number of references
-can be created**. To circumvent it we would need to create a chain of
+be removed. The problem of this method is that **only a fixed number of
+references can be created**. To circumvent it we would need to create a chain of
 indirection.
 
 #### Reference listing
@@ -821,15 +821,166 @@ maintainability**. Note that availability and reliability are different: if a
 system goes down for one millisecond every hour, it has an availability of
 99.999%, but is still highly unreliable.
 
-A system fails when it is not able provide its services. **A failure is the result
-of an error. An error is caused by a fault**. Some faults can be avoided, others
-cannot. Building a **dependable system demands the ability to deal with the
-presence of faults**. A system is said to be **fault tolerant if it can provide its
-services even in the presence of faults**.
+A system fails when it is not able provide its services. **A failure is the
+result of an error. An error is caused by a fault**. Some faults can be avoided,
+others cannot. Building a **dependable system demands the ability to deal with
+the presence of faults**. A system is said to be **fault tolerant if it can
+provide its services even in the presence of faults**.
 
 **Faults** can be **classified according to the frequency** at which they occur:
 
 1. **Transient** faults occur once and disappear
 2. **Intermittent** faults appear and vanish with no apparent reason
-3. **Permanent** faults continue to exist until the failed components are repaired
+3. **Permanent** faults continue to exist until the failed components are
+   repaired
+
+The general techniques for building fault tolerant systems are:
+
+1. **Information redundancy**
+2. **Time redundancy**
+3. **Physical redundancy**
+
+### Protection against process failures
+
+In a client-server system, for example, **either the server or the client can
+crash**. Clients **cannot distinguish whether a server is unreachable, has
+crashed before or after executing the functions, or the reply has been lost**.
+We can **only ensure at-most-once or at-least-once execution**, no scheme can
+reliably ensure exactly-once computation. A **computation started by a dead
+client is called an orphan**. Orphans still consume resources on the server, so
+**they must be removed**:
+
+1. **Extermination**: requests are logged by the client and orpahns killed after
+   a reboot
+2. **Reincarnation**: when a client reboots, it starts a new epoch and sends a
+   broadcast messages to servers, who kill old computations started on his
+   behalf
+3. **Gentle reincarnation**: as normal reincarnation, but servers kill old
+   computations only if the owner cannot be located
+4. **Expiration**: remote computations expire after some time; clients wait to
+   reboot to let remote computations to expire
+
+**Reincarnation can solve most problems**, however **a lot of bookkeeping is
+required and not all issues can be solved**.
+
+**Redundancy can be used to mask the presence of faulty processes**, with
+**redundant process groups**: the work that should be done by a process is taken
+care by a group of processes; the healthy processes can continue to work when
+some other fails. **We have two possible group hierarchies: flat or
+hierarchical** (coordinator with workers).
+
+To use groups, we must **keep track of which processes constitute each group**.
+Having a **coordinator seems the best choice**, however the **coordinator
+becomes the single point of failure** of the whole system. **Distributed
+membership management in flat groups requires that join and leave announcements
+be reliably multicast**.
+
+**How large should a group be**?
+
+- If processes fail silently, then $k+1$ **processes are required to achieve**
+  $k$-fault tolerance
+- If **failures are byzantine**, it becomes **worse**: $2k+1$ **processes are
+  required to achieve** $k$-fault tolerance (to achieve a working voting system)
+
+In practice, **we cannot be sure that no more than** $k$-processes **will ever
+fail simultaneously**.
+
+#### Agreement in process groups
+
+A number of tasks may require that the members of a group agree on some decision
+before continuing. Because we are dealing with faults, we want all non-faulty
+processes to reach an agreement.
+
+This is the **consensus problem**; the non-faulty processes must agree on a
+valid value (considered valid by a validity condition). More precisely we have
+the **following conditions**:
+
+1. Each **process starts with some initial value**
+2. All **non-faulty processes have to reach a decision based on these values**
+3. The following must hold:
+   - **Agreement**: no two processes decide on different values
+   - **Validity**: if all processes start with the same value $v$, then $v$ is
+     the only possible decision value
+   - **Termination**: all non-faulty processes eventually decide
+
+Consensus is **not possible in the presence of arbitrary failures**. We will
+consider that **communication is reliable, but processes are allowed to fail**.
+Our assumption then become:
+
+1. We **consider a synchronous system** in which all processes evolve in
+   synchronous rounds
+   - A message sent by a process is received within the same round by the
+     recipient
+   - Processes may fail at any point, by stopping taking steps
+2. We want our processes to reach an agreement according to the definition of
+   consensus
+
+This problem is simpler: it **can be solved provided that the processes take at
+least** $f+1$ rounds with $f$ a bound on the number of failures. It is also only
+**sufficient that a single process is non faulty**.
+
+A simple algorithm to solve this problem is the **FloodSet algorithm**.
+
+- Let $v_0$ be an pre-specified default value. Each process maintains a variable
+  $W \subset V$ initialized with its start value. The following is repeated for
+  $f+1$ rounds
+  1. Each process sends $W$ to all other processes
+  2. It adds the received sets to $W$
+- The decision is made after $f+1$ rounds:
+  - If $|W|=1$: decide on $W$'s element
+  - If $|W|>1$: decide on $v_0$ (or use the same function to decide, e.g.
+    $\max$)
+
+##### Lemma: FloodSet correctness
+
+If no process fails during a particular round $r : 1 \leq r \leq f+1$, then
+$W_i(r) = W_j(r)$ for all $i$ and $j$ that are active after $r$ rounds.
+
+##### Proof
+
+Suppose that $W_i(r) = W_j(r)$ for all $i$ and $j$ that are active after $r$
+rounds. Then for any round $r_1 : r \leq r_1 \leq f+1$, the same holds, that is,
+$W_i(r_1) = W_j(r_1)$ for all $i$ and $j$ that are active after $r_1$ rounds. If
+processes $i$ and $j$ are both active after $f+1$ rounds, then $W_i = W_j$ at
+the end of round $f+1$.
+
+We can improve the complexity of FloodSet by optimizing it a bit: we broadcast
+$W$ at the first round and we broadcast new values only when we receive new
+values.
+
+#### Agreement with byzantine failures
+
+Our algorithm **does not consider byzantine failures**. Our conditions now
+become:
+
+- Agreement: no two non-faulty processes decide on different values
+- Validity: if all non-faulty processes start with the same value $v$, then $v$
+  is the only possible decision value
+- Termination: all non-faulty processes eventually decide
+
+Lamport's algorithm is a solution. It is **formulated with generals that need to
+decide total number of troops based on troops strength**; however **we have some
+traitors** that will misreport. The **steps** for a 4 generals and 1 traitor
+are:
+
+1. Send troop strength to others
+2. Form a vector with the received values
+3. Send a vector to others
+4. Compute the vector using majority for each vector position
+
+Lamport (1982) showed that **if there are** $m$ traitors, $2m+1$ **loyal
+generals are needed for an agreement to be reached**, for a total of $3m+1$.
+There is **no way for 1 and 2** to determine a vector which is both correct and
+equal to that computed by the others.
+
+#### Agreement in asynchronous systems
+
+Let us consider the problem of reaching an agreement between $n4 processes with
+1 faulty process in an asynchronous system.
+
+**Fischer, Lynch, and Paterson proved that no solution exists**. The **result
+was proved in the case of crash failures but it also extends to byzantine
+failures** since a byzantine program can simulate a crashed one, implying that
+if a solution existed for byzantine faults it would also exists for crash
+faults.
 
