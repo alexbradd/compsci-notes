@@ -183,20 +183,18 @@ files) instead of the imperative one (scripts) of sysv:
      before the requiring unit
 2. **Targets are collections of units** and emulate old runlevels
 
-## Scheduling
-
-### Basics and CFS
+## Scheduling basics and CFS
 
 See Love's Linux Kernel Development Ch. 4 <!-- Get used to it -->
 
-#### Runqueues
+### Runqueues
 
 The **central data structure** of the scheduler is known as the run queue. There
 is **one per CPU** in order to avoid contention over task selection.
 
 Each runqueue has **different run queues for each scheduling class**.
 
-#### Scheduling classes
+### Scheduling classes
 
 A **scheduling class is an API that includes policy-specific** code to:
 
@@ -238,7 +236,7 @@ Ordering between processes is implemented with a priority $\pi$:
   - Priority of normal processes is a function of the **niceness**
     $v\in [-20;=19]$ and is calculated as $\pi = 120+v$
 
-#### Cgroups
+### Cgroups
 
 CFS is not enough to guarantee optimal CPU usage, so we need a **mechanism to
 throttle and account for the CPU usage by various tasks**.
@@ -257,7 +255,7 @@ task is accounted for time, also the parent group's entity is and so on until we
 arrive at the root entity. `__pick_next_entity()` **picks the entity with the
 smallest virtual runtime until a real task is selected**.
 
-### Task scheduling in depth
+## Task scheduling in depth
 
 A task, in this context, can be thought of as a **synonymous of a thread**.
 However remember that it has no fixed definition: it is **simply the basic
@@ -285,7 +283,7 @@ order of tasks**. The **ordering algorithm** is the **scheduling policy**.
 task in order to execute another task**. Can be task-triggered (unusual) or
 OS-triggered (more common). Preemption is performed via a context switch.
 
-#### Task model
+### Task model
 
 We can model a task $i$ with the following **parameters**:
 
@@ -311,7 +309,7 @@ identify **two bounds** for a task:
 - **I/O-bound**: spends most of the time waiting for I/O
   - $Z_i \gg W_i + C_i$ excluding preemptions
 
-#### Platform model
+### Platform model
 
 A computing system is composed of:
 
@@ -327,7 +325,7 @@ A computing system is composed of:
    - A task $\tau_i$ can execute at time $t$ if $\tau_i\in A(R_k, t)$ for all
      $R_k$ requires to run the task
 
-#### Problem statement
+### Problem statement
 
 Given:
 
@@ -340,7 +338,7 @@ Compute an optimal schedule and allocations.
 
 It is a **NP-complete problem** (usually reduced to the knapsack problem).
 
-#### Metrics
+### Metrics
 
 The scheduler aims at **optimizing one or more objectives**. Some metrics that
 help to determine if a policy is good are:
@@ -364,10 +362,10 @@ Whatever is the algorithm/policy, **the scheduler must guarantee that all tasks
 are served**. **Starvation is the perpetuated condition where one or more tasks
 cannot execute due to the lack of resources**.
 
-#### Algorithm classification
+### Algorithm classification
 
 - **Preemptive vs non preemptive**
-  - Preemptive: tasks can be interrupted by the os at any time to make room for
+  - Preemptive: tasks can be interrupted by the OS at any time to make room for
     other tasks
   - Non-preemptive: once started, tasks are executed to completion, guaranteeing
     the lowest overhead
@@ -382,6 +380,137 @@ cannot execute due to the lack of resources**.
 - **Optimal vs heuristic**
   - Optimal: based on an algorithm optimizing a given cost (high overhead)
   - Heuristic: based on heuristic functions
+
+### Scheduling algorithms
+
+#### FIFO
+
+Also known as First Come First Serve (FCFS), tasks are **scheduled in the order
+of arrival**. It is **non-preemptive**, very simple and does not require any
+knowledge of the process. However it is **terrible for responsiveness**.
+
+#### Shortest Job First (SJF)
+
+Also known as Shortest Job Next (SJN), tasks are **scheduled in ascending order
+of computation time** ($C_i$). Like FIFO it is also a **non-preemptive**
+algorithm.
+
+It is the **optimal** (proof in the slides) **non-preemptive algorithm w.r.t
+minimizing the average waiting time**. The **problems** are mainly two:
+
+1. We run into the risk of **starvation** for long tasks
+2. We **need to know $C_i$ in advance**
+
+#### Shortest Remaining Time First (SRTF)
+
+It is the **preemptive variant of SJF**. It **uses** the **remaining execution
+time instead of $C_i$** to decide which task to dispatch.
+
+The advantages it provides is **an improvement in responsiveness** compared to
+SJF, but it **does not solve any of its drawbacks** (i.e. risk of starvation for
+long tasks and the need of $C_i$).
+
+#### Highest Response Ratio Next (HRRN)
+
+**Selects the task with the highest Response Ration**:
+
+$$
+RR_i = \frac{W_i + C_i}{C_i}
+$$
+
+It is **non-preemptive** and **prevents the starvation** that SJF may cause. We
+still **need to know $C_i$ in advance**.
+
+#### Round Robin
+
+**Tasks are scheduled for a given time quantum** $q$ (also called time slice).
+When the **time quantum expires**, the **task is preempted and moved back to the
+ready queue**.
+
+Advantages:
+
+1. **Computable maximum waiting time**: $(n-1) * q$
+2. **No need to know $C_i$ in advance**
+3. **Good to achieve the fairness and responsiveness** goals
+4. **No starvation** is possible
+
+Disadvantage: **turnaround is worse** than SJF.
+
+In RR the choice of the time quantum is important:
+
+- **Long quantum favors CPU-bound tasks** and reduces overhead, the scheduling
+  tends to FIFO as the quantum increases
+- **Short quantum favors IO-bound tasks** and reduces average waiting time,
+  making it better for responsiveness and fair scheduling; it has, however,
+  higher overhead due to more context switches
+
+### Priority-based scheduling
+
+The **priority** $P_i$ is a **task parameter** through which we can **specify
+the importance of a task**. The priority can be **fixed or dynamic** and is
+usually expressed with an **integer value** with the following convention:
+
+- The **lower** the integer value, the **higher the priority**
+- The **higher** the integer value, the **lower the priority**
+
+#### Multi-level Queue Scheduling
+
+We have **different run-queues, each containing tasks of different priority**.
+This also provides **quick task ordering** based on priority. **Each queue can
+specify a different scheduling algorithm**. The **first task to schedule is
+picked from the topmost non-empty queue** (highest priority). Tasks **cannot be
+moved from one run-queue to another**.
+
+This method incurs the **risk of starvation**: while the higher priority
+run-queues fill up, we delay the lower priority tasks.
+
+A simple scheme is using **RR on each queue and varying the time quantum**:
+**smaller quantum** for **high priority** and **larger quantum** for **lower
+priority**. Priority measure then becomes a measure of the boundness of the
+process:
+
+- **CPU-bound tasks are lower priority** since they benefit from smaller
+  quantums
+- **IO-bound tasks are higher priority** since they benefit from larger quantums
+
+This schemes **guarantees the best responsiveness** (without dealing with
+starvation). To determine whether a tasks is **CPU/IO-bound** we need that the
+**information is delivered**:
+
+- By the **user**
+- By the program itself at **runtime** (but it requires a feedback mechanism)
+
+#### Multi-level Feedback Queue Scheduling
+
+The scheduling works like the previous multi-level RR scheme. The **priority is
+now dynamic**, changing according to this rationale:
+
+1. The **new/activated the task is moved to the highest priority queue**
+2. If the **quantum of the running task expires**, the task is **moved to the
+   next queue with lower priority**
+
+Thus **CPU-bound tasks are progressively moved in queues with longer time
+quantum**. We, however, still **haven't solved the problem of starvation**.
+
+#### Multi-level Feedback Queue Scheduling with time slicing
+
+**Each queue gets a maximum percentage of the available CPU time** it can use to
+schedule the task, which **determines a time quota**. **If the time quota
+expires, the remaining tasks in the queue are skipped**, and we **start picking
+tasks from the next (lower priority) queue**.
+
+The sum of all the quotas can be greater than the total period, but **the
+absence of starvation is guaranteed only if the sum of quotas does not exceed
+the period**. We can **still have starvation due to the scheduling policies** of
+one of the queues.
+
+A similar schema is used by the Linux kernel.
+
+#### Multi-level Feedback Queue Scheduling with aging
+
+The **priority of the task is increased as long as it spends time in the ready
+queue** (it gets older). This **prevents a task from being indefinitely
+postponed by new incoming higher priority tasks**, thus avoiding starvation.
 
 ## IPC
 
