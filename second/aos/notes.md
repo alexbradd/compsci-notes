@@ -512,6 +512,53 @@ The **priority of the task is increased as long as it spends time in the ready
 queue** (it gets older). This **prevents a task from being indefinitely
 postponed by new incoming higher priority tasks**, thus avoiding starvation.
 
+### Multi-processor scheduling
+
+In multi-processor systems we **need to choose the task to execute and to which
+processor to assign** it. This model brings more problems:
+
+1. **Task synchronization may occur** across parallel executions
+2. It is difficult to **fully utilize all processors**
+3. **Simultaneous** (not only concurrent) **access to shared resources**
+
+Lower level **cache conflicts between processes are one of the big problems**
+that scheduling needs to consider.
+
+We can have **two main design choices**:
+
+1. **Single queue vs multiple queues**
+2. **Single scheduler vs multiple per-processor schedulers**
+
+#### Single vs multiple queues
+
+In the **single queue** **all the ready task wait in the same global queue**.
+This is **simpler, good for fairness and managing CPU utilization**, but it
+**doesn't scale well** since the queue **needs to be synchronized**.
+
+In the **multiple queues** case we **assign a ready queue for each processor**.
+This is **more scalable** and **better leverages data locality**, with
+potentially **more overhead**. It also **allows the use of both a global
+scheduler or per-CPU schedulers**. It needs to implement a **load-balancing
+scheme among queues** to guarantee an **even distribution of tasks**:
+
+- By balancing we can **better utilize CPUs and improve performance**
+- We can **distribute tasks** to have **even temperature distribution** (thermal
+  management impacts power consumption, efficiency and reliability)
+
+**Moving** a task to another queue can be implemented in **two ways**:
+
+1. **Push model**: a **dedicated task periodically checks the queues' lengths
+   and moves tasks if necessary**
+2. **Pull model**: each **processor notifies an empty queue condition and picks
+   tasks from other run-queues**
+   - **Work-stealing** is an example of pull-model approach. **In theory** is
+     very **scalable**, but it **needs locking on queues** and an **algorithm to
+     determine which queue to steal from**
+
+A queue can also be **structured hierarchically**: we have a **global queue and
+many local ready queues**. This allows **better control over utilization and
+balancing** with good scalability, however it **very difficult to implement**.
+
 ## IPC
 
 ### Fork-wait
