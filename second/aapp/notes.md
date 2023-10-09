@@ -215,3 +215,207 @@ To recap:
   data will take less time given more computing power.
 - **Gustafson, on the other hand, argues that more computing power will cause
   the data to be more carefully and fully analyzed**
+
+## Randomized algorithms
+
+Algorithms are deterministic: for a given input, it will run always in the same
+time. To analyze them we can:
+
+- Assume a probability distribution of the input
+- Analyze interesting items over the distribution
+
+The caveat is that specific inputs may have much worse performance. Also if our
+model is wrong we could have misleading performance figures.
+
+**Randomized algorithms will run differently for the same input**. They **work
+well with high probability on every input**, but **may fail on every input with
+low probability**. The key **tools** for analyzing them are:
+
+1. **Indicator variables**:
+
+   Suppose we want to study random variable $X$ that represents a composite of
+   many random events. Define a collection of "indicator" variables $X_i$ that
+   focus on individual events; typically $X = \Sigma X_i$
+
+2. **Linearity of expectation**:
+
+   Let $X,Y,Z$ be random variables such that $X=Y+Z$. Then $E[X] = E[Y] + E[Z]$
+
+3. **Recurrence relations**
+
+If we receive some input from a very bad distribution (or we base our assumption
+on incorrect facts), **we can actively shuffle the input** to induce a more
+favorable distribution. Typically **we analyze the average case behavior for the
+worst possible input**.
+
+### Las Vegas and Monte Carlo
+
+##### Las Vegas algorithms
+
+The **only variation** from one run to the other is its **running time**.
+
+##### Monte Carlo algorithms
+
+We can **bound the probability of an incorrect solution**.
+
+For **decision problems** (i.e. those with YES/NO output), there are **two kinds
+of Mont Carlo algorithms**:
+
+1. **One-sided error**: there is a **zero probability for error in at least one
+   of the two possible outputs**
+2. **Two-sided error**: there is a **non-zero probability that it errors** when
+   it outputs
+
+Note: a Las Vegas algorithm is special case of Monte Carlo algorithms.
+
+##### Efficient Las Vegas algorithm
+
+A Las Vegas algorithm is an **efficient Las Vegas algorithm if on any input its
+expected running time is bounded by a polynomial function of the input size**.
+
+##### Efficient Monte Carlo algorithm
+
+A Monte Carlo algorithm is an **efficient Monte Carlo algorithm if on any input
+its worst-case running time is bounded by a polynomial function of the input
+size**.
+
+### The min-cut algorithm
+
+Let $G = (V, E)$ be a connected undirected graph. Let $n = |V|, m = |E|$. For
+$S \subset V$, the set $\delta(S) = \{(u, v) \in E : u \in S, v \in S' \}$ is a
+cut since their removal from $G$ disconnects $G$ into more than one component.
+Our goal is to find the cut of minimum size.
+
+**Closely related is the minimum st-cut problem**, in which we are given as
+input two vertices $s$ and $t$ and our aim is to find the set $S$ where
+$s \in S$ and $t \notin S$ which minimizes the size of the cut $(S, S')$, i.e.,
+$|\delta(S)|$.
+
+**Traditionally, the min-cut problem was solved by solving the $n-1$ min st-cut
+problems**. The size of the min-st-cut is **equal to the value of the
+max-st-flow** (the **dual** problem). The **fastest algorithm for solving
+max-st-flow** runs in $\mathcal{O}(nm\log(\frac{n^2}{m}))$. All $n − 1$
+max-st-flow computations can be done **simultaneously** with the same time
+bounds.
+
+A clever algorithm to **solve the min-cut problem (without the st-condition)
+without using any max-flow computations** is from Karger and is **based on a
+Monte Carlo approach**. This algorithm has been later refined in a faster
+version.
+
+The algorithm will **start initially with a simple graph as input**, and then it
+will **contract edges generating multigraphs** (a multigraph is a graph where
+there be multiple edges between a pair of vertices). **We do not have self
+loops**.
+
+Let us define **edge contraction**. Let $G = (V, E)$ be a multigraph without
+self loops. For $e = \{u, v\} \in E$, the contraction with respect to $e$,
+denoted $G/e$, is formed by:
+
+1. **Replacing vertices** $u$ and $v$ with a **new vertex** $w$
+2. **Replacing all edges** $(u,x)$ or $(v,x)$ **with** $(w,x)$
+3. **Remove possible self loops** on $w$
+
+**Observation**: if we **contract** an edge $(u, v)$ then we **preserve those
+cuts** where $u$ and $v$ are **both in** $S$ or **both in** $S'$.
+
+The algorithm steps are:
+
+1. **Pick an edge uniformly at random** and **merge** the two vertices at **its
+   end points**
+2. The algorithm **continues the contraction process until only two vertices
+   remain** ($n − 2$ edges contracted)
+
+   These two vertices **correspond to a partition** $(S, S')$ **of the original
+   graph** **and the edges remaining in the two vertex graph correspond to**
+   $\delta(S)$ in the original input graph.
+
+##### Lemma
+
+Let $\delta(S)$ be a cut of minimum size of the graph $G=(V,E)$. The
+**probability that Karger's algorithm ends with** $\delta(S)$ is:
+
+$$
+\mathbb{P}(\delta(S)) \geq \frac{1}{\binom{n}{2}}
+$$
+
+In order to **boost the probability of success**, we can **simply repeat the
+algorithm** $l\binom{n}{2}$ times. The **probability that at least one run
+succeeds is**:
+
+$$
+\left(1-\frac{1}{\binom{n}{2}}\right)^{l\binom{n}{2}} \geq 1 - e^{-l}
+$$
+
+Setting $l = c\log n$ we have an **error probability bounded by**
+$\frac{1}{n^c}$.
+
+It is easy to write an implementation of Karger's algorithm that is
+$\mathcal{O}(n^2)$ for a simple run. **We can calculate that we have**
+$\mathcal{O}(n^4 \log n)$ time with **error probability** of
+$\frac{1}{\mathit{poly}(n)}$.
+
+#### Improved version
+
+The improved version is based on the **following consideration**: in the
+**initial contractions it is unlikely we contracted an edge in the minimum
+cut**; **towards the end this probability grows**.
+
+The **pseudocode** of the improved version is the following:
+
+```txt
+procedure contract(G = (V,E), t):
+  while |V| > t:
+    e = pick_rand_from(E)
+    G = G/e
+  return G
+
+procedure fastmincut(G = (V,E)):
+  if |V| < 6:
+    return mincut(V)
+  else:
+    t = ceil(1 + |V|/sqrt(2))
+    G1 = contract(G, t)
+    G2 = contract(G, t)
+    return min(fastmincut(G1), fastmincut(G_2))
+```
+
+We can compute:
+
+1. The **recurrence**:
+   $T(n) = 2n^2 + 2T(\frac{n}{\sqrt{2}}) = \mathcal{O}(n^2\log n)$ (from the
+   master's theorem)
+2. **Probability of success**:
+   $\mathbb{P}(n) \geq 1-(1-0.5\mathbb{P}(\frac{n}{\sqrt{2}}+1))^2 = \Omega(\frac{1}{\log n})$
+
+Hence, similar to the unoptimized version of the algorithm, **with**
+$\mathcal{O}(\log^2 n)$ **runs the probability of success is greater than**
+$1-\frac{1}{\mathit{poly}(n)}$.
+
+#### Corollary of Krager's algorithm
+
+Any **graph** has **at most** $\mathcal{O}(n^2)$ **minimum cuts**.
+
+### Quicksort
+
+Quicksort is a **divide and conquer** algorithm that works like this:
+
+1. **Divide**: **partition** the array into two sub-arrays **around a pivot**
+   $x$ such that **elements in the lower array are less than the pivot and
+   elements in the upper array are greater than the pivot**
+2. **Conquer**: **recursively sort** the two sub-arrays
+3. **Combine**
+
+The key to quicksort's efficiency is the **linear partitioning routine**:
+
+```txt
+procedure Partition(A, p, q) # A[p..q]
+  x = A[p]
+  i = p
+  for j = p + 1 to q; do
+    if A[j] <= x; then
+      i = i+1
+      swap(A[i], A[j])
+  swap(A[p], A[i])
+  return i
+```
