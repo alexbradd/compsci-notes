@@ -183,79 +183,7 @@ files) instead of the imperative one (scripts) of sysv:
      before the requiring unit
 2. **Targets are collections of units** and emulate old runlevels
 
-## Scheduling basics and CFS
-
-See Love's Linux Kernel Development Ch. 4 <!-- Get used to it -->
-
-### Runqueues
-
-The **central data structure** of the scheduler is known as the run queue. There
-is **one per CPU** in order to avoid contention over task selection.
-
-Each runqueue has **different run queues for each scheduling class**.
-
-### Scheduling classes
-
-A **scheduling class is an API that includes policy-specific** code to:
-
-- **Update current task time statistics** (`task_tick`)
-- **Pick the next task** from the queue (`pick_next_task`)
-- **Select the core** on which the task must be enqueued (`select_task_rq`)
-- **Put the task on that queue** (`enqueue_task`).
-
-Scheduling classes allow developers to implement thread schedulers without
-reimplementing generic code and also helps minimizing the number of bugs.
-
-Linux implements the following **classes**:
-
-- `SCHED_DEADLINE`: implementation of the **Earliest Deadline First** (EDF)
-  scheduling algorithm
-- `SCHED_RR`: a task will **repeatedly go ahead of any task with lower
-  priority** than itself; if multiple tasks have the **same priority**, it will
-  **Round Robin** around those tasks
-- `SCHED_FIFO`: like `RR`, but **if a task does not give up the CPU it will run
-  indefinitely even if other tasks are the same priority** as itself
-- `SCHED_OTHER` (also `SCHED_NORMAL`): **CFS** scheduler
-- `SCHED_BATCH`: **longer timeslices**, well suited for batch jobs
-- `SCHED_IDLE`: scheduled **only** if the CPU is **idle**
-
-**If multiple policies have a runnable thread**, a choice must be made to
-determine which policy has the highest priority. Linux chooses a simple
-**fixed‐priority list** to determine this order (deadline -> real-time -> fair
--> idle).
-
-The scheduler performs **load balancing by migrating threads between cores** in
-order to **even the number of threads of all cores**. Load balancing is done
-with a work stealing approach: **each core does its own balancing and tries to
-steal threads from the busiest core on the system**.
-
-Ordering between processes is implemented with a priority $\pi$:
-
-- $\pi\in [0;99]$: **real-time** processes (`SCHED_FIFO` and `SCHED_RR`)
-- $\pi\in [100;39]$: **non real-time** processes (`SCHED_NORMAL`)
-  - Priority of normal processes is a function of the **niceness**
-    $v\in [-20;=19]$ and is calculated as $\pi = 120+v$
-
-### Cgroups
-
-CFS is not enough to guarantee optimal CPU usage, so we need a **mechanism to
-throttle and account for the CPU usage by various tasks**.
-
-Main idea: **treat users as they were single tasks within the root runqueue and
-assign explicitly their own CPU weight**. Child tasks have their own runqueue
-and will take turn to consume each task group's timeslice. **These task groups
-are called cgroups**.
-
-This is implemented through **groups that can recursively include other groups
-of tasks up to a root task group**. Each task group has a **dedicated CFS
-runqueue**.
-
-Linux build a corresponding **hierarchy of schedule entities** (per CPU). When a
-task is accounted for time, also the parent group's entity is and so on until we
-arrive at the root entity. `__pick_next_entity()` **picks the entity with the
-smallest virtual runtime until a real task is selected**.
-
-## Task scheduling in depth
+## Task scheduling theory
 
 A task, in this context, can be thought of as a **synonymous of a thread**.
 However remember that it has no fixed definition: it is **simply the basic
@@ -558,6 +486,108 @@ scheme among queues** to guarantee an **even distribution of tasks**:
 A queue can also be **structured hierarchically**: we have a **global queue and
 many local ready queues**. This allows **better control over utilization and
 balancing** with good scalability, however it **very difficult to implement**.
+
+## Scheduling in Linux
+
+### Runqueues
+
+The **central data structure** of the scheduler is known as the run queue. There
+is **one per CPU** in order to avoid contention over task selection.
+
+Each runqueue has **different run queues for each scheduling class**.
+
+### Scheduling classes
+
+A **scheduling class is an API that includes policy-specific** code to:
+
+- **Update current task time statistics** (`task_tick`)
+- **Pick the next task** from the queue (`pick_next_task`)
+- **Select the core** on which the task must be enqueued (`select_task_rq`)
+- **Put the task on that queue** (`enqueue_task`).
+
+Scheduling classes allow developers to implement thread schedulers without
+reimplementing generic code and also helps minimizing the number of bugs.
+
+Linux implements the following **classes**:
+
+- `SCHED_DEADLINE`: implementation of the **Earliest Deadline First** (EDF)
+  scheduling algorithm
+- `SCHED_RR`: a task will **repeatedly go ahead of any task with lower
+  priority** than itself; if multiple tasks have the **same priority**, it will
+  **Round Robin** around those tasks
+- `SCHED_FIFO`: like `RR`, but **if a task does not give up the CPU it will run
+  indefinitely even if other tasks are the same priority** as itself
+- `SCHED_OTHER` (also `SCHED_NORMAL`): **CFS** scheduler
+- `SCHED_BATCH`: **longer timeslices**, well suited for batch jobs
+- `SCHED_IDLE`: scheduled **only** if the CPU is **idle**
+
+**If multiple policies have a runnable thread**, a choice must be made to
+determine which policy has the highest priority. Linux chooses a simple
+**fixed‐priority list** to determine this order (deadline -> real-time -> fair
+-> idle).
+
+The scheduler performs **load balancing by migrating threads between cores** in
+order to **even the number of threads of all cores**. Load balancing is done
+with a work stealing approach: **each core does its own balancing and tries to
+steal threads from the busiest core on the system**.
+
+Ordering between processes is implemented with a priority $\pi$:
+
+- $\pi\in [0;99]$: **real-time** processes (`SCHED_FIFO` and `SCHED_RR`)
+- $\pi\in [100;39]$: **non real-time** processes (`SCHED_NORMAL`)
+  - Priority of normal processes is a function of the **niceness**
+    $v\in [-20;=19]$ and is calculated as $\pi = 120+v$
+
+### CFS
+
+See Love's Linux Kernel Development Ch. 4 <!-- Get used to it -->
+
+### Cgroups
+
+CFS is not enough to guarantee optimal CPU usage, so we need a **mechanism to
+throttle and account for the CPU usage by various tasks**.
+
+Main idea: **treat users as they were single tasks within the root runqueue and
+assign explicitly their own CPU weight**. Child tasks have their own runqueue
+and will take turn to consume each task group's timeslice. **These task groups
+are called cgroups**.
+
+This is implemented through **groups that can recursively include other groups
+of tasks up to a root task group**. Each task group has a **dedicated CFS
+runqueue**.
+
+Linux build a corresponding **hierarchy of schedule entities** (per CPU). When a
+task is accounted for time, also the parent group's entity is and so on until we
+arrive at the root entity. `__pick_next_entity()` **picks the entity with the
+smallest virtual runtime until a real task is selected**.
+
+### Load balancing
+
+When you have $n > 1$ CPUs, making all CPUs do equal work (i.e., load balance)
+while respecting relative weights can get tricky:
+
+- Can't balance on the same number of threads
+- Can't balance on $\lambda_q = \sum_i \lambda_{i,q}$ of each run queue $q$.
+
+The main idea is to **balance over the average load of a runqueue**, where the
+**load of a task** $i$ on $q$ is: $\omega_{i,q} = \lambda_{i,q} \gamma_{i,q}$
+where $\gamma_{i,q}$ is the **CPU usage** of $i$ on $q$.
+
+Another thing to consider is that **it is not always worth it to move a task to
+another CPU**, e.g. due to **architectural reasons** (NUMA nodes, cache
+conflicts etc).
+
+Linux, when it starts up, builds a **hierarchy of scheduling domains** (a
+scheduling domain is a **set of processing units that have some resources in
+common**) that **models the layout of the underlying CPU topology**. In the
+load-balancing algorithm, we call the **designated core** the core **that
+performs the load-balancing** (typically the first idle core). The hierarchy is
+typically seen relative to this core.
+
+The **algorithm is periodically executed on the designated core**. It **walks
+the hierarchy** from the designated core **searching from work to steal**, i.e.
+search for the **busiest queue**. Once it finds it, **it pulls in tasks from
+that queue until balanced**.
 
 ## IPC
 
@@ -887,3 +917,36 @@ int sem_timedwait(sem_t *sem, const struct timespec *timeout); // wait for timeo
 
 int sem_post(sem_t *sem);
 ```
+
+## Concurrency
+
+We have **concurrency** when our **program is composed by activities (a sequence
+of instructions) where they can execute in overlapping time periods without a
+specified order**. On the other hand, **parallelism is when we run multiple
+tasks simultaneously** on hardware that has multiple compute resources.
+
+We have **several models** for dealing with concurrency **enabled by different
+technologies**:
+
+1. **Thread execution model**, enabled by:
+   - HW parallelism (multicore)
+   - SW timesharing
+2. **Lightweight execution models**, enabled by:
+   - Languages with coroutines or generator
+   - Event-based constructs, enabled by:
+     - Continuation passing (callbacks)
+     - Languages with `async/await`
+
+### Issues
+
+Intuitively we can characterize a program with **two properties**:
+
+1. **Safety** (correctness): we don't reach an error state and don't work with
+   invalid data
+   - To guarantee safety we need **mutual-exclusion**, i.e. when two threads
+     cannot act on the same resource at the same time
+2. **Liveness** (progress): eventually, we reach a final state
+
+One of the main ways that we can **lose liveness** is due to **deadlocks**.
+**Another problem** we may encounter when dealing with concurrent tasks **on the
+scheduler side** is **priority inversion**.
