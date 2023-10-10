@@ -595,3 +595,197 @@ Lets do a **quick best/worst/average** case analysis
    (for the full thing see slides). We prove that **on average we have a** $cn$
    **upper bound**, if $c$ is chosen accordingly
 
+### Worst-case linear order statistics
+
+**We base off the previous algorithm**, but we change a bit the pivot selection.
+The rough algorithm outline is:
+
+1. **Divide** the $n$ element **into groups of 5**. **Find the median of each**
+   5-element group.
+2. Recursively **apply this algorithm to find the median** $x$ **of the**
+   $\lfloor\frac{n}{5}\rfloor$ **group medians** to be the **pivot**
+3. **Partition around the pivot** $x$. Let $k = \mathit{rank}(x)$.
+4. Lastly we **compare** $i$ and $k$ exactly **like in the last lines of**
+   `RandSelect`
+
+From the analysis (see slides), we can see that **the recurrence is**:
+
+$$
+T(n) = T(\frac{n}{5}) + T(\frac{3}{4}n) + \Theta(n)
+$$
+
+Which by substitution we can prove to be **bounded by** $cn$, provided that $c$
+is chosen large enough.
+
+Since the work at each level of recursion is a constant fraction (19/20)
+smaller, the work per level is a geometric series dominated by the linear work
+at the root. **In practice this algorithm runs slowly, because the constant in
+front of $n$ is large**.
+
+## Primality test
+
+The **naive primality test** algorithm is the following:
+
+```txt
+procedure IsPrime(n)
+  if n = 2 then return true
+  if n % 2 == 0 then return false
+  for i = 1 to sqrt(n/2) do
+    if 2i + 1 % n == 0 then return false
+  return true
+```
+
+The **complexity** is $\Theta(\sqrt{n})$. We can **improve** this by using a
+**false-biased Monte Carlo** approach:
+
+- If we **return "not prime"**, then $n$ is **surely not prime**
+- If we **return "prime"**, then the **probability that** $n$ **is not prime is
+  at most** $p$
+
+Like with Krager's algorithm, we can **run $k$ iterations** to reduce the
+probability of error to $p^k$.
+
+##### Fermat's little theorem
+
+Let $p$ be a prime and $0 < a < p$ not divisible by $p$. Then
+$a^{p-1} \mod p = 1$.
+
+From this theorem we can observe that each odd prime number $p$ divides
+$2^{p-1} - 1$. Thus we can **write the following simple primality** test:
+
+```txt
+procedure IsPrime(n)
+  z = 2^(n-1) % n # takes at most log(n) time
+  if z = 1 then
+    return true  # n is possibly prime
+  else
+    return false # n is composite
+```
+
+We call a base-$a$ ($a>1$) **pseudoprime** a natural number $n$ such that $n$ is
+composite and $a^{n-1} \mod n = 1$. For the base-2 pseudoprimes, one of such
+numbers is 341.
+
+We can **improve our primality test by choosing** $a$ **randomly**:
+
+```txt
+procedure IsPrime(n)
+  a = rand(2, n-1)
+  z = a^(n-1) % n # takes at most log(n) time
+  if z = 1 then
+    return true  # n is possibly prime
+  else
+    return false # n is composite
+```
+
+The above test **still fails with Carmichael numbers**, i.e. an integer
+$n \geq 2$ that is composite and for which for any $0 < a < n$ coprime with $n$
+we have $a^{n-1} \mod n = 1$.
+
+##### Theorem
+
+If $p$ prime and $0 < a < p$, then the only solutions to $a^2 \mod p = 1$ are
+$a = 1$ or $a = p - 1$
+
+##### Definition: Non-trivial square root
+
+$a$ is called non-trivial square root of $1 mod n$, if $a^2 \mod n = 1$ and
+$a\neq 1$ and $a\neq n-1$
+
+Using the two above facts, we can **improve** our primality test **by checking
+during the computation of** $a^{n-1}$ that $a$ **is not non-trivial square root
+of** $n$. For computing exponentiation we will implement the fast exponentiation
+algorithm ($\mathcal{O}(\log n)$).
+
+```txt
+isProbablyPrime;
+
+prodecure power(a, p, n): # calculates a^p % n
+  if p == 0 then return 1
+  x = power(a, p/2, n)
+  result = (x * x) % n
+
+  if result == 1 and x != 1 and x != n-1 then
+    isProbablyPrime = false
+  if p % 2 == 1
+    result = (a * result) % n
+
+  return result
+
+procedure isPrime(n):
+  a = random(2, n-1)
+  isProbablyPrime = true
+  result = power(a, n-1, n)
+
+  if result != 1 or !isProbablyPrime then
+    return false
+  else
+    return true
+```
+
+##### Theorem
+
+If $n$ is composite, there are at most $n - \frac{9}{4}$ integers $0 < a < n$
+for which the above `isPrime(n)` fails.
+
+### RSA
+
+The RSA cryptosystem uses the following procedure for generating public and
+private keys:
+
+1. Randomly selects two primes $p$ and $q$ of similar size, each with
+   $l+1 \geq 500$ bits
+2. Let $n = pq$ and $e$ be an integer that does not divide $(p-1)(q-1)$
+3. Calculate $d = e^{-1} \mod (p-1)(q-1)$ i.e. $de = 1\mod(p-1)(q-1)$
+4. Publish $P=(e,n)$ as the public key
+5. Keep $S = (d, n)$ as the private key
+
+To encrypt a message, divide it in blocks of size $2l$ and interpret each block
+as a binary number $0 < M < 2^{2l}$. We have:
+
+$$
+  P(M) = M^e \mod n \quad\quad S(C) = C^d \mod n
+$$
+
+## Random data structures
+
+We are going to see data structure that allows us to implement a dictionary.
+
+### Not random but still cool: splay trees
+
+**Splaying is a strategy in a self-adjusting BST** to guarantee an **amortized
+search time** of $\mathcal{O}(\log n)$. The **splay** operation simple **moves a
+node to the root via a logarithmically-long sequence of tree rotations**.
+
+The idea behind splay trees is to **use a particular implementation of the splay
+operation** to **move** to the root a **node accessed by a FIND operation**. If
+a node is **accessed often enough**, it will **remain close to the root** and
+will not contribute much to the total running time; an infrequently accessed
+node cannot contribute much to the total running time in any case.
+
+This **guarantees only amortized logarithmic time per operation**, however it is
+relatively simple to implement, it does not require explicit balance information
+to be stored at nodes and can be shown to be optimal with respect to arbitrary
+access frequencies.
+
+The main drawback is the fact that they **restructure the whole tree not only
+during insert but also during search**, leading to **slowdown in cached
+environments**. Moreover, **during any given operation splay trees may perform a
+logarithmic number of rotations**.
+
+### Random treaps
+
+Treaps achieve the same time bounds as splay-trees, but do not requires balance
+information and the expected number of rotation performed is small for each
+operation.
+
+The approach of treaps is to **merge trees and heaps**:
+
+- A treap is a **binary tree** where **each node contains one element** $x$ with
+  a **key and priority** (**chosen** from a uniformly **random** distribution)
+  where the following **properties** hold:
+  1. **Search tree property on the keys**: elements in the left sub-tree have
+     keys smaller than $x$, while those in the right sub-tree keys greater than
+     $x$
+  2. **Heap property on priorities**: for all $x,y$, if $y$ is a child of $x$
+     then $priority(y) > priority(x)$. All priorities are pairwise distinct
