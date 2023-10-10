@@ -396,6 +396,8 @@ $1-\frac{1}{\mathit{poly}(n)}$.
 
 Any **graph** has **at most** $\mathcal{O}(n^2)$ **minimum cuts**.
 
+## Sorting
+
 ### Quicksort
 
 Quicksort is a **divide and conquer** algorithm that works like this:
@@ -406,16 +408,190 @@ Quicksort is a **divide and conquer** algorithm that works like this:
 2. **Conquer**: **recursively sort** the two sub-arrays
 3. **Combine**
 
-The key to quicksort's efficiency is the **linear partitioning routine**:
+The key to quicksort's efficiency is the **linear partitioning routine**. The
+pseudocode for the whole thing is:
 
 ```txt
+procedure Quicksort(A, p, r) # Initial call is Quicksort(A, 1, n)
+  if p >= r || p < 0 then
+    return
+  q = Partition(A, p, r)
+  Quicksort(A, p, q-1)
+  Quicksort(A, q+1, r)
+
 procedure Partition(A, p, q) # A[p..q]
   x = A[p]
   i = p
-  for j = p + 1 to q; do
-    if A[j] <= x; then
+  for j = p + 1 to q do
+    if A[j] <= x then
       i = i+1
       swap(A[i], A[j])
   swap(A[p], A[i])
   return i
+
+# Invariant
+# ╭───┬──────┬──────┬────────────╮
+# │ x │ <= x │ >= x │ ???        │
+# ╰───┴──────┴──────┴────────────╯
+# p          i      j            q
 ```
+
+We are considering the **case** where we **do not have duplicated items**. In
+the **worst cases**, which are when the **input is already sorted or reverse
+sorted**, we pivot around the min/max element, meaning **one of the sub-arrays
+will be empty**:
+
+$$
+\begin{aligned}
+  T(n) &= T(0) + T(n - 1) + \Theta(n) \\
+       &= \Theta(1) + T(n - 1) + \Theta(n) \\
+       &= T(n - 1) + \Theta(n) \\
+       &= \Theta(n^2)
+\end{aligned}
+$$
+
+In the **best case**, `Partition` **splits the array evenly** and leads to
+$T(n) = \Theta(n\log n)$, which is equal to merge sort. **Even if we have an
+uneven split** like $frac{1}{10} : \frac{9}{10}$ we have $\Theta(n\log n)$.
+**Even if we alternate "lucky"** (array is split into non empty subarrays) **and
+"unlucky"** (one of the two subarrays is empty), we still get $\Theta(n\log n)$.
+
+How can we **make sure we are usually lucky**? We **partition** the array around
+a **random item**. This scheme means that **no input elicits worst-case
+performance**, only a RNG. Moreover, no assumptions are made on the input
+distribution.
+
+#### Analysis
+
+Let $T(n)$ be the **random variable for the running time** of randomized
+quicksort on an input of size $n$, assuming random numbers are independent. For
+$k = 0,1,\ldots n-1$ we define the **indicator random variable**:
+
+$$
+X_k = \begin{cases}
+  1 \quad\text{if Partition generates a } k:n-k-1 \text{ split} \\
+  0 \quad\text{otherwise}
+\end{cases}
+$$
+
+$E[X_k] = \mathbb{P}(X_k = 1) = \frac{1}{n}$ since **all splits are equally
+likely**, assuming all elements distinct. After some calculations (see slides),
+we can **prove that in the average case quicksort is upper-bounded by**
+$an\log n$ with $a$ chosen accordingly.
+
+### Linear time sorting
+
+**Sorting based on comparisons is** $\Omega(n\log n)$ (for proof see API or
+slides). If we **do not make any comparisons between elements, we can go
+faster** than $\Omega(n\log n)$ **up to linear** (we need to see all elements at
+least once).
+
+**Counting sort**, or bucket sort, is a simple **linear sort algorithm**.
+
+```txt
+procedure CountingSort(A, C) # A[j] is in the [1;k] range, C is and auxillary
+                             # array k items long
+  for i = 1 to k
+    C[i] = 0
+  for j = 1 to n
+    C[A[j]] = C[A[j]] + 1
+  for i = 2 to k
+    C[i] = C[i] + C[i - 1]
+  for j = n downto 1
+    B[C[A[j]]] = A[j]
+    C[A[j]] = C[A[j]] - 1
+  return B
+```
+
+It is trivial to se that the complexity is $\Theta(n + k)$ and if
+$k = \mathcal{O}(n)$, then the overall complexity is $\Theta(n)$.
+
+**Counting sort is a stable sort**, meaning it **preserves the input order among
+equal elements**. **Quicksort**, on the other hand, is **usually not stable**.
+
+Another linear sort useful for numbers is **radix-sort**. The idea is to **sort
+with an auxiliary stable sort the various digits of the elements starting from
+the least-significant digit**. The algorithm can be proven correct by induction
+(see slides). **Assuming that counting sort is the stable sort used**, we can
+calculate the **complexity** of radix sort:
+
+1. We sort $n$ computer words of $b$ bits each
+2. Each **word can be viewed as having** $\frac{b}{r}$ base $2^r$ **digits**
+   - For example, with $r=8, b=32$ we need 4 passes of counting sort on
+     base-$2^8$ digits
+3. If each $b$-bit word is broken into $r$-bit pieces, with **each pass taking**
+   $\Theta(n + 2^r)$. Since there are $\frac{b}{r}$ **passes**, we have
+
+   $$
+   T(n,b) = \Theta\left(\frac{b}{r}(n+2^r)\right)
+   $$
+
+   Choosing a bigger $r$ means fewer passes, however as $r \gg \log n$, the time
+   grows exponentially
+
+4. To **choose** $r$, we can minimize $T(n,b)$ by differentiating and setting it
+   to $0$, or by observing that we don't want $2^r \gg n$ and **there is no harm
+   in choosing** $r$ **asymptotically near this constraint**. This means that
+   **we choose** $r = \log n$, meaning $T(n,b) = \Theta(b\frac{n}{\log n})$. For
+   **numbers in the** $[0; n^d - 1]$ range we have $b=d\log n$, meaning that
+   **radix sort is**:
+
+   $$
+   T(n,d) = \Theta(dn)
+   $$
+
+Radix sort can be **easily parallelized**, but unlike quicksort, it **displays
+little locality of reference**, and thus **a well-tuned quicksort fares better
+on modern processors**, which feature steep memory hierarchies.
+
+## Order statistics
+
+We consider the following **problem**: given a **set of** $n$ **distinct
+numbers**, and an integer $i$, we need to **find the element** $x\in A$ **with
+rank** $i$ that is **larger than exactly** $i-1$ **other elements of** $A$.
+
+**A naive method is first sorting** the array and **then picking the** $i$-th
+element. This leads to a **worst case** $\Theta(n\log n)$ complexity.
+
+The **selection algorithm has a** $\mathcal{O}(n)$ lower bound because a
+selection algorithm that can handle inputs in an arbitrary order **must look at
+all of its inputs**. If any one of its input values is not compared, that one
+value could be the one that should have been selected, and the algorithm can be
+made to produce an incorrect answer. The **exact number of comparisons** can be
+calculated for some special cases like:
+
+1. **Minimum/maximum**: $n-1$ comparisons because each of the $n-1$ values not
+   selected must be determined to be non-minimal/maximal
+2. **Both maximum and minimum**: in general less than
+   $3\lfloor\frac{n}{2}\rfloor$ comparisons
+
+For solving two problems we have **two algorithms**:
+
+1. Randomized divide and conquer (**linear in average**)
+2. Deterministic algorithm (based on pivoting, **linear worst-case**)
+
+### Average-case linear order statistics
+
+The pseudocode is the following:
+
+```txt
+procedure RandSelect(A, p, q, i) # select i-th smallest of A[p..q]
+  if p = q then return A[p]
+  r = RandPartition(A, p, q) # randomized partitioning like in random quicksort
+  k = r - p + 1
+  if i = k then
+    return A[r]
+  else if i < k then
+    return RandSelect(A, p, r - 1, i)
+  else
+    return RandSelect(A, r + 1, q, i - k)
+```
+
+Lets do a **quick best/worst/average** case analysis
+
+1. **Best case (lucky)**: $T(n) = T(9n / 10) + \Theta(n) = \Theta(n)$
+2. **Worst case (unlucky)**: $T(n) = T(n - 1) + \Theta(n) = \Theta(n^2)$
+3. **Average case**: analysis is very similar to that of randomized quicksort
+   (for the full thing see slides). We prove that **on average we have a** $cn$
+   **upper bound**, if $c$ is chosen accordingly
+
