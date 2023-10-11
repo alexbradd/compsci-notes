@@ -1182,3 +1182,237 @@ have two methods of retrieving a previous state:
         not orphans anymore
 
    Logging **works very well in conjunction with coordinated checkpoints**
+
+## Synchronization
+
+Synchronization in distributed environments is **more difficult** due to the
+**absence of a clock, shared memory and possible partial failures**.
+
+### How we measure time
+
+Time plays a fundamental role in many application. In distributed systems the
+**main problem is ensuring that all machines see the same global time**. Time is
+a tricky issue per se:
+
+1. Up to 1940, time is measured astronomically (1 second is 1/86400 of the mean
+   solar day)
+2. Since 1948, time is measured physically using the oscillations of the
+   Cesium-133 atom (International Atomic Time)
+
+The skew between IAT and solar days is accounted for by UTC (Coordinated
+Universal Time) by introducing leap seconds.
+
+### Synchronizing physical clocks
+
+First of all: computer clocks are not clocks, they are timers. A computer clock
+is defined by:
+
+1. **Maximum clock drift rate** $\rho$ (i.e. when the clock runs at a slightly
+   different rate that that of the reference clock), which is constant
+2. **Maximum allowed clock skew** $\delta$ (i.e. when the same signal arrives to
+   different components at different times), is an engineering parameter that we
+   decide during design
+
+If **two clocks are drifting in opposite directions**, during a time interval
+$\Delta t$ they **accumulate a skew of** $2\rho\Delta t$. This means that a
+**resynch is needed at least** $\frac{\delta}{2\rho}$ seconds.
+
+We have **two ways of synchronizing** clocks:
+
+1. **Against** a single external **reference** clock (accuracy)
+2. **Among themselves** (agreement)
+
+**At least time monotonicity must be preserved**.
+
+#### GPS
+
+One of the best way of synchronizing clocks is **using a side-effect of GPS**.
+
+In GPS position is determined by triangulation from a set of satellites whose
+position is known. **Distance can be measured by the delay of the signal**, but
+the **satellites and receiver's clocks must be in sync**. Since they are not, we
+must take clock skew into account.
+
+Let:
+
+- $\Delta_r$ be the unknown deviation of the receiver's clock w.r.t. to the
+  atomic reference on the satellites
+- $x_r, y_r, z_r$ the coordinates of the receiver
+- $T_i$ the timestamp of the message sent by a satellite $i$
+
+Supposing that the messages sent by satellite $i$ are received at $T_r$ measured
+according to the receiver's time, which corresponds to $T_{now}$ in real time,
+then:
+
+1. $T_{now} = T_r - \Delta_r$,
+2. $\Delta_i = T_r - T_i$ is the measured message delay
+3. $c\Delta_i$ is the distance of the satellite
+
+Putting everything together we have:
+
+$$
+c\Delta_i = c(T_{now} - T_i + \Delta_r) = c(T_{now} - T_i) + c\Delta_r
+$$
+
+Where the first addendum must be equal to the cartesian distance of the receiver
+from the satellite $i$.
+
+Using **4 satellites**, we have **4 equations with four unknowns** (the xyz
+position and $\Delta_r$) and we can solve them.
+
+#### Christian's algorithm
+
+One of the simplest algorithms for **synchronizing a clock against correct
+well-known source** (a time server).
+
+**Messages** are assumed to **travel fast w.r.t. the required accuracy**. The
+**client measures** $T_0$, the time at which sends a message to the time server,
+**and** $T_1$, the time at which we receive the reply. We have the following
+relationships:
+
+1. $T_1 = C_{UTC} + T_{round}/2$
+2. $T_{round} = T_1 - T_0 - I$ with $I$ the server processing time
+
+**Problems**:
+
+1. **Time might run backwards on client machine**. Therefore we need to
+   introduce the adjustment gradually
+2. It takes a **non-zero amount of time to get the message to the server and
+   back**; solved by measuring the RTT and averaging over several measurements
+
+#### Berkeley
+
+Introduced in UNIX, we have an **active time server**: it **collects the time
+from all clients**, **averages it** and then **retransmits the required
+adjustment**.
+
+#### NTP
+
+Designed for UTC synchronization over large networks, runs on top of UDP. It is
+**organized hierarchically** in **strata**:
+
+1. **Servers at the top of the hierarchy** (lower strata, with the lowest being
+   stratum 1) are **directly connected to a UTC source**
+2. The **higher the strata**, the **lower the accuracy** of the server
+3. **Leaf servers execute on users' workstations**
+
+We have **3 modes of operation**:
+
+1. **Multicast** (LAN): the server periodically multicasts their time to other
+   computers on the network
+2. **Procedure-call** mode: which is **similar to Christian's algorithm**
+3. **Symmetric mode**: used when higher levels that need the highest accuracy
+
+The procedure-call mode is a modified version of Christian's algorithm.
+**Servers exchange pairs of messages**, each **bearing timestamps** of recent
+events (the local time when the previous message between pairs was sent and
+received, and the local time when the current message was transmitted).
+
+```txt
+      T_{i-2}   T_{i-1}
+B ━━┯━━━━━━━━━━━━┯━━━━━━━━━▶
+    │    ∧       │    ∧
+    │    │       │    │
+    │    │m    m'│    │
+    ∨    │       ∨    │
+A ━━━━━━━┷━━━━━━━━━━━━┷━━━━▶
+      T_{i-3}   T_i
+```
+
+If $t$ and $t'$ are the messages' transmission times, and $o$ is the time offset
+of the clock at $B$ relative to $A$ then:
+
+$$
+T_{i-2} = T_{i-3} + t + o \quad\quad T_i = T_{i-1} + t' - o
+$$
+
+This leads to calculate the total transmission time $d_i$ as:
+
+$$
+d_i = t + t' = T_{i-2} - T_{i-3} + T_i + T_{i-1}
+$$
+
+If we define $o_i = \frac{T_{i-2} - T_{i-3} + T_i - T_i}{2}$, from the first two
+formulas we have $o = o_i + \frac{t' - t}{2}$ and since $t,t' \geq =0$ we have:
+
+$$
+o_i - \frac{d_i}{2} \leq o \leq o_i + \frac{d_i}{2}
+$$
+
+Thus $o_i$ is an estimate of the offset and $d_i$ is a measure of the accuracy
+of this estimate.
+
+### Logical time
+
+In many applications it is **sufficient to agree on a time, even if it is not
+accurate w.r.t. the absolute time**. **What matters** is often the **ordering
+and causality** relationships of events, rather than the timestamp itself. What
+we need is logical time.
+
+Let us define the **_happens-before_ relationship** as $e\to e'$ as follows:
+
+1. If events $e$ and $e'$ occur in the same process and $e$ occurs before $e'$,
+   then $e\to e'$
+2. If $e$ is the sending of message and $e'$ is the reception of a message, then
+   $e\to e'$.
+
+If **neither** $e\to e'$ nor $e'\to e$ then the two events are **concurrent**
+$e \| e'$.
+
+**_happens-before_ is transitive and defines an ordering among events**, called
+**potential causal ordering**:
+
+1. Two events can be related by the happens-before relationship even if there is
+   no real (causal) connection among them
+2. Also, since information can flow in ways other than message passing, two
+   events may be causally related even neither of them happens-before the other
+
+#### Scalar clocks
+
+Lamport invented a simple mechanism, scalar clocks, by which the
+_happens-before_ ordering can be captured numerically **using integers to
+represent the clock value**, with **no relationship with a physical clock**
+whatsoever. **Each process** $p_i$ keeps a **logical scalar clock** $L_i$ that:
+
+1. $L_i$ **starts at zero**
+2. $L_i$ is **incremented before** $p_i$ **sends a message**
+3. **Each message** sent by $p_i$ is **timestamped** with $L_i$
+4. **Upon receipt** of a message, $p_i$ **sets** $L_i$ to
+   $\max(\mathrm{timestamp}, L_i) + 1$
+
+It can be easily shown, by induction on the length of any sequence of events
+relating two events $e$ and $e'$, that $e \to e' \implies L(e) < L(e')$. This
+way **only partial ordering is achieved**; **total ordering** can be achieved by
+**attaching also process IDs** to the clocks.
+
+#### Vector clocks
+
+In **scalar clocks we have that** $e\to e' \implies L(e) < L(e')$, however the
+**reverse does not hold** (for example if $e\|e'$). A solution to this are
+vector clocks.
+
+In vector clocks **each process maintains a vector** $V_i$ of $N$ ($N$ is the
+number of processes) values such that:
+
+1. $V_i[i]$ is the **number of events** that have occurred at $p_i$
+2. If $V_i[j] = k$ then $p_i$ **knows that** $k$ **events have occurred at**
+   $p_j$
+
+Initially the **vectors start zeroed**. **Local events** at $p_i$ causes an
+**increment** of $V_i[i]$. $p_i$ **attaches the vector** $V_i$ (post increment)
+as **timestamp** to messages; **when it receives** a message containing a
+timestamp $t$, it **sets** $\forall j\neq i\quad V_i[j] = \max(V_i[j], t[j])$
+and **then increments** $V_i[i]$.
+
+Vector clocks define a **partial ordering between timestamps**:
+
+- $V=V' \iff \forall j \quad V[j] = V'[j]$
+- $V\leq V' \iff \forall j \quad V[j] \leq V'[j]$
+- $V < V' \iff V \leq V' \land V\neq V'$
+- $V \| V' \iff \neg(V < V') \land \neg(V' < V)$
+
+We can then **define an isomorphism** between the **set of partially ordered
+events** and **their vector clocks**:
+
+1. $e\to e' \iff V(e) < V(e')$
+2. $e \| e' \iff V(e) \| V(e')$
