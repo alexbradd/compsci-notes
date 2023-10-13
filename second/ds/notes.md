@@ -1416,3 +1416,209 @@ events** and **their vector clocks**:
 
 1. $e\to e' \iff V(e) < V(e')$
 2. $e \| e' \iff V(e) \| V(e')$
+
+## Distributed agreement in practice
+
+### Commit protocols
+
+Atomic commit is a **form of agreement** widely used in database management
+systems. Commit protocols **ensures atomicity** (duh) **of transactions**. If
+the **transaction updates data on multiple nodes either all nodes commit or all
+nodes abort; if any node crashes, all must abort**.
+
+#### Two-phase commit (2PC)
+
+In 2PC, after the **client has finished sending the commands of the transaction
+to all the participants it sends a commit message to the coordinator** (which is
+**also a participant**). The **coordinator then sends** a `prepare` message to
+**all the participants**, which **reply with a** `vote_commit`. After an
+**agreement** has been reached, the **coordinator sends a** `global_commit` to
+**signal to the participants to write to stable storage**. If **any** of the
+participants sends a `vote-abort` **or** an **agreement cannot be found** by the
+coordinator, a `global-abort` message will **be sent** to abort the transaction.
+
+When a **participant fails**, **after a timeout** the coordinator **assumes an
+abort**. If the **coordinator fails**:
+
+1. Participant **waiting for** `prepare` can decide to **abort**
+2. Participant **waiting for global decision cannot decide on its own**, thus
+   needs to **wait for the coordinator to recover** or can **request the
+   decision to another participant** which **may have received the reply of the
+   coordinator or may be in the initial state** (in which case we assume
+   `abort`)
+
+   **If everybody is in waiting for a global decision** we are **stuck** until
+   the coordinator gets back up.
+
+We can then say that 2PC is a **blocking protocol**. 2PC is **safe** (never
+leads to an incorrect state). In the **case that the coordinator is also
+participant**, then 2PC is **vulnerable to a single-node failure**.
+
+#### Three-phase commit (3PC)
+
+It is an attempt to solve the problems of 2PC by **adding another phase to the
+protocol**. The idea is **splitting the commit/abort phase** in two phases:
+
+1. Communicate the outcome to all nodes
+2. Let them communicate only after everyone knows the outcome
+
+```txt
+                       ╭────╮
+                       │Init│
+                       ╰────╯
+                         │ rcv: commit T
+                         │ send: prepare
+                         ▼
+                       ╭────╮
+                     ╭─│Wait│─────╮
+                     │ ╰────╯     │
+rcv: vote-commit     │            │ rcv: vote-commit
+send: prepare-commit ▼            ▼ send: prepare-commit
+                 ╭─────╮    ╭──────────╮
+                 │Abort│    │Pre-commit│
+                 ╰─────╯    ╰──────────╯
+                                  │ rcv: ready-commit
+                                  ▼ send: global-commit
+                              ╭──────╮
+                              │Commit│
+                              ╰──────╯
+
+                       Coordinator
+
+
+                      ╭────╮
+╭─────────────────────│Init│
+│rcv: prepare         ╰────╯
+│send: vote-abort       │ rcv: prepare
+│                       │ send: vote-commit
+│                       ▼
+│                     ╭─────╮
+│                   ╭─│Ready┼────╮
+│                   │ ╰─────╯    │
+│  rcv: global-abort│            │ rcv: prepare-commit
+│  send: ack        ▼            ▼ send: ready-commitit
+│               ╭─────╮    ╭──────────╮
+╰──────────────>│Abort│    │Pre-commit│
+                ╰─────╯    ╰──────────╯
+                                 │ rcv: global-commit
+                                 ▼ send: ack
+                             ╭──────╮
+                             │Commit│
+                             ╰──────╯
+
+                      Participant
+```
+
+If a **participant fails**:
+
+- Coordinator **blocked waiting for vote** (wait state) can **assume abort**
+  decision
+- Coordinator **blocked in pre-commit state** can **safely commit and tell the
+  failed participant to commit when it recovers**
+
+If the **coordinator fails**:
+
+- Participant **blocked waiting for prepare** (init state) can **decide to
+  abort**
+- Participant **blocked waiting for global decision** (ready state) can
+  **contact another participant**. If it receives:
+  - At least **one abort**, we **abort**
+  - At least **one commit**, we **commit**
+  - At least **one init**, we **abort**
+  - At least **one in pre-commit** and nodes in **pre-commit and ready form a
+    majority**, we **commit**
+  - **Majority in ready** with **no one in pre-commit**, we **abort**
+- **No two participants can be in pre-commit and init**
+
+3PC (quorum-based version presented above) **guarantees safety**, in a
+**synchronous system** it also **guarantees liveness** (in an asynchronous
+system the protocol may not terminate). It is **more expensive than 2PC** since
+it requires three phases of communication.
+
+### CAP theorem
+
+**Any distributed system** where nodes **share some (replicated) shared data**
+can have **at most two** of these three desirable properties:
+
+1. **Consistency** equivalent to have a single up-to-date copy of the data
+2. high **Availability** of the data for updates
+3. tolerance to network **Partitions**
+
+### Replicated state machines
+
+It is a **general purpose consensus algorithm** that **allows a collection of
+machines** (servers) **to work as coherent group**. Servers **operate on
+identical copies of the same state**. They offer a **continuous service**, even
+if some machines fail, and **clients sees them as a single machine**.
+
+The **state machines responds to external requests and manages internal state**.
+A **client connects to a leader and sends commands to it**. The **set of
+operation is kept in a replicated log**, then **consensus is used to agree on
+the order of operations**.
+
+The **failure model** we will use is:
+
+1. Messages can take arbitrarily long, be duplicate and be lost
+2. Processes may fail by stopping and restart, must remember what they were
+   doing (record state) and **NO byzantine failures**
+
+We will **guarantee safety** (all non-failing machines execute the same commands
+in the same order) and **liveness/availability** (the system is up if any
+majority of machines are up and can communicate) (**not always guaranteed in
+theory, but guaranteed in practice under typical operating conditions**).
+
+#### Paxos
+
+It was the standard for about 30 years. Problems:
+
+1. Only agreement on a single decision, non on a sequence of requests (solved by
+   multi-Paxos)
+2. **Very difficult to understand**
+3. Difficult to use in practice (no reference implementation)
+
+#### Raft
+
+Raft is equivalent to multi-Paxos in terms of assumptions, guarantees and
+performance. The main design goal was ease of understanding and of
+usage/adaptability. The main idea is **problem decomposition**. We can identify
+**3 concerns**:
+
+1. **Log replication**: leader accepts commands from clients, appends to its log
+   and then it replicates its log to other servers
+2. **Leader election**: select one server to act as leader, on crashes elect a
+   new leader
+3. **Safety**: keep the log consistent by assuring that only nodes with
+   up-to-date logs can become leaders
+
+**Nodes** can be in **three states: follower, leader and candidate**; all nodes
+**start as followers**. If **followers don't hear from a leader for a while**,
+they **become candidate**. A **candidate runs an election**, if it wins it
+becomes the new leader. All **commands go through the leader**, who is
+responsible for committing and propagating them.
+
+Normal operation:
+
+1. Client sends command to a leader, leader appends command to its log
+2. **Leader sends** `AppendEntries` **to all** followers
+3. Once a new entry is committed:
+   - **Leader executes command** in its state machine, **returns result** to
+     client
+   - **Leader notifies followers** of committed entries in subsequent
+     `AppendEntries`
+   - **Followers execute committed commands** in their state machines
+
+Leader **retries** `AppendEntries` messages **until they succeed**. In the
+**common case performance is optimal**: one successful message to any majority
+of servers
+
+The leader **periodically sends possibly empty** `AppendEntries` messages with
+its unacknowledged log entries. **Followers** have a **randomized timeout: if
+they don’t hear from the leader until that timeout, they start an election**.
+
+Raft **divides time into terms** of arbitrary length, to help to **identify
+obsolete information**. Terms are **numbered with consecutive integers**. **Each
+server maintains a `current_term` value** and **attaches it** in every
+communication. Each **term begins with an election**, in which one or more
+candidate try to become leader. There is **at most one leader per term**, if
+there is a **split vote followers try again when the next timeout expires**. In
+theory we could go on forever, in practice it doesn't happen.
