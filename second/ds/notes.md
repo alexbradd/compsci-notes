@@ -1417,6 +1417,150 @@ events** and **their vector clocks**:
 1. $e\to e' \iff V(e) < V(e')$
 2. $e \| e' \iff V(e) \| V(e')$
 
+A slight **variation of vector clocks** can be used to **implement causal
+delivery** of messages in a totally distributed way: **increment clock only when
+sending a message; on receive, just merge, not increment**.
+
+### Mutual exclusion
+
+Mutual exclusion is **required to prevent interference and ensure consistency of
+resource access**. On single systems is easier since we have a single clock and
+a shared memory, on distributed systems we have non of that. To guarantee mutual
+exclusion **we need to guarantee**:
+
+1. **Safety**: at **most one process may execute** in the critical section at a
+   time
+2. **Liveness**: **all requests to enter/exit the critical section eventually
+   succeed** (no deadlock, no starvation)
+3. **Optional**: if one request **_happened-before_** another, then **entry is
+   granted in that order**
+
+We will assume that **processes and channels are reliable**.
+
+#### Centralized
+
+The **simplest** solution is **emulating a centralized solution**: a server
+**manages the lock using a token**; resource **access request and release is
+obtained with respective messages** to the coordinator. Drawbacks: **server is
+the bottleneck and the single point of failure**.
+
+#### Scalar clocks
+
+To request access:
+
+1. A process $p_i$ **multicasts a resource request message** $m$ with
+   **timestamp** $T_m$ to all processes
+2. Upon **receipt** of $m$, a process $p_j$:
+   - **If it does not hold** the resource and **is not interested** in holding
+     the resource, **acks**
+   - **If it holds** the resource, $p_j$ **puts the request into a local queue
+     ordered according to** $T_m$ (process ids break eventual ties)
+   - **If it is also interested** in holding the resource and **has already sent
+     out a request**, it **compares the received timestamp** $T_m$ with the one
+     itself sent. **If** $T_m$ **is the lowest one**, $p_j$ **acks, otherwise it
+     puts the request in the local queue** (like in the point above)
+
+**On release**, the **holding process acknowledges all the requests queued while
+using the resource**. A **resource is granted** to $p_i$ when **its request is
+acked by all other processes**.
+
+#### Token ring
+
+Processes are **logically arranged in a ring**, regardless of their physical
+topology. **Access is granted by a token that is forwarded along a given
+direction** on the ring:
+
+- A process **not interested** in accessing the resource **forwards** the token
+- Resource is **obtained by retaining the token**
+- Resource is **released by forwarding the token**
+
+#### Comparison
+
+| Algorithm   | Messages per entry | Delay before entry | Problems                  |
+| ----------- | ------------------ | ------------------ | ------------------------- |
+| Centralized | 2                  | 2                  | Coordinator crash         |
+| Lamport     | $2(n-1)$           | $2(n-1)$           | Crash of any process      |
+| Token ring  | From 1 to $\infty$ | 0 to $n-1$         | Lost token, process crash |
+
+### Leader election
+
+Many distributed algorithms require a process to act as a coordinator (or some
+other special role). The problem is making anyone agree on one. The **minimal
+assumptions** are that **nodes are distinguishable** and that the **system is
+closed** (all processes know each other and their IDs but not who is up or has
+failed). The **criterion for winning** is having the **highest ID**.
+
+#### Bully election
+
+We have **two additional assumptions**: **reliable links** and the **possibility
+to decide who has crashed**.
+
+1. When **any process** $p$ **notices** that the actual **coordinator is no
+   longer responding**, it **initiates an election**
+2. $p$ **sends** a `ELECT` including its ID **to all other processes with higher
+   IDs**
+3. If **no one responds**, $p$ **wins and sends a** `COORD` message **to the
+   processes with lower IDs**
+4. If a **process** $p'$ with **higher id receives an** `ELECT`, it **responds**
+   (stopping the former candidate) and **starts a new election**
+5. If a **process that was previously down comes back up**, it **holds an
+   election**
+   - If it happens to be the highest-numbered process, it wins the election and
+     takes over the coordinator's job
+
+#### Ring-based
+
+Assume a (physical or logical) **ring topology** among nodes. When a **process
+detects a leader failure**, it **sends** an `ELECT` message containing its ID
+**to the closest alive neighbour**. Upon **receipt** of the election message a
+process $p$:
+
+- If $p$ is **not in the message**, it **adds itself and propagates** to the
+  neighbours
+- If $p$ is **in the list**, **changes** the message **to a** `COORD` and
+  **re-circulates**
+
+Upon **receiving a** `COORD` message, a **node considers the process with the
+highest ID as the new leader** (and is also informed about the remaining members
+of the ring). **Multiple messages may circulate at the same time**, but
+eventually they **converge to the same content**.
+
+### Capturing global state
+
+The global state of a distributed system consists of the **local state of each
+process together with the message in transit over the links**.
+
+A **distributed snapshot reflects a (consistent, global) state in which the
+distributed system might have been**. Particular care must be taken **when
+reconstructing** the global state to **preserve consistency**: if a **message
+receipt is recorded, the message sending must as well**, but the **opposite is
+not required**. A **distributed snapshot** can be represented by a **cut**.
+
+Formally a **cut of a system** $S$ composed of $N$ processes $p_1, ldots, p_n$
+can be **defined as the union of the histories of all its processes up to a
+certain event**. A cut is **consistent** if **for any event** $e$ it includes,
+**it also includes all the events that happened before** $e$ (by the
+_happens-before_ relation).
+
+#### Chandy-Lamport's algorithm
+
+**Assuming FIFO, reliable links and nodes, and a strongly connected graph**.
+
+**Any process** $p$ may **initiate a snapshot by recording its initial state**,
+then **sending a token** on **all outgoing channels** (signals that the snapshot
+is being run) and then **start recording a local snapshot** (**i.e. recording
+messages** arriving on every incoming channel). Upon **receiving a token**, a
+process $q$ **starts recording a local snapshot** (like what $p$ did) if it is
+not already doing so. **Each process considers the snapshot finished when tokens
+have arrived on all its incoming** channels. Afterwards the **collected data can
+be sent to a single collector** of the global state.
+
+##### Theorem
+
+The distributed snapshot algorithm selects a consistent cut.
+
+It can be **proven by absurd** (see slides).
+
 ## Distributed agreement in practice
 
 ### Commit protocols
