@@ -54,7 +54,7 @@ We have **two usual architectures**:
    └─────────┘└─────────┘└─────────┘
    ```
 
-2. **Middleware based**: Middleware provides “business-unaware” services through
+2. **Middleware based**: Middleware provides "business-unaware" services through
    a standard API. Usually it provides:
 
    - Communication and coordination services
@@ -761,7 +761,7 @@ directory in a traditional sense (in a hierarchical name space).
 
 Entities accessed through stale bindings should be removed. Automatic garbage
 collection is common in conventional systems. **Distribution greatly complicates
-matters**, due to lack of global knowledge about who’s using what, and to
+matters**, due to lack of global knowledge about who's using what, and to
 network failures.
 
 #### Reference counting
@@ -1608,7 +1608,7 @@ of servers
 
 The leader **periodically sends possibly empty** `AppendEntries` messages with
 its unacknowledged log entries. **Followers** have a **randomized timeout: if
-they don’t hear from the leader until that timeout, they start an election**.
+they don't hear from the leader until that timeout, they start an election**.
 
 Raft **divides time into terms** of arbitrary length, to help to **identify
 obsolete information**. Terms are **numbered with consecutive integers**. **Each
@@ -1794,5 +1794,145 @@ flooded between supernodes, normal nodes contact supernodes to do a query**.
 
 The improvement over simple flooding is that **it tries to consider node
 heterogeneity** (supernodes are the more well-connected so can handle the
-traffic) **and network locality** (only rumored since kazaa si proprietary).
+traffic) **and network locality** (only rumored since kazaa is proprietary).
 Still we have **no real guarantees on search scope or time**.
+
+### Collaborative systems (BitTorrent)
+
+One problem that centralized systems have is availability in case of mass
+downloads: you need to be able to satisfy the demand. **P2P systems can offload
+the traffic between different peers that all share the same file**. However,
+this **requires that there is a high availability of nodes that shares files and
+not just downloads** (free rides).
+
+BitTorrent allows many people to **download the same file without slowing down
+everyone else's download**. It does this by **having downloaders swap portions
+of a file with one another**, instead of all downloading from a single server.
+Such **contributions are encouraged because every client trying to upload to
+other clients gets the fastest downloads**.
+
+1. `Join`: **contact a centralized "tracker" server** and get a list of peers
+2. `Publish`: **run a tracker server**
+3. `Search`: done **out of band** (use a search engine to find a tracker for the
+   file you want)
+4. `Fetch`: **download chunks** of the file **from peers** (and **upload chunks
+   you have to them**)
+
+BitTorrent **terminology**:
+
+- **Torrent**: metadata file describing the file(s) to be shared
+  - Name and size of file(s)
+  - Checksum of all blocks (each file is split in fixed-size blocks)
+  - Addresses of the tracker and peers
+- **Seed**: peer that has the complete file and still offers it for upload
+- **Leech**: a peer that has incomplete download
+- **Swarm**: all seeders/leeches together
+- **Tracker**: server that keeps track of seeds and peers in the swarm and
+  gathers statistics
+
+Peers **download missing fragments** from each other and **upload to those who
+don't have it**. The fragments are **not downloaded in sequential order** and
+need to be assembled by the receiving machine. When a client needs to choose
+which segment to request first, it usually **adopts a "rarest-first" approach**,
+by identifying the fragment held by the fewest of its peers. This tends to keep
+the number of sources for each segment as high as possible, **spreading load**.
+Clients **start uploading what they already have** (small fragments) **before
+the whole download is finished**. Everyone can eventually **get the complete
+file as long as there is "one distributed copy"** of the file in the network,
+**even if there are no seeds**.
+
+**Choking** is a **refusal to upload**; choking evaluation is performed **every
+10 seconds**. Each peer **un-chokes a fixed number of peers**. The **decision**
+on which peers to un/choke is **based solely on download rate**, which is
+evaluated on a rolling, 20-second average. This is a **"tit-for-tat"** sharing
+strategy (I give you something and you give something back).
+
+A BitTorrent peer **has also a (single) "optimistic un-choke"**, which is
+**uploaded** **regardless of the current download rate from it**. This **allows
+discovery of new connections** and also prevents the initial stall. This
+approximates Pareto efficiency: if two peers get poor download rates for the
+uploads they are providing, they can start uploading to each other and get
+better download rates than before.
+
+### Secure storage (Freenet)
+
+Freenet is a P2P application designed to **allow anybody to publish and read
+information with reasonable anonymity**. **Files** are **encrypted**, **signed**
+and **referred to by a cryptographic hash**.
+
+1. `Join`: **clients contact a few other nodes they know about** and get a
+   unique node id
+2. `Publish`: **route file contents** toward the **node which stores other files
+   whose id is closest to the file id**
+3. `Search`: **route a query** for file id using a
+   **steepest-ascent-hill-climbing** search with backtracking
+4. `Fetch`: when query reaches a node containing the queried file id, it
+   **returns the file to the sender**
+
+Nodes have **approximate knowledge of what their neighbors store**. Requests are
+**forwarded to node's "best guess" neighbor** unless it has the information
+locally If the information is found within the request's "hops to live", it is
+passed back through this chain of nodes to the original requestor. The
+**intermediate nodes store the information in their LRU cache as it passes
+through**.
+
+### Distributed hash tables (Chord)
+
+It is a distributed data structure that has 2 operations: `put(id, item)` and
+`item = get(id)`. The **nodes are organized in an overlay network**. We can also
+define the **usual 4 operations**:
+
+1. `Join`: the **clients contact a "bootstrap" node** and integrate into the
+   distributed data structure by getting a node id
+2. `Publish`: **route** publication for file `id` **toward a close node id**
+   along the data structure
+3. `Search`: **route** a query for file `id` **towards a close node id**
+4. `Fetch`:
+   - If the **publication contains the actual file**, fetch it
+   - If the **publication contains a reference**, fetch it from the reference
+
+The implementation of a DHT we are going to see is Chord.
+
+Nodes and keys are organized in a **logical ring**. Each **node** is assigned a
+**unique m-bit identifier** (usually hash of the IP) and **keeps track of its
+successor and predecessor**; every **item** is assigned a **unique m-bit key**
+(usually hash of the item). The item with **key** $k$ is **managed by the node
+with smallest id grater than** $k$.
+
+**Each node** maintains a **finger table with** $m$ entries. **Entry** $i$ in
+the finger table of node $n$ is the **first node whose id is higher or equal
+than** $n+2^i$. Upon **receiving a query for an item with key** $k$, a node:
+
+1. **Checks** whether it **stores the item locally**
+2. If not, **forwards** the query to the node **in its successor table that is
+   responsible for the interval of keys including** $k$
+
+When a **new node** $n$ **joins**, the following actions must be performed:
+
+1. **Initialize the predecessor and fingers** of node $n$
+   - We **assume that** $n$ already **knows another node** $n'$ already in the
+     system: the $i$-th finger is the successor of node $n$ plus $2^i$
+2. **Update** the **fingers and predecessors** of **existing nodes** to reflect
+   the addition of $n$
+   - We observe that **node** $n$ **will become the** $i$-th **finger of node**
+     $p$ **iff**: $p$ **precedes** $n$ by **at least** $2^{i-1}$ and the $i$-th
+     **finger of** $p$ **succeeds** $n$. The **first node** $p$ that **meets**
+     these two **conditions** is the **immediate predecessor** of node
+     $n-2^{i-1}$.
+     - We **need to do this for each finger** $i$, meaning **we have**
+       $\log^2(N)$ for joining (fingers are $\log(N)$)
+
+The **correctness** of Chord **relies on the correctness of successors
+pointers**. To **stabilize routing** we need **periodic procedures** to update
+successor and fingers.
+
+|                    | Complexity                             |
+| ------------------ | -------------------------------------- |
+| Routing table size | $\log(N)$ fingers with $N = 2^m$ nodes |
+| Routing time       | $\mathcal{O}(\log(N))$                 |
+| Joining time       | $\mathcal{O}(\log^2(N))$               |
+
+The main **pros** of Chord are the **logarithmic per node state and search
+scope**. However it is unused, more **fragile** than unstructured networks and
+**dismisses the physical topology** of the underlying network. Moreover we have
+**only key search**.
