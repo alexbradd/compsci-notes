@@ -1590,13 +1590,8 @@ usage/adaptability. The main idea is **problem decomposition**. We can identify
 3. **Safety**: keep the log consistent by assuring that only nodes with
    up-to-date logs can become leaders
 
-**Nodes** can be in **three states: follower, leader and candidate**; all nodes
-**start as followers**. If **followers don't hear from a leader for a while**,
-they **become candidate**. A **candidate runs an election**, if it wins it
-becomes the new leader. All **commands go through the leader**, who is
-responsible for committing and propagating them.
-
-Normal operation:
+All **commands go through the leader**, who is responsible for committing and
+propagating them. Normal operation:
 
 1. Client sends command to a leader, leader appends command to its log
 2. **Leader sends** `AppendEntries` **to all** followers
@@ -1622,3 +1617,182 @@ communication. Each **term begins with an election**, in which one or more
 candidate try to become leader. There is **at most one leader per term**, if
 there is a **split vote followers try again when the next timeout expires**. In
 theory we could go on forever, in practice it doesn't happen.
+
+**Nodes** can be in **three states: follower, leader and candidate**; all nodes
+**start as followers**. Followers **wait for a regular heartbeat** from the
+leader; if **they don't hear a heartbeat for a while**, they **become a
+candidate**. A **candidate starts an election** by sending a `RequestVote`. As
+soon as we become candidate, we **increase the current term** by one and **ask
+for votes** from the other servers (**we vote for ourselves**). If we **receive
+the majority of votes, we become the new leader**; if we **receive a message
+from an already existent leader**, we go **back to following**.
+
+The **log is stored on disk** to survive process failures. An **entry is
+committed to the log by the leader if it is acked by the majority of
+followers**. **Leader** always **assumes that its log is correct**, **normal
+operation will repair inconsistency**. Raft guarantees the **log-matching
+property**: if log entries on different servers have the same index and term
+they store the same command and the logs are identical in all preceding entries.
+The `AppendEntries` **message contains the** `<index,term>` of the **entry
+preceding the new one(s)**. The **follower that receives the message rejects the
+request if it doesn't contain matching entries**; in case of rejection the
+**leader retries by starting with lower log indexes until success**. Once a log
+entry is committed, all future leaders must store that entry; this means that
+**candidates with incomplete logs must not get elected**. **Candidates include
+the index and term of the last log entry** in `RequestVote` messages; a **voter
+can deny the vote if its log is more up to date**.
+
+### Use in distributed DBMS
+
+Some modern distributed database management systems integrate replicated state
+machines and commit protocols.
+
+The typical situation a distributed DBMS has to deal with is:
+
+- The data is partitioned, inter-partition transactions must guarantee atomic
+  commitment
+- Each partition is replicated
+
+We work on two layers:
+
+1. Replicated state machine to guarantees that individual partitions do not fail
+2. 2PC executes atomic commit across partitions
+   - Coordinator (transaction manager) and participants (partitions) are assumed
+     not to fail as they are replicated
+   - Channels are assumed to be reliable: it is sufficient that a majority of
+     nodes in a given partition is reachable
+
+### Byzantine conditions
+
+State **machine replication can be extended to consider byzantine processes**
+(Byzantine Fault Tolerant (BFT) replication): it **requires** $3f+1$
+**participants to tolerate** $f$ failures. We will not see this family of
+protocols.
+
+#### Blockchains
+
+Cryptocurrencies can be seen as **replicated state machines where the state is
+the current balance of each user**. The **state is stored in a replicated
+ledger** (log).
+
+The **environment** we are working in is **purely byzantine** (a misbehaving
+user may try to "double spend" their money and create inconsistent copies of the
+log). We assume:
+
+1. A **very large number of nodes**
+2. The **set of participating nodes is unknown** upfront
+3. **No single entity owns the majority of compute resources**
+
+We **can guarantee safety only with high probability**, not certainty.
+
+We will refer to **permissionless systems based on proof of work** (e.g.
+Bitcoin).
+
+The **blockchain is the public ledger that records transactions**: it **contains
+all transactions from the beginning** of the blockchain with **each block of the
+chain including multiple transactions**. It is a **distributed ledger**
+(replicated log). **Transactions** are **signed and published to the bitcoin
+network**: nodes add them to their copy of the chain and periodically broadcast
+it.
+
+**Adding a block to the chain requires solving a mathematical problem** (proof
+of work): it takes as input the existing chain and a new block; the problem
+**solution must be difficult to find** (usually only by brute-force) but **easy
+to verify**.
+
+**Proof of work is computed by special nodes (miners) that collect new (pending)
+transactions into a block**. Miners have a **monetary incentive** (prize if they
+mine successfully a block) to do what they do. **When a miner finds the proof,
+it broadcasts the new block**; this defines the next block of valid
+transactions. **The other miners receive it and try to create the next block in
+the chain**, achieving global agreement on the order of blocks.
+
+What if **two miners find a proof concurrently**? The proof is very complex to
+compute, thus it is **very unlikely** that two computers will find a solution at
+the same time. It is also **very difficult for someone to force their desired
+order of transactions**, since it would require **a lot of compute power**. If
+**two concurrent versions are created, the one that grows faster** (includes
+more blocks) **survives**. Still, there may always exist a longer chain we are
+not aware of as **no one can be 100% sure of a given sequence**.
+
+## Peer-to-peer
+
+It is a **paradigm that tries to "take advantage of resources at the edges of
+the network"** by promoting the sharing of resources and services through direct
+exchange between peers. All nodes are:
+
+1. **Independent**
+2. Both **potential users** and **potential servers**
+3. **Dynamic**: they come and go unpredictably
+4. With **varying degrees of capabilities**
+
+The **scale** of the system can be **huge** (internet-wide) and **geographically
+distributed**, thus we have no global view of the system. Nodes are connected
+usually with TCP channels that form an **overlay network**.
+
+**Retrieving resources** is a **fundamental issue** in P2P systems due to their
+inherent geographical distribution. The problem is **making direct requests
+towards nodes that can answer them in the most efficient way**. We can
+distinguish **two ways** of doing it:
+
+1. **Search** for something
+2. **Lookup** specific item
+
+The actual data of a lookup can become a burden if the query result are routed
+through the overlay network. As a **result** we will use is a **reference to the
+location** from where the data can be retrieved.
+
+### Centralized search (Napster)
+
+It was the first p2p file sharing application. The key idea is to share the
+storage and bandwidth of individual (home) users.
+
+We have 4 commands:
+
+1. `join`: clients contact **central server**
+2. `publish`: **submit list** of files **to central server**
+3. `search`: **query the server** for someone owning the requested file
+4. `fetch`: **get the file directly from peer**
+
+### Query flooding (Gnutella)
+
+There is **no central authority**; this means that we need to find a connection
+point in the network. Gnutella uses **flooding to search**: each **query is
+forwarded to all neighbours**, with **propagation limited by a TTL** field in
+messages.
+
+1. `join`: client contacts a few other nodes, and they become "neighbours"
+   - The **new node connects** to a **well known "anchor"** node
+   - Then it **sends a** `ping` to discover other nodes
+   - `pong` **messages are sent in reply** from hosts offering new connection
+     with the new node (**nodes with many connections will most likely not
+     respond**, we **do not want a highly connected network** to not bog down
+     search)
+   - **Direct connections are then made** to the newly discovered nodes
+2. `publish`: no need
+3. `search`: **ask neighbours**, when found **reply to sender up to the
+   original** sender
+4. `fetch`: **get the file directly from the peer** where it is stored
+
+Gnutella is **fully decentralized and distributes the search cost**. Searching
+can also be done in many ways. The **main drawback is the flooding algorithm**:
+if we have a $C$ neighbours and $D$ TTL, each search can cause $C\cdot D$
+requests. The **search scope is also huge** (all the nodes in the network) with
+a **big search time** (proportional to the query TTL). Moreover, the **network
+is unstable** since nodes often leave.
+
+### Hierarchical flooding (Kazaa)
+
+Nodes are **divided into "normal nodes"** and **"supernodes"**: **queries are
+flooded between supernodes, normal nodes contact supernodes to do a query**.
+
+1. `Join`: clients contact a supernode (at some point a client can be promoted
+   to supernode)
+2. `Publish`: send list of files to supernode
+3. `Search`: send query to supernode, supernodes flood queries among themselves
+4. `Fetch`: get the file directly from the peer
+
+The improvement over simple flooding is that **it tries to consider node
+heterogeneity** (supernodes are the more well-connected so can handle the
+traffic) **and network locality** (only rumored since kazaa si proprietary).
+Still we have **no real guarantees on search scope or time**.
