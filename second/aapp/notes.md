@@ -789,3 +789,285 @@ The approach of treaps is to **merge trees and heaps**:
      $x$
   2. **Heap property on priorities**: for all $x,y$, if $y$ is a child of $x$
      then $priority(y) > priority(x)$. All priorities are pairwise distinct
+
+##### Lemma: treap uniqueness
+
+For elements $x_1, \ldots, x_n$ with $key(x_i)$ and $priority(x_i)$, **there
+exists a unique treap**.
+
+Since the **random priorities** for the elements of $S$ are **chosen
+independently**, we can **assume that the priorities are chosen before
+insertion**. Once the priorities have been fixed, the treap uniqueness lemma
+implies that the treap is uniquely determined. This implies that **the order in
+which the elements are inserted does not affect the structure of the tree**.
+Thus, **without loss of generality**, we can assume that the elements are
+**inserted in order of decreasing priority** (informally leading to the trap
+structure lemma). An advantage of this view is that it implies that all
+insertions take place at the leaves and no rotations are required to ensure the
+heap order on the priorities.
+
+##### Lemma: treap structure
+
+**The search tree has the structure that would result if elements were inserted
+in the order of their priorities**.
+
+Both of these lemma can be both proven by induction (see slides).
+
+#### Search
+
+To search for an element we can use the **following procedure**:
+
+```txt
+v = root;
+while v != nil do
+  case
+    key(v) = k:
+      return "element found"; # (successful search)
+    key(v) < k :
+      v = RightChild(v);
+    key(v) > k :
+      v = LeftChild(v);
+return "element not found" # (unsuccessful search)
+```
+
+The **running time** is $\mathcal{O}(\# elements in search path)$.
+
+To prove this, let us start by first proving the following two properties: given
+$n$ elements $x_1,\ldots,x_m$ such that the keys are totally ordered in
+ascending order and a subset $M = \{x_i,\ldots,x_m\}$ of said elements
+
+1. Let $i<m$, $x_i$ is **ancestor** of $x_m$ **iff** the element in $M$ with
+   **the lowest priority is** $x_i$.
+
+   - **Proof**:
+
+     Let us consider the $\impliedby$ of the first property. We need to prove
+     that if $x_i$ has the lowest priority, it is inserted first in $M$. This is
+     valid by the lemma of the treap structure.
+
+     Let us go now to the $\implies$ of the first property. Any element $x_l$,
+     $key(x_l) > key(x_i)$ inserted that traverses the same path as $x_i$ is a
+     child of $x_j$. This means that $x_i$ is the ancestor of all elements in
+     $M$ since $key(x_i)$ is the smallest of those in $M$. By the lemma of the
+     treap structure, this means that $x_i$ has the smallest priority.
+
+2. The same holds if we reverse the order of M
+   - Proof: the second property follows similarly.
+
+Let us prove now that the **expected number of nodes in the search path is
+logarithmic**, meaning that the search algorithm is logarithmic.
+
+##### Harmonic number
+
+$$
+H_n = \sum_{k=1}^n \frac{1}{k} = \ln n + \mathcal{O}(1)
+$$
+
+Let us prove that:
+
+1. **In case of a successful search, the expected number of nodes on the path
+   to** $x_m$ is $H_m + H_{n-m+1} - 1$
+
+   - **Proof**:
+
+     $$
+     \begin{aligned}
+       X_{m,i} &= \begin{cases}
+         1 \quad x_i \text{ ancestor of } x_m \\
+         0
+       \end{cases} \\
+       X_m &= \text{ \# nodes on the path from the root to } x_m \\
+           &= 1 + \sum_{i<m} X_{m,i} + \sum_{i>m} X_{m,i} \\
+       E[X_m] = 1+E\left[\sum_{i<m} X_{m,i}\right] + E\left[\sum_{i>m} X_{m,i}\right]
+     \end{aligned}
+     $$
+
+     If $i<m$ all elements in $\{x_i,\ldots,x_,\}$ have the same probability of
+     being the one with the smallest priority, thus
+     $E[X_{m,i}] = \frac{1}{m-i + 1}$. Same thing goes for $i>m$, thus
+     $E[X_{m,i}] = \frac{1}{i-m + 1}$. Putting it all together we have:
+
+     $$
+     \begin{aligned}
+       E[X_m] &= 1 + \sum_{i<m}\frac{1}{m-i+1} + \sum_{i>m}\frac{1}{i-m+1} \\
+         &= 1 + \frac{1}{m} + \cdots + \frac{1}{2} + \frac{1}{2} + \cdots +
+           \frac{1}{n-m + 1} \\
+         &= H_m + H_{n-m+1} - 1
+     \end{aligned}
+     $$
+
+2. **In case of a unsuccessful search**, let $m$ be the number of keys that are
+   smaller than the search key $k$. The **expected number of nodes on the search
+   path is** $H_m + H_{n-m}$
+   - Proof: the second property follows analogously.
+
+Since the $H_n = \ln(n) + \mathcal{O}(1)$, we have that the number of elements
+is logarithmic, meaning that the search operation is also logarithmic.
+
+#### Insertion and delete
+
+To insert a new element $x$, we:
+
+1. Choose the priority $priority(x)$
+2. **Search for the position** of $x$ in the tree (pretending $x$ is present; we
+   will arrive at the end)
+3. **Insert** $x$ **as a leaf**
+4. **Restore the heap property** with the following procedure:
+
+   ```txt
+   while priority(parent(x)) > priority(x) do
+     if x is left child then
+       RotateRight(parent(x))
+     else
+       RotateLeft(parent(x))
+   ```
+
+   The rotations are those standard for BSTs.
+
+To **delete** an element we basically do the **inverse of an insert**:
+
+1. Find $x$ in the tree
+2. We bring $x$ down to a leaf with:
+
+   ```txt
+   while x is not a leaf do
+     u = child with smaller priority
+     if u is left child
+       RotateRight(x)
+     else
+       RotateLeft(x)
+   ```
+
+3. Delete $x$
+
+##### Lemma
+
+**The expected running time of insert and delete operations is**
+$\mathcal{O}(\log n)$. **The expected number of rotations is 2**.
+
+We are going to analyse only insert since delete is simply the inverse. Running
+time is clearly logarithmic since we basically do a search + rotations. The
+number of rotations is the difference between:
+
+1. Depth of $x$ after being inserted as leaf
+   - $H_{m-1} + H_{n-m} + 1$ since without $x$ the tree contains $n-1$ elements,
+     of which $m-1$ are smaller
+2. Depth of $x$ after the rotations
+   - $H_m + H_{n-m+1} - 1$
+
+Thus we have: $H_{m-1} + H_{n-m} + 1 - (H_m + H_{n-m+1} - 1) < 2$
+
+#### Extended set of operations
+
+1. `Minimum(T)`: return the smallest key ($\mathcal{O}(\log(n)))$)
+2. `Maximum(T)`: return the biggest key ($\mathcal{O}(\log(n)))$)
+3. `List(T)`: return all elements in increasing order ($\mathcal{O}(n))$)
+4. Split
+5. Union
+
+#### Split and Union
+
+The `Split` operation **splits** the treap $T$ **into two treaps** $T_1$ and
+$T_2$ such that:
+
+$$
+\forall x_1 \in T_1, x_2\in T_2 : key(x_1) \leq k \land k < key(x_2)
+$$
+
+Without loss of generality, we can assume that $k$ is not in $T$. If it is, we
+can first delete it, do the split and then re-insert it into $T_1$. The
+**general steps** are:
+
+1. Generate a new element $x$ with $key(x) = k$ and $prio = -\infty$
+2. Insert $x$ in $T$
+3. Delete the new root. The left subtree is $T_1$ and the right subtree is
+   $T_2$.
+
+The `Union` operations **merges two subtreaps** $T_1$ and $T_2$ such that:
+
+$$
+\forall x_1\in T_1, x_2\in T_2 : key(x_1)<key(x_2)
+$$
+
+To **implement** it we do:
+
+1. Determine $k$ such that $\forall x_1, x_2 key(x_1) < k < key(x_2)$
+2. Generate an element $x$ with key $key(x) = k$ and $prio = -\infty$
+3. Generate the treap with root $x$ and left subtree $T_1$ and right subtree
+   $T_2$
+4. Delete $x$ from $T$.
+
+The **expected running times** of these two operations is $\mathcal{O}(\log n)$.
+
+#### Implementation
+
+The most important point in implementing a treap is **how to handle
+priorities**.
+
+We **assign priorities in the range** $[0; 1)$ and we use them only when two
+elements are compared to find out which of them has the higher priority. **In
+case of equality**, we **extend both priorities by bits chosen uniformly
+randomly until two corresponding bits differ**.
+
+### Skip lists
+
+It maintains a **dynamic set of** $n$ elements in $\mathcal{O}(\log n)$ **time
+per operation in expectation and with high probability**.
+
+We **start** from the simplest data structure: a **sorted linked lists**.
+Searches are linear. Suppose we had **two sorted linked lists**, where the
+**second one has a subset of the items**. We can see the two linked lists as
+**two train lines**:
+
+1. **Express line** (secondary list) connects a **few of the stations**
+2. **Local line** (first list) connects **all stations**
+3. **Links** between lines at common stations
+
+To search, then, we **walk on the express lane until we the last substation
+before our value**, then we **switch down to the local lane** and we walk it
+until we find our element.
+
+**Which elements** can we put in the **express list**? We **evenly space** the
+nodes of the local lane. But **how many** elements? Since the cost is roughly:
+
+$$
+|L_1| + \frac{|L_2|}{|L_1}
+$$
+
+We minimize and obtain that it has $\sqrt{n}$ elements. Thus the **search cost
+is roughly** $2\sqrt{n}$. If we **increase** the **number of lists** to $k$, we
+have that the **search time becomes** $k\sqrt[k]{n}$. If we use $\log n$
+**lists**, we get that the time is $2\log n$.
+
+The **"ideal" skip list is this** $\log n$ **linked list structure**. We need to
+maintain it as good as possible on updates:
+
+#### Insert and delete
+
+Skip lists have as **invariant** that the **bottom list always contains all
+elements**. So on insertion of a new element $x$ we are **always inserting in
+the bottom list**. The question is **in which other lists we need to insert
+it**.
+
+We **flip a fair coin**: if **head we promote** $x$ **to the next level and flip
+again**. We also include a **small change**: we add a **special element**
+$-\infty$ at the start of every list.
+
+To **delete** an element we **search** for it and then **remove it from every
+list**.
+
+##### Definition: high probability event
+
+Parameterized event $E_\alpha$ occurs with high probability **if**, for any
+$\alpha\geq 1$, **there is an appropriate choice of constants for which**
+$E_\alpha$ **occurs with probability at least** $1 − \frac{c_\alpha}{n^\alpha}$
+
+##### Theorem: high probability logarithmic search
+
+**With high probability, every search in a skip list costs**
+$\mathcal{O}(\log n)$.
+
+##### Lemma
+
+**With high probability, a** $n$ **element skip list has** $\mathcal{O}(\log n)$
+levels.
