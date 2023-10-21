@@ -2497,3 +2497,199 @@ It is used in **some modern key-value stores**.
    It is a **highly available model**. It **weakens sequential consistency**
    based on Lamport's notion of **_happened-before_**, only difference is that
    Lamport's model deals with message passing while we deal with read/writes.
+
+   The causal order is defined as follows:
+
+   - A **write** operation `W` by a process `P` is **causally ordered after
+     every previous operation** `O` **by the same process**, even if `W` and `O`
+     are performed on different variables
+   - A **read** operation by a process `P` on a variable `x` is **causally
+     ordered after a previous write** by `P` **on the same variable**
+   - Causal order is **transitive**
+
+   It is not a total order since operations that are not causally ordered are
+   said to be concurrent.
+
+   **Multi-leader implementations are possible**: we **timestamp writes with
+   vector clocks**. The implementation with multi-leader **works only if clients
+   are sticky**.
+
+4. **FIFO consistency**: "Writes done by a **single process are seen by all
+   others in the order in which they were issued**; writes from different
+   processes may be seen in any order at different machines"
+
+   Also called **PRAM (pipelined RAM) consistency, causality across processes is
+   dropped**: if writes are put onto a pipeline for completion, a process can
+   fill the pipeline with writes, not waiting for early ones to complete.
+
+   It is **very easy to implement** (even in a multi-leader situation): just use
+   a **scalar clock**.
+
+   Causal consistency implies FIFO consistency.
+
+### Eventual consistency
+
+It is not a data-centric model, but is widely used when:
+
+1. There are **no simultaneous writes**, **or** they can be **easily resolved**
+2. **Mostly reads**
+
+Examples: Web caches, DNS, social media (geo- distributed data stores). In these
+systems, eventual consistency is often sufficient: **updates are guaranteed to
+eventually propagate to all replicas**.
+
+It is very popular today because:
+
+1. It is very easy to implement
+2. In practice, there are very few conflicts (e.g. today's networks are fast
+   enough for propagation)
+3. Dedicated data-types, called **conflict-free replicated data types** (CRDTs),
+   that **guarantee convergeance even if updates are received in different
+   orders**:
+   - Integer counter where replicas store the **set of increase/decrease** ops
+   - **Append only** data structure
+   - **Last-write-wins approaches**: clients attach a unique random identifier
+     to each append; in case of conflicts, the write with the larger identifier
+     is considered the last one
+
+### Client-centric models
+
+What happens if a **client dynamically changes the replica it connects to**?
+This problem is addressed by **client-centric** consistency models that
+**provide guarantees about accesses to the data store from the perspective of a
+single client**.
+
+1. **Monotonic reads**: "If a **process reads the value of a data item** `x`,
+   any **successive read operation** on `x` **by that process will** always
+   return **that same value or a more recent** value"
+2. **Monotonic writes**: "A **write operation** by a process on a data item `x`
+   is **completed before any successive write** operation on `x` by the same
+   process"
+
+   **Similar to FIFO consistency**, although this time for a single process. A
+   weaker notion where ordering does not matter is possible if writes are
+   commutative.
+
+3. **Read your writes**: "The **effect of a write operation** by a process on a
+   data item `x` will **always be seen by a successive read operation** on `x`
+   by the same process"
+4. **Write follows reads**: "A **write** operation by a process on a data item
+   `x` **following a previous read** operation on `x` by the same process is
+   **guaranteed to take place on the same or more recent value** of `x` that was
+   read"
+
+For implementing client centric models, we **assign to each operation a unique
+identifier**. **Two sets** are defined for each client:
+
+1. **Read-set**: the **write identifiers relevant for the read operations**
+   performed by the client
+2. **Write-set**: the identifiers of the **writes performed by the client**
+
+These identifiers can be **encoded as vector clocks**.
+
+### Design strategies
+
+We have seen some protocols to keep replicas consistent with respect to some
+consistency model. There are further issues in designing a replicated datastore,
+including:
+
+- **How to place replicas**?
+  - **Permanent** replicas, statically configured (see DNS, CDNs etc)
+  - **Server-intiated** replicas: they are created dynamically to cope with
+    access load or to move data closer the clients; often requires topological
+    knowledge
+  - **Client-initiated** replicas: rely on client case, that can be shared among
+    clients for enhanced performance
+- **What to propagate?**
+  - **Perform the update and propagate only a notification**: if used in
+    conjunction with invalidation protocols avoids unnecessarily propagating
+    subsequent writes; it has small communication overhead and works best if
+    $\# reads \ll \# writes$
+  - **Transfer the modified data to all copies**: works best if
+    $\# reads \gg \# writes$
+  - **Propagate information to enable the update operation to occur at the other
+    copies (active replication)**: very small communication overhead, but may
+    require unnecessary processing power if the update operation is complex; we
+    may need to deal with possible side-effects
+- **How to propagate updates between them?**
+  - **Push**-based approach: the update is propagated to all replicas,
+    regardless of their needs; typically used to preserve a high degree of
+    consistency
+  - **Pull**-based approach: an update is fetched on demand when needed; core
+    convenient if $\# reads \ll \# writes$ and typically used to manage client
+    caches
+  - **Lease**: used to switch between pull and push based approaches
+
+### Case studies
+
+#### Distributed databases
+
+Broadly speaking, modern systems can be **classified based on the decision they
+take with respect to the CAP theorem**. As network partitions may always occur,
+systems may choose to offer either:
+
+1. **Strong guarantees** (C) through **blocking communication**
+   - Higher latency, potentially not available in the presence of failures
+   - **NewSQL** databases are newer SQL database that can work in distributed
+     settings:
+     1. Isolation: implemented trough locking and timestamping
+     2. Atomicity: blocking commit protocols
+     3. Replication: sequential consistency or linearizability
+2. **High availability** (A) through **non-blocking communication**
+   - Lower latency, lower guarantees
+   - They are **NoSQL** (Key-value stores, wide-columns, document stores)
+     databases where:
+     1. Isolation is not needed since we do not have multi-item transactions
+     2. Atomicity is not needed since we do not have multi-item transactions
+     3. Replication is asynchronous or multi-leader
+
+Now we are going to see some examples of DBs with strong guarantees and how they
+manage the cost of the protocols they use.
+
+#### Spanner
+
+It is designed for very large data bases and uses standard techniques:
+
+1. **Single leader replication with Paxos** for fault-tolerant agreement on
+   followers and leader
+2. **2PC** for atomic commit
+3. **Timestamp** protocols for concurrency control
+
+The way to cut down on costs is `TrueTime`: it uses **very precise clocks**
+(atomic/GPS) that offer an API that return an **uncertainty range** with the
+"real time" surely inside it.
+
+Read-write transactions use `TrueTime` to decide when to commit:
+
+1. The **transaction coordinator asks a transaction timestamp** to `TrueTime`
+2. It **waits to release all locks and commit only when the uncertainty range is
+   certainly passed**, thus the commit timestamp is certainly passed for every
+   node
+3. Since **transactions are ordered based on time**, it implements
+   **linearizability**
+
+**Read-only transactions also acquire a timestamp** through `TrueTime`, but they
+do **not need to lock**, but simply read the latest value at that time.
+
+#### Calvin
+
+Designed for the same settings as Spanner, **adopts a sequencing layer** to
+order all incoming requests (read and write). This layer is **replicated for
+durability using a replicated logs with Paxos**.
+
+It guarantees **linearizability** (provided by the sequencing layer). The
+advantage it provides are:
+
+1. **Agreement (order of execution) achieved before acquiring locks**, meaning
+   lower lock contention
+2. **No need for 2PC**: as transactions are deterministic, they either succeed
+   or fail in all replicas
+
+#### VoltDB
+
+**Developers specify how to partition database tables and transactions**.
+
+It **guarantees sequential partitions**, however **single-partition transactions
+may execute sequentially on that partition without coordinating** with other
+partitions, making them very fast. For other transactions, **standard protocols
+are used**.
