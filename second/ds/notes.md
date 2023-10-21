@@ -1561,6 +1561,253 @@ The distributed snapshot algorithm selects a consistent cut.
 
 It can be **proven by absurd** (see slides).
 
+The distributed snapshot algorithm **does not require blocking** the
+computation.
+
+#### Termination detection
+
+We want to know **when the computation of a distributed system has completed or
+is deadlocked**. A **computation is completed** if **all processes are idle**
+and there are **no messages in the system**.
+
+**One approach** can be taking a **snapshot** a check if all nodes are in a
+"finished state".
+
+**Another simple solution**, proposed by **Tanenbaum**, is similar to the
+distributed snapshot algorithms but it avoids saving state:
+
+1. We call predecessor of a process $p$ the process $q$ from which it got the
+   first marker. The successors of $p$ are all those processes $p$ sent the
+   marker
+2. When a process $p$ finishes its part of the snapshot, it sends a `DONE`
+   message back to its predecessor only if two conditions are met:
+   - All of $p$'s successors have returned a `DONE` message
+   - $p$ has not received any message between the point it recorded its state
+     and the point it had received the marker along each of its incoming
+     channels
+3. In any other case $p$ sends a `CONTINUE`
+4. If the initiator receives all `DONE` the computation is over; otherwise,
+   another snapshot is necessary
+
+**This algorithm appears correct**, however the **definition of successor is
+actually wrong**: a node can be a successor of $p$ even if it is not a
+predecessor, thus we can have locks.
+
+The correction of Tanenbaum's algorithm is the **Dijkstra-Scholten algorithm**.
+The algorithm assumes that we are in a case of **diffuse computation**: a
+process is activated only by a message being sent to it.
+
+1. **Each node keeps track of nodes it sends a message to** (those it may have
+   woken up), its **children**
+2. If a **node was already awake** when the message arrived, then it is
+   **already part of the tree**, and should **not be added as a child** of the
+   sender
+3. When a node has **no more children and it is idle**, it **tells its parent to
+   remove it as a child**
+
+**When only the initiator remains** and it has **completed processing**, the
+system has **terminated**.
+
+Comparison between the two algorithms:
+
+1. Distributed snapshot:
+   - Overhead is one message per link and the cost of the state collection
+   - If the system has not terminated, we need to run it again
+2. Dijkstra-Scholten:
+   - Overhead depends on the number of messages in the system
+     - Acknowledgments sent when already part of network and when becoming idle
+     - A node can be added to network more than once, so this value is not fixed
+   - Does not involve never-activated processes
+   - Termination detected when last ack received
+
+### Distributed transactions
+
+Transactions protect a shared resource against simultaneous access by several
+concurrent processes. They are sequences of operations, defined with appropriate
+programming primitives like `BEGIN_TRANSACTION` (same for end and abort),
+`READ`, `WRITE`. They need to respect the ACID properties.
+
+We have **3 types** of transactions:
+
+1. **Flat**: they respect the ACID transactions as we know them
+2. **Nested**:
+   - **Constructed from sub-transactions**
+   - Sub-transactions **can be undone** once committed: durability applies only
+     to top-level transactions
+3. **Distributed**:
+   - Accounts for data distribution
+   - **Essentially flat transactions on distributed data**
+   - **Needs distributed locking**
+
+#### Atomicity
+
+1. **Private workspace**
+
+   1. Copy what the **transaction modifies** into a **separate memory space**,
+      creating **shadow blocks** of the original file
+   2. If the **transaction is aborted**, this private workspace is **deleted**,
+      **otherwise** they are **copied into the parent's workspace**
+
+   We can optimize a bit this approach by replicating the index, not the whole
+   file. Works fine also for the local part of distributed transactions.
+
+2. **Writeahead log**
+
+   1. Files are **modified in place** (commit is fast), but a **log is kept**
+      with the transaction that made the change to which file/block and old/new
+      values
+   2. **After the log is written** successfully, the **file is actually
+      modified**
+   3. If **transaction succeeds**, the **commit is written to log**; if it
+      **aborts**, the original **state is restored based on logs**, starting at
+      the end (rollback)
+
+This a **optimistic approach**, while the **private workspace is a pessimistic
+approach**.
+
+#### Controlling concurrency
+
+We have 3 entities interacting:
+
+1. **Transaction manager**: acts as the **"front-end"** (in **distributed**
+   settings we **have one**, acting as a **coordinator**); it transforms high
+   level operations in scheduling requests
+2. **Scheduler**: **guarantees consistency and isolation** by determining which
+   transactions can pass an operation to the data manager and when; can be
+   distributed on different hosts
+3. **Data manager**: **executes the read/write operations**; it does not know
+   anything about transactions
+
+There are various possible interleavings, only some legal. These interleavings
+correspond to some linearization of the involved transactions. **Transaction
+systems must ensure operations are interleaved correctly**, but also **free the
+programmer from** the burden of programming **mutual exclusion**. This means
+that it needs to properly schedule to avoid conflicts (read-write and
+write-write).
+
+We have two approaches: locking vs timestamping.
+
+##### 2-phase locking (2PL)
+
+When a process needs to access data it **requests the scheduler to grant a
+lock**. We need to **enforce two phases**: we have a **growing phase**
+(transactions acquires locks) and a **shrinking phase** (transaction releases
+locks) (strict 2PL enforces that locks are released all at once at commit/abort,
+preventing cascaded aborts). **May lead to deadlocks**. We can implement 2PL in
+3 ways:
+
+1. **Centralized 2PL**: the transaction manager contacts a centralized **lock
+   manager**
+2. **Primary 2PL**: **multiple lock managers** exist; **each data item has a
+   primary copy** on a host and the lock manager on said host is responsible for
+   granting locks. **The transaction manager is in charge for interacting with
+   the data managers**
+3. **Distributed 2PL**: **assumes data may be replicated on multiple hosts**;
+   the **lock manager** on a host is **responsible for granting locks on the
+   local replica** and for **contacting the (local) data manager**; requires
+   **agreement** between replicas
+
+##### Pessimistic timestamp ordering
+
+We assign a **timestamp to each transaction** (e.g. using logical clocks).
+**Write operations** on a data item $x$ are recorded in **tentative versions**,
+each with its own write timestamp $ts_w(x_i)$, **until commit** is performed
+(committed version will have timestamp $ts_w(x)$); each data item also has a
+**read timestamp** $ts_r(x)$ equal to the last transaction which read $x$. The
+scheduler follows these to two rules:
+
+1. When it receives a write on $x$ at time $ts$, if
+   $ts>ts_r(x) \land ts>ts_w(x)$ performs a tentative write, else it aborts
+2. When it receives a read on $x$ at time $ts$ we have two cases:
+   1. If $ts > ts_r(x)$
+      - Let $x_{sel}$ be the latest version of $x$ with the write timestamp
+        lower than $ts$, if $x_{sel}$ is committed perform the read on it and
+        set $ts_r(x) = \max(ts, ts_r(x))$; else wait for the transaction that
+        wrote on $x_{sel}$ to commit/abort and repeat the check
+      - Else abort since the read arrived too late
+
+**Aborted transactions will re-apply for a new timestamp and retry**. This
+method is **deadlock-free**.
+
+##### Optimisitic timestamp ordering
+
+It is based on the **assumption that conflicts are rare**, therefore we can what
+we want without caring about others and fix conflicts later:
+
+1. **Stamp data items with start time** of transaction
+2. **At commit**, if **any items have been changed since start**, transaction is
+   **aborted, otherwise committed**
+
+It **works best when paired with private workspaces**. It allows for **maximum
+parallelism** and **no deadlocks**. However, **under heavy load there may be too
+many rollbacks**. Not widely used.
+
+#### Distributed deadlocks
+
+It is the same concept as in conventional systems, but worse to deal with since
+in a distributed system resources are spread out. **We have 4 ways of dealing
+with them**:
+
+1. **Ignore** the problem
+2. **Detection** and recovery, typically by killing one of the processes
+3. **Prevention**: the way our protocol works, it is impossible to have
+   deadlocks
+4. **Avoidance**: never used in (distributed) systems, as it implies a priori
+   knowledge about resource usage
+
+In **centralized locking**, each machine maintains a resource graph for its own
+resources and reports it to a coordinator. We have different options for
+collecting this information, like:
+
+- Whenever an arc is added or deleted, a message is sent to the coordinator with
+  the update
+- Periodically, every process sends a list of arcs added or deleted since the
+  last update
+- Coordinator can request information on-demand
+
+None of these methods work well since we could have **false deadlocks** due to
+bad ordering of messages to the coordinator.
+
+##### Deadlock detection
+
+Here is a completely distributed deadlock detection algorithm with **no
+coordinator**.
+
+1. Processes are allowed to **request multiple resources simultaneously**
+2. **When a process gets blocked**, it sends a **probe message** (e.g.
+   `(initiator, sender, receiver)`) **to the processes holding resources** it
+   wants to acquire
+3. A **cycle** is detected **if the probe makes it back** to the initiator
+
+To **recover** from a deadlock we have two ways:
+
+1. **Initiator commits suicide** (many processes may be unnecessarily aborted if
+   more than one initiator detects the loop)
+2. The **initiator picks the process with the higher identifier and kills it**
+   - Requires each process to add its identifier to the probe
+
+In practice, **90% of deadlocks in databases involve only two processes**.
+
+##### Deadlock prevention
+
+**Make deadlocks impossible by design**, for instance by using **global timestamps**
+(**wait-die** algorithm):
+
+- When a **process A is about to block for a resource that another process B is
+  using**, allow A to **wait only if A has a lower timestamp** (it is older) than B;
+  **otherwise kill** the process A
+  - We could also have the younger wait
+- Following a chain of waiting processes, the **timestamps will always increase**
+  (no cycles)
+
+If a process can be **preempted**, an alternative can be devised (**wound-wait**
+algorithm):
+
+- **Preempting** the young process **aborts its transaction**
+- The young process may immediately try to **reacquire the resource, but will wait**
+  - In wait-die, the young process may die many times before the old one
+    releases the resource
+
 ## Distributed agreement in practice
 
 ### Commit protocols
