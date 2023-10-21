@@ -1790,21 +1790,22 @@ In practice, **90% of deadlocks in databases involve only two processes**.
 
 ##### Deadlock prevention
 
-**Make deadlocks impossible by design**, for instance by using **global timestamps**
-(**wait-die** algorithm):
+**Make deadlocks impossible by design**, for instance by using **global
+timestamps** (**wait-die** algorithm):
 
 - When a **process A is about to block for a resource that another process B is
-  using**, allow A to **wait only if A has a lower timestamp** (it is older) than B;
-  **otherwise kill** the process A
+  using**, allow A to **wait only if A has a lower timestamp** (it is older)
+  than B; **otherwise kill** the process A
   - We could also have the younger wait
-- Following a chain of waiting processes, the **timestamps will always increase**
-  (no cycles)
+- Following a chain of waiting processes, the **timestamps will always
+  increase** (no cycles)
 
 If a process can be **preempted**, an alternative can be devised (**wound-wait**
 algorithm):
 
 - **Preempting** the young process **aborts its transaction**
-- The young process may immediately try to **reacquire the resource, but will wait**
+- The young process may immediately try to **reacquire the resource, but will
+  wait**
   - In wait-die, the young process may die many times before the old one
     releases the resource
 
@@ -2327,3 +2328,172 @@ The main **pros** of Chord are the **logarithmic per node state and search
 scope**. However it is unused, more **fragile** than unstructured networks and
 **dismisses the physical topology** of the underlying network. Moreover we have
 **only key search**.
+
+## Replication
+
+Replication is used for **achieving fault tolerance (redundancy)** or to
+**increase availability** (leveraging **data locality**, or **load balancing**)
+or **improving performance** (again, by load balancing, replication to **improve
+throughput**, or leveraging data locality).
+
+**Latency does not improve as other performance metrics do**; there comes a
+point when latency becomes the bottleneck.
+
+The **main problem** of replication is **consistency**: when we change a
+replica, we need to change all the others; when we have **multiple simultaneous
+updates** we can have **read/write conflicts** and need to deal with them.
+**Replication may decrease the overall performance** since the cost to ensure
+that data is consistent across replicas can be high. Depending on the type of
+application (data/client centric) we have different consistency requirements.
+
+### Models
+
+Ideally, a read should show the result of the "last" write; but what does "last"
+mean? Without a global clock we cannot determine it.
+
+A **consistency model is a contract between the processes and the data store**.
+Stricter guarantees simplify the development but incur higher costs; weaker
+guarantees reduce the cost but make development difficult. It is a **trade-off
+between guarantees, performance and ease of use**.
+
+**Types** of models:
+
+- **Guarantees on content**: maximum "difference" on the versions stored at
+  different replicas
+- **Guarantees on staleness**: maximum time between a change and its propagation
+  to all replicas
+- **Guarantees on the order of updates**: constrain the possible behaviors in
+  the case of conflicts
+
+**Consistency protocols implement consistency models**. In this context, we say
+that **a protocol is highly available if it does not require
+synchronous/blocking communication**. By the CAP theorem, **if we have
+availability we can have tolerance or consistency**, thus **highly-available
+protocols are usually weakly-consistent**. Inversely, **weakly available
+protocols are usually strongly-consistent**.
+
+### Single leader protocols
+
+**One of the replicas** is designated as the **leader**. When **clients want to
+write** to the datastore, they **must send the request to the leader**, which
+**first writes the new data to its local storage**. The **other replicas** are
+**followers**. Whenever the **leader** writes new data to its local storage, it
+also **sends the data to all its followers**.
+
+When a **client wants to read** from the database in **some systems it queries
+directly the leader**, while **in others it can query any replica**.
+
+A single leader protocol can be:
+
+1. **Synchronous**: the **write operation completes after** the leader has
+   received a **reply from all the followers**
+2. **Asynchronous**: the **write operation completes** when the **new value is
+   stored on the leader**; **followers** are **updated asynchronously**
+3. **Semi-synchronous**: The write operation **completes** when the leader has
+   **received a reply from at least** $k$ replicas ($k$ is configuration
+   parameter)
+
+**Synchronous or semi-synchronous protocols are safer** since even if $k-1$
+replicas fail, we still have a copy of the data; **followers can recover by
+"catching up"** to other replicas. If the **leader fails** we can **elect a new
+one** (fail-over). This can bring many tricky situations depending on the
+assumptions.
+
+Single leader protocols with synchronous or semi-synchronous replication
+**widely adopted in distributed databases**. They are used inside a single
+organization/data center since it **benefits greatly from low latency and can
+spread frequent reads across replicas**.
+
+**No write-write conflicts possible** since the leader receives all write
+operations and determines their order. **Read-write conflicts still possible
+depending on the specific implementation**.
+
+### Multi-leader protocols
+
+**Writes** are carried out at **different replicas concurrently**. No single
+leader means that **there is no single entity that decides the order of
+writes**: this means that it is possible to have write-write conflicts.
+
+Multi-leader protocols are **often adopted in geo-replicated settings** and in
+general are **more difficult to handle**. **In practice the conflicts are rare
+and easy to solve in several application scenarios**.
+
+Multi-leader protocols **natively supported in some database** in addition to
+single leader protocols. **Sometimes** they are **implemented on top of DBMSs in
+external tools**.
+
+### Leader-less protocols
+
+In leaderless replication, the **client contacts multiple replicas** to perform
+the writes/reads (in some implementations, a coordinator forwards operations to
+replicas on behalf of the client). Leaderless replication **uses quorum-based
+protocols to avoid conflicts**.
+
+It is used in **some modern key-value stores**.
+
+### Data-centric models
+
+1. **Sequential consistency**: "The result is the **same as if the operations by
+   all processes were executed in some sequential order**, and the
+   **operations** by each process **appear in this sequence in the order
+   specified by its program**"
+
+   It is a **very strong** (thus not very available) model that is **very
+   expensive in terms of performance**.
+
+   Since all replicas need to agree on a given order, we can use **synchronous
+   single-leader protocols**. This works if **links are FIFO** and **clients are
+   "sticky"** (they always read form the same replica).
+
+   Another implementation uses **leaderless system** and a **quorum-based
+   algorithm**: **clients contact multiple replicas** to perform a read or a
+   write operation. An **update occurs only if a quorum of the servers agrees on
+   the version number to be assigned**; **reading requires a quorum to ensure
+   the latest version** is being read. The **quorums** ($NR, NW$ is the quorum
+   for respectively reading or writing, $N$ is the number of nodes) **usually
+   follow**:
+
+   - $NR + NW > N$ to **avoid read-write conflicts**
+   - $NW > \frac{N}{2}$ to **avoid write-write conflicts**
+
+   Replicas are **updated** in two ways:
+
+   - **Read-repair**: when a client makes a read from several nodes in parallel,
+     **it can detect any stale responses**; it **sends the new value to the
+     replicas that are not up-to-date**
+   - **Anti-entropy**: In **addition to read-repair**, nodes **periodically
+     exchange data in background** to remain up-to-date
+
+   Sequential consistency, in both implementations, is **not highly available
+   and has high latency**. In case of **network partitions, clients are
+   blocked**.
+
+2. **Linearizability**: "Each operation should **appear to take effect
+   instantaneously** at some moment between its start and its completion"
+
+   Also known as **strong/external/atomic consistency**, it is the **strongest
+   possible consistency guarantee**. Linearizability gives the **illusion of
+   having a single copy of the data store**.
+
+   Linearizability **includes a notion of time: operations behave as if they
+   took place at a single point of (wall clock) time**, unlike sequential
+   consistency. It **may require time to propagate** an operation **to all
+   replicas**, so the **operation may not be instantaneously visible**.
+
+   Linearizability is a **composable** property (i.e. if the operations on
+   individual variables are linearizable the global schedule is also
+   linearizable).
+
+   **Single leader** replication **may be used to implement** linearizability:
+   the **leader orders writes according to their timestamp, replicas are updated
+   synchronously and atomically**. This is **very difficult** to guarantee in
+   the **presence of failures** (it is an agreement/consensus problem to
+   determine if and how the network is partitioned and who is the leader).
+
+3. **Causal consistency**: "Writes that are **potentially causally related**
+   must be **seen by all processes in the same order**. **Concurrent writes**
+   may be seen in **any order** at different machines"
+
+   It is a **highly available model**. It **weakens sequential consistency**
+   based on Lamport's notion of **_happened-before_**, only difference is that
+   Lamport's model deals with message passing while we deal with read/writes.
