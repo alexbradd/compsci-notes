@@ -215,3 +215,273 @@ int main() {
 `condition_variable_any` is a generalization of `condition_variable` that can
 also be used with any `Lockable` type (this includes `shared_lock`). It has more
 overhead that the basic `condition_variable`.
+
+## Design patterns
+
+Design patterns are reusable solutions to common problems that allow to avoid
+common pitfalls.
+
+### Producer/consumer
+
+A thread (consumer) needs data from another thread (producer). To decouple the
+operations of the two threads we put a queue between them. The access to the
+queue needs to be synchronized not only using a mutex because the consumer needs
+to wait if the queue is empty; optionally, the producer may block if the queue
+is full.
+
+Example of a producer/costumer with a unlimited size queue.
+
+```cpp
+// ######################################################## synchronized_queue.h
+#ifndef SYNC_QUEUE_H_
+#define SYNC_QUEUE_H_
+#include <list>
+#include <mutex>
+#include <condition_variable>
+
+template<typename T>
+class SynchronizedQueue {
+public:
+  SynchronizedQueue(){}
+  void put(const T & data); // we can also define move semantics if we want
+  T get();
+  size_t size() const;
+private:
+  SynchronizedQueue(const SynchronizedQueue &)=delete;
+  SynchronizedQueue & operator=(const SynchronizedQueue &)=delete;
+  std::list<T> queue;
+  mutable std::mutex myMutex;
+  std::condition_variable myCv;
+};
+
+template<typename T>
+void SynchronizedQueue<T>::put(const T& data) {
+  std::unique_lock<std::mutex> lck(myMutex);
+  queue.push_back(data);
+  myCv.notify_one();
+}
+template<typename T>
+T SynchronizedQueue<T>::get() {
+  std::unique_lock<std::mutex> lck(myMutex);
+  while(queue.empty())
+    myCv.wait(lck);
+  T result=queue.front();
+  queue.pop_front();
+  return result;
+}
+template<typename T>
+size_t SynchronizedQueue<T>::size() {
+  std::unique_lock<std::mutex> lck(myMutex);
+  return queue.size();
+}
+#endif
+
+// #################################################################### main.cpp
+#include <iostream>
+#include <thread>
+
+#include “synchronized_queue.h”
+
+using namespace std;
+using namespace std::chrono;
+
+SynchronizedQueue<int> queue;
+
+void myThread() {
+  for(;;) cout<<queue.get()<<endl;
+}
+int main() {
+  thread t(myThread);
+  for(int i=0; ; i++) {
+    queue.put(i);
+    this_thread::sleep_for(seconds(1));
+  }
+}
+```
+
+### Active objects
+
+This patterns is used to instantiate "task objects". A thread function has no
+explicit way for other threads to communicate with it; with this pattern we wrap
+the thread in an objects, allowing us to define methods for it.
+
+```cpp
+// ############################################################# active_object.h
+#ifndef ACTIVE_OBJ_H_
+#define ACTIVE_OBJ_H_
+#include <atomic>
+#include <thread>
+
+class ActiveObject {
+public:
+  ActiveObject();
+  virtual ~ActiveObject();
+private:
+  virtual void run()=0;
+  ActiveObject(const ActiveObject &)=delete;
+  ActiveObject& operator=(const ActiveObject &)=delete;
+protected:
+  std::atomic<bool> quit;
+  std::thread t;
+};
+#endif // ACTIVE_OBJ_H_
+
+// ########################################################### active_object.cpp
+#include "active_object.h"
+#include <chrono>
+#include <functional>
+#include <iostream>
+
+using namespace std;
+using namespace std::chrono;
+
+ActiveObject::ActiveObject(): quit(false),
+                              t(&ActiveObject::run, this)
+{}
+
+ActiveObject::~ActiveObject() {
+  if(quit.load()) return; //For derived classes
+  quit.store(true);
+  t.join();
+}
+```
+
+The constructor initialize the thread object, while the destructor takes care of
+joining it. The run() member function acts as a “main” concurrently executing.
+The various task objects will extend `ActiveObject`, overriding the needed
+methods (`run` and the destructor).
+
+### Reactor
+
+The `Reactor` class derives from `ActiveObject` to implement the executor thread
+and uses `SynchronizedQueue` for the task queue.
+
+```cpp
+// ################################################################### reactor.h
+#ifndef REACTOR_H_
+#define REACTOR_H_
+#include <functional>
+
+#include “synchronized_queue.h”
+#include “active_object.h”
+
+class Reactor: public ActiveObject {
+public:
+  void pushTask(std::function<void ()> func);
+  virtual ~Reactor();
+private:
+  virtual void run();
+  SynchronizedQueue<std::function<void ()>> tasks;
+};
+#endif // REACTOR_H_
+
+// ################################################################# reactor.cpp
+#include "reactor.h"
+
+using namespace std;
+
+void doNothing() {}
+void Reactor::pushTask(function<void ()> func) {
+  tasks.put(func);
+}
+Reactor::~Reactor() {
+  quit.store(true);
+  pushTask(&doNothing);
+  t.join(); // Thread derived from ActiveObject
+}
+void Reactor::run() {
+  while(!quit.load())
+    tasks.get()(); // Get a function and call it
+}
+
+// #################################################################### main.cpp
+#include <iostream>
+#include <chrono>
+
+#include “reactor.h”
+
+using namespace std;
+
+void printAdd(int a, int b) {
+  this_thread::sleep_for(seconds(5));
+  cout<<a<<'+'<<b<<'='<<a+b<<endl;
+}
+
+int main() {
+  Reactor reac;
+  int a, b;
+  while(cin >> a >> b)
+    reac.pushTask(bind(&printAdd,a,b));
+}
+```
+
+### Thread pool
+
+The above implementation of `Reactor` executes task sequentially, meaning that
+the latency is proportional to the length of the queue. We could also have
+multiple executors picking tasks from a shared queue. This the basics of the
+thread pool pattern: we have one (or more) queue(s) of tasks/jobs and a fixed
+set of worker threads. The thread pool pattern allows to reduce thread creation
+overhead at the cost of two problems:
+
+1. How many workers to use?
+   - Usually a number somehow related to the number of available CPU cores
+2. How to allocate tasks to threads?
+
+```cpp
+// ################################################################ threadpool.h
+#ifndef THREADPOOL_H
+#define THREADPOOL_H
+#include <atomic>
+#include <functional>
+#include <mutex>
+#include <thread>
+#include <vector>
+
+#include “synchronized_queue.h”
+
+class ThreadPool {
+private:
+  std::atomic<bool> done;
+  unsigned int thread_count;
+  SynchronizedQueue<std::function<void()>> work_queue;
+  std::vector<std::thread> threads;
+  void worker_thread();
+public:
+  ThreadPool(int nr_threads = 0);
+  virtual ~ThreadPool();
+  void pushTask(std::function<void ()> func) {
+    // SynchronizedQueue guarantees mutual exclusive access
+    work_queue.put(func);
+  }
+  int getWorkQueueLength() {
+    return work_queue.size();
+  }
+};
+#endif // THREADPOOL_H
+
+// ############################################################## threadpool.cpp
+#include "threadpool.h"
+
+void doNothing() {}
+
+ThreadPool::ThreadPool(int nr_threads): done(false) {
+  if(nr_threads <= 0)
+    thread_count = std::thread::hardware_concurrency();
+  else
+    thread_count = nr_threads;
+  for(unsigned int i = 0; i < thread_count; ++i)
+    threads.push_back(std::thread(&ThreadPool::worker_thread, this));
+}
+ThreadPool::~ThreadPool() {
+  done.store(true);
+  for(unsigned int i = 0; i < thread_count; ++i)
+    pushTask(&doNothing);
+  for(auto & th: threads)
+    th.join();
+}
+void ThreadPool::worker_thread() {
+  while(!done)
+  work_queue.get()(); // Get a function and call it
+}
+```
