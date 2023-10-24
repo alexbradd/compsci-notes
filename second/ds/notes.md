@@ -2508,7 +2508,8 @@ It is used in **some modern key-value stores**.
    - Causal order is **transitive**
 
    It is not a total order since operations that are not causally ordered are
-   said to be concurrent.
+   said to be concurrent. **Sequential** consistency **implies causal**
+   consistency.
 
    **Multi-leader implementations are possible**: we **timestamp writes with
    vector clocks**. The implementation with multi-leader **works only if clients
@@ -2693,3 +2694,31 @@ It **guarantees sequential partitions**, however **single-partition transactions
 may execute sequentially on that partition without coordinating** with other
 partitions, making them very fast. For other transactions, **standard protocols
 are used**.
+
+## Big data platforms
+
+From a technical perspective we have the **following problems**:
+
+1. **Collecting** all the data
+   - The more the better
+   - Keeping everything is cheaper than deciding what to keep and what to
+     discard
+2. **Decide** independently **what to do with data**
+
+An need to face the **following challenges**:
+
+1. **Volume**: amount of data
+2. **Velocity**: amount of data entering the system
+   - In many domains, information is relevant when it's fresh and loses value as
+     it becomes old, thus we need to process data and extract valuable knowledge
+     as soon as possible!
+3. **Variety**: data can have many different formats, versions and sources
+4. **Veracity**: data is not always correct
+
+We need to scale to large data volumes and support quickly changing data. The
+**required functions** are:
+
+1. **Automatic parallelization and distribution**
+2. **Fault-tolerance**
+3. Status and **monitoring tools**
+4. A **clean abstraction** for programmers
