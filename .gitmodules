@@ -1,3 +1,6 @@
 [submodule "first/net/project"]
 	path = first/net/project
 	url = git@github.com:alexbradd/network-computing-epbf-project-2023.git
+[submodule "second/aapp/aapp-homework"]
+	path = second/aapp/aapp-homework
+	url = git@github.com:alexbradd/aapp-homework.git
