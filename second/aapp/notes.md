@@ -1071,3 +1071,134 @@ $\mathcal{O}(\log n)$.
 
 **With high probability, a** $n$ **element skip list has** $\mathcal{O}(\log n)$
 levels.
+
+## Dynamic programming
+
+The term dynamic programming was originally used in the 1940s by Richard Bellman
+to describe the process of solving problems where one needs to find the best
+decisions one after another.
+
+1. **"dynamic"** captures the **time-varying aspect** of the problems (and
+   sounded impressive)
+2. **"programming"** referred to the **use of a method to find an optimal
+   program**
+
+### Longest common subsequence
+
+To explain dynamic programming we are going to use the longest subsequence
+problem:
+
+> Given two sequences $x[1 \ldots m]$ and $y[1 \ldots n]$, find a longest
+> subsequence common to them both.
+
+The brute force solution is checking every subsequence of $x[1\ldots m]$ to see
+if it is also a subsequence of $y$. This means that we have $\mathcal{O}(n)$
+time for $2^n$ possible subsequences, leading to a $\mathcal{O}(n2^n)$
+worst-case running time.
+
+To improve, we look at at the **length of a common subsequence**. Let us
+consider the **prefixes** of our two strings $x$ and $y$. We can define:
+
+$$
+c[i,j] = |\mathit{LCS}(x[1\ldots i], y[1\ldots j])|
+$$
+
+We can **observe** that $c[m,n] = |\mathit{LCS}(x,y)|$. We can prove by
+induction (proof is skipped) that the **following recursive definition holds**:
+
+$$
+c[i,j] = \begin{cases}
+  c[i-1, j-1] + 1 \quad x[i] = y[j] \\
+  \max\{c[i-1, j], c[i, j-1]\}
+\end{cases}
+$$
+
+The definition of $c[i,j]$ is an example of the **"optimal substructure"
+property** of a problem:
+
+> An optimal solution to a problem (instance) contains optimal solutions to
+> subproblems.
+
+The recursive algorithm can be easily found:
+
+```txt
+LCS(x, y, i, j) // ignoring base cases
+  if x[i] == y[j] then
+    c[i, j] = LCS(x, y, i–1, j–1) + 1
+  else
+    c[i, j] = max{LCS(x, y, i–1, j), LCS(x, y, i, j–1)}
+  return c[i, j]
+```
+
+The **worst case is when** $x[i] \neq y[j]$, in which the **algorithm evaluates
+two subproblems, each with only one parameter decremented**. If we develop the
+recursion tree, we can see that the height of the three is $m+n$, meaning we
+potentially have exponential amount of work. However we may need to **resolve
+the same subproblem multiple times**. This is the second important property,
+**overlapping subproblems**, of a problem solvable by dynamic programming:
+
+> A recursive solution contains a “small” number of distinct subproblems
+> repeated many times.
+
+The **number of distinct LCS subproblems for two strings of lengths $m$ and $n$
+is only** $mn$. **Memoization** is the caching of results of the various
+subproblems in a data structure to avoid the cost in subsequent iterations.
+Implementing memoization in our `LCS` algorithm is simple since `c[i,j]` is
+already a table that stores everything we need.
+
+```txt
+LCS(x, y, i, j) // ignoring base cases
+  if c[i,j] == nil then
+    if x[i] == y[j] then
+      c[i, j] = LCS(x, y, i–1, j–1) + 1
+    else
+      c[i, j] = max{LCS(x, y, i–1, j), LCS(x, y, i, j–1)}
+  return c[i, j]
+```
+
+This algorithm has $\Theta(mn)$ **space and time complexity**.
+
+Now that we have the table of lengths, we can **reconstruct the LCS by tracing
+the table backwards**. The reconstruction is $\mathcal{O}(\min\{m,n\})$.
+
+### Reduced Ordered Binary Decision Diagram
+
+This data structure represents a **logic function as a directed acyclic graph**
+of boolean decisions. This representation is more efficient that the other two
+possibilities:
+
+1. Truth table: exponential in the number of variables
+2. First or second canonical forms: still exponential in the number of variables
+
+The DAG representing the function can be made canonical.
+
+The key idea is to **use two memoization tables**:
+
+1. **Unique table**: find identical sub-cases and avoid replication
+2. **Computed table**: reduce redundant computation of sub-cases
+
+**Many logic operations can be performed efficiently on BDD's**, usually linear
+in size of the graph and even constant for some operations. The **size** of the
+BDD is **critically dependent on variable ordering**.
+
+The graph is a DAG with **one root node and two terminals** (0 and 1); **each
+node has two children and a variable**. To build the graph we are **recursively
+using the Shannon's decomposition**: $f = vf|_v + \bar{v}f|_{\bar{v}}$. From the
+theory of boolean algebra, we know that this way we will have $2^n$ leafs. We
+can **compress** this graph by ensuring two properties:
+
+1. **Reduced**: any node with two identical children is removed, two nodes with
+   isomorphic BDD's are merged
+2. **Ordered**: Co-factoring variables (splitting variables) always follow the
+   same order along all paths
+
+If the graph is **both ordered and reduced** we say that the graph is
+**canonical**. **Each function has only one canonical graph**, meaning that
+checking equality between two functions is reduced to equality between graphs.
+
+We use two types of memoization tables:
+
+1. **Unique table**: used to **avoid duplication of existing nodes** (hash table
+   with collision chains)
+2. **Computed table**: **avoids re-computation** of existing results (stores the
+   **most frequent results**)
