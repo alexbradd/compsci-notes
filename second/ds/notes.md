@@ -2722,3 +2722,152 @@ We need to scale to large data volumes and support quickly changing data. The
 2. **Fault-tolerance**
 3. Status and **monitoring tools**
 4. A **clean abstraction** for programmers
+
+### MapReduce
+
+We make some **assumptions about the computing infrastructure**:
+
+1. We are working with a **cluster of "normal" computers**
+2. We have hundreds to **thousands of nodes**
+3. **No dedicated hardware**
+4. **Failures are common**
+
+And on the scale:
+
+1. **Terabytes or more of data**, too much to fit on a single disk, or too
+   expensive to read from a single disk
+2. Data **doesn't fit in memory**
+
+**MapReduce** is a **programming model** introduced by Google. It enables
+application programs to be written in terms of **high-level operations on
+immutable data**. The **runtime system controls scheduling, load balancing,
+communication, fault tolerance, etc...**.
+
+Computation is split in **two phases**: map and reduce:
+
+1. **Map processes individual elements** and for each of them **outputs one or
+   more** `(key, value)` **pairs**
+2. **Reduce processes all the values with the same key and outputs a value**.
+
+The **developers need only to specify the behaviour of these two functions**.
+
+#### Scheduling
+
+We have **one master and many workers**. **Input** data is **split** into $M$
+map tasks. The **reduce phase** is **partitioned** into $R$ reduce tasks.
+**Tasks are assigned to workers dynamically**.
+
+The **master assigns each map task to a free worker**, considering **data
+locality** to worker. The mapping worker **reads the task input** (often from a
+local disk) and produces $R$ **local files containing the intermediate key-value
+pairs**.
+
+The **master assigns each reduce task to a free worker**. The reducing worker
+will **read intermediate key-value pairs** from map workers and then **sorts and
+applies the user's reduce operation** to produce the output.
+
+The filesystem needs to be able to handle the workload and distribute files
+evenly across nodes. In **GFS** (Google's FileSystem), **data files are divided
+into 64MB blocks** and **3 copies of each are stored on different machines**.
+
+#### Fault-tolerance
+
+The **master detects worker worker failures via a heartbeat**. On **failure**,
+it **reallocates the completed and in-progress map tasks to another worker**
+(since partial results are stored locally). For **reduce tasks, only in-progress
+ones** should be re-executed, since the output is stored in the global
+filesystem.
+
+**State is check-pointed periodically** in GFS by the master. **On master
+failure we wait for the master to recover and we continue**.
+
+#### Stragglers
+
+"Stragglers" are **tasks that take a long time to execute** due to various
+reasons like slow hardware, poor partitioning bugs and other. To improve
+performance, we **duplicate the struggling tasks to free workers** and keep the
+version that finishes first.
+
+#### Conclusions
+
+- **Strengths**:
+  - The **developers only write simple functions**, while the system handles all
+    other details
+  - Very **general**
+  - **Good for large scale data analysis**
+- **Limitations**:
+  - **High overhead**
+  - **Lower raw performance** than HPC
+  - Very **fixed paradigm**: each step must complete before the next one can
+    start
+
+### Beyond MapReduce
+
+In the last decade, many systems **extended and improved the MapReduce
+abstraction** in many ways:
+
+1. From two processing steps to **arbitrary acyclic graphs of transformations**
+   (**dataflow model**)
+   - Processing is split into tasks. Transformations that do not reshuffle
+     elements can be grouped in the same task
+2. From **batch processing to stream processing**
+   - Not only process large datasets with high throughput but also low latency
+3. From **disk to main-memory or hybrid** approaches
+
+We consider two systems that differ in how/when they allocate tasks onto nodes:
+
+1. Apache Spark: batch processing + scheduling of tasks
+2. Apache Flink: streaming/continuous processing + pipelining of tasks
+
+#### Apache Sparck
+
+Similar to MapReduce, but it is **composed of an arbitrary number of stages**
+instead of only 2. **Intermediate results can be cached in main memory** if they
+are reused multiple times. **Scheduling** of tasks (stages) **ensures that the
+computation takes place close to the data**. There is **support for streaming
+data through the micro-batch approach**: input data stream is **split into small
+batches of data** that are **processed independently with some state that can
+persist across batches**.
+
+#### Apache Flink
+
+A job is not split into stages, but instead **all operators are instantiated as
+soon as the job is submitted**. Operators **communicate with each other through
+TCP** and **start processing as soon as it has some data available from the
+previous ones (pipeline architecture)**. This architecture is ideal for stream
+processing since **data flows into the system without waiting for scheduling,
+allowing lower latency**. The same approach **can be used for batch processing:
+stream the entire batch through the operators**.
+
+#### Comparisons
+
+1. **Latency**: the **pipeline approach** of Flink **provides lower latency**
+   - New data elements are ingested into the network of processing operators as
+     they become available
+   - No need to accumulate (micro-)batches or schedule tasks
+2. **Throughput**: a **scheduling approach offers more opportunities to optimize
+   throughput**
+   - Moving larger data blocks can be more efficient due to lower network
+     protocol overheads and opportunities for data compression
+   - Scheduling decisions can consider data distribution
+3. **Load-balancing**: a **scheduling approach** simplifies load balancing since
+   **dynamic scheduling decisions can consider data distribution**
+   - This is not possible in the case of a pipelined approach as the allocation
+     of tasks to operators is decided statically when the job is deployed
+4. **Elasticity**: elasticity indicates the **possibility of a system to
+   dynamically adapt resource usage to the load of the system**
+   - **Scheduling approaches are better for elasticity** since scheduling
+     **decisions take place dynamically at runtime** and thus are able to adapt
+     to changes in the set of physical resources
+   - Elasticity is simply **not possible in pipelined approaches**; the only way
+     is **snapshotting the system and restarting it on a different set of
+     physical nodes**
+5. **Fault-tolerance**:
+   - In case of a **scheduling-based** approach we simply **reschedule the
+     tasks** of a failed node
+     - Spark relined on "lineage": no replication of intermediate results, if a
+       data element is lost recompute it, if the data it depends on is lost
+       recompute that and so on
+   - In **pipelined processing** we need to **periodically checkpoint to
+     (distributed) file system** and **replay** from the last checkpoint **in
+     case of failure**
