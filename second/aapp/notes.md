@@ -1202,3 +1202,187 @@ We use two types of memoization tables:
    with collision chains)
 2. **Computed table**: **avoids re-computation** of existing results (stores the
    **most frequent results**)
+
+#### Implementation
+
+**Variables** are **totally ordered**: If $v < w$ then $v$ occurs "higher" up in
+the ROBDD. The top variable of a function $f$ is a variable associated with its
+root node. **Each node** is written as a **triple** $f = (v, g, h)$ where
+$g = f|_v$ and $h = f|_{\bar{v}}$. We read this triple as "if $v$, then $g$ else
+$h$"; this is the **`ite` function**, defined as such:
+$\mathtt{ite}(v, g, h) = vg + \bar{v}h$. We can use the `ite` function to
+**implement any two variable logic function** and can be **defined
+recursively**.
+
+Before a node $(v, g, h)$ is added to the BDD, it is looked up in the
+"unique-table". If it is there, then the existing pointer to the node is used to
+represent the logic function. Otherwise, a new node is added to the unique table
+and the new pointer returned. Thus a strong canonical form is maintained. The
+left child of the node $(v, f, g)$ is $(f|_v, g|_v, h|_v)$, while the right is
+$(f|_{\bar{v}}, g|_{\bar{v}}, h|_{\bar{v}})$.
+
+```txt
+procedure ITE(f, g, h)
+  if f == 1
+    return g
+  if f == 0
+    return h
+  if g == h
+    return g
+  if (p = HASH_LOOKUP_COMPUTED_TABLE(f,g,h)) != NULL
+    return p
+  v = TOP_VARIABLE(f, g, h ) // top variable from f,g,h
+  fn = ITE(fv,gv,hv)         // recursive calls
+  gn = ITE(fv,gv,hv)
+  if fn == gn                // reduction
+    return gn
+  if !(p = HASH_LOOKUP_UNIQUE_TABLE(v,fn,gn)
+    p = CREATE_NODE(v,fn,gn) // and insert into UNIQUE_TABLE
+  INSERT_COMPUTED_TABLE(p,HASH_KEY{f,g,h})
+  return p
+```
+
+## Amortized analysis
+
+We will analyze the **size of a hashtable**: how large should it be? We want it
+as small as possible, but still big enough so that it doesn't overflow. We have
+a problem since we don't know the size of the table in advance, meaning that
+**whenever the table overflows we need to grow it by allocating a new larger
+table**. This is a **dynamic table**.
+
+Let us consider the case of a dynamic table with **starting size 1 and a "double
+the size on overflow" policy**. Consider a **sequence** of $n$ insertions. The
+**worst case time to execute one insertion** is $\Theta(n)$. Therefore the
+**worst-case time for $n$ insertions should be** $\Theta(n^2)$... which is
+**wrong**. Let $c_i$ be the cost of the $i$-th insertion, we have:
+
+$$
+c_i = \begin{cases}
+  i &\quad\text{if } i - 1 \text{ is an exact power of } 2 \\
+  1 &\quad\text{otherwise}
+\end{cases}
+$$
+
+Breaking down the cost we get:
+
+$$
+\begin{array}{c|cccccccccc}
+  i               & 1 & 2  & 3 & 4 & 5 & 6 & 7 & 8 & 9  &   \\
+  \mathit{size}_i & 1 & 2  & 4 & 4 & 8 & 8 & 8 & 8 & 16 &   \\
+  \hline
+  c_i             & 1 & 1  & 1 & 1 & 1 & 1 & 1 & 1 & 1  & + \\
+                  &   & 1  & 2 &   & 4 &   &   &   & 8  &   \\
+\end{array}
+$$
+
+Thus we can decompose the cost of $n$ insertions into:
+
+$$
+\begin{aligned}
+  \sum_{i=1}^n c_i &\leq n + \sum_{j=0}^{\lfloor\log(n-1)\rfloor} 2^j
+                   &\leq 3n
+                   &=\Theta(n)
+\end{aligned}
+$$
+
+Thus the **average case of each dynamic table operation is**
+$\Theta(n)/n = \Theta(1)$.
+
+An **amortized analysis** is any **strategy for analyzing a sequence of
+operations to show that the average cost per operation is small, even though a
+single operation within the sequence might be expensive**. An amortized analysis
+**guarantees that the average performance of each operation in the worst case**.
+
+There are 3 common amortization analyses:
+
+1. **Aggregate method**
+   - We have already used this in our demonstration
+2. **Accounting method**
+3. **Potential method**
+
+The **aggregate method**, though **simple, lacks the precision** of the other
+two methods. In particular, the accounting and potential methods allow a
+specific amortized cost to be allocated to each operation.
+
+### Accounting method
+
+The main gist of it is to **charge** $i$-th operation a **fictitious amortized
+cost** $\hat{c}_i$, where **\$1 pays for 1 unit of work** (i.e. time). This
+**fee is consumed to perform the operation**. Any **amount not immediately
+consumed is stored in the bank** for use by subsequent operations. The **bank
+balance must not go negative**, meaning that we must ensure that:
+
+$$
+\sum_i^n c_i \leq \sum_i^n \hat{c}_i \quad \forall n
+$$
+
+The **total amortized costs provide an upper bound on the total true costs**.
+
+For dynamic tables we have that $\hat{c}_i = \$3$ (for $i=0$ the cost is $2$):
+
+- \$1 pays for the immediate insertion
+- \$2 is stored for later table doubling
+- When the table doubles, pay \$1 to move a recent item and \$1 to move an old
+  item.
+
+### Potential method
+
+Similar to the accounting method, but **we use potential energy** instead of a
+bank.
+
+1. Start with an initial data structure $D_0$
+2. Operation $i$ transforms $D_{i-1}$ in $D_i$
+3. The cost of operation $i$ is $c_i$
+4. Define a **"potential function"** $\Phi: \{D_i\}\to R$ such that:
+   - $\Phi(D_0) = 0$
+   - $\Phi(D_i) \geq 0 \quad\forall i$
+5. The **amortized cost** $\hat{c}_i$ with respect to $\Phi$ is defined to be
+
+   $$
+   \hat{c}_i = c_i + \Phi(D_i) - \Phi(D_{i-1})
+   $$
+
+   The difference between $\Phi(D_i) - \Phi(D_{i-1})$ ($\Delta\Phi$) is the
+   potential difference.
+
+   1. If $\Delta\Phi > 0$ then $\hat{c}_i > c_i$, i.e. the operation stores work
+      in the data structure for later use
+   2. If $\Delta\Phi < 0$ then $\hat{c}_i < c_i$, i.e. the data structure
+      delivers stored work to help pay for the operation
+
+For the dynamic table case, we define the potential of the table after the
+$i$-th insertion to be $\Phi(D_i) = 2i - 2^{\lceil\log i\rceil}$ for $i > 0$
+with $\Phi(0) = 0$. Doing the various calculations, we obtain that
+$\hat{c}_i = 3$, just like with the accounting method.
+
+## Competitive analysis
+
+A sequence $S$ of operations is provided one at a time. For each operation, an
+**on-line algorithm** $A$ must **execute the operation immediately without any
+knowledge of future** operations. An **off-line algorithm may see the whole
+sequence** $S$ in advance. How do we analyze the total cost of an online
+algorithm?
+
+An on-line algorithm $A$ is $\alpha$-competitive if there **exists a constant
+$k$ such that for any sequence $S$ of operations**:
+
+$$
+C_A(S) \leq \alphaC_{OPT}(S) + k
+$$
+
+Where $OPT$ is the **optimal off-line algorithm** ("God’s algorithm").
+
+Let us consider the case of a **self-organizing list** $L$. Suppose that element
+$x$ is accessed with probability $p(x)$. Then we have:
+
+$$
+E[C_A(S)] = \sum_{x\in L} p(x) \cdot \mathrm{rank}_L(x)
+$$
+
+This average is **minimized** when $L$ is **sorted in decreasing order with
+respect to** $p$. Empirically, **move-to-front (MTF) is good enough** (cost is
+$2\mathrm{rank}_L(x)$).
+
+##### Theorem: MTF is $\mathcal{O}(1)$-competitive
+
+MTF is 4-competitive for self-organizing lists.
