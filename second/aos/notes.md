@@ -950,3 +950,250 @@ Intuitively we can characterize a program with **two properties**:
 One of the main ways that we can **lose liveness** is due to **deadlocks**.
 **Another problem** we may encounter when dealing with concurrent tasks **on the
 scheduler side** is **priority inversion**.
+
+### Kernel space concurrency
+
+Kernel concurrency is different from user space concurrency as it **involves
+managing and synchronizing multiple threads running in the kernel space**. This
+includes handling **interrupts**, **preemptive scheduling**, and managing
+**shared resources among different kernel components**.
+
+We have **3 sources of concurrency**:
+
+1. **Kernel preemption**: in a preemptive kernel, `schedule` can be invoked
+   mid-kernel and switch to another thread still in kernel mode
+2. **Interrupts**: An interrupt can occur asynchronously at almost any time,
+   interrupting the currently executing code in kernel mode
+   - Code that is safe from concurrent access from an interrupt handler is said
+     to be interrupt-safe
+3. **Multiprocessing**
+
+### Kernel preemption
+
+From 2.6 linux became **optionally preemptive**; the preemptive points are:
+
+- **At the end of interrupt/exception handling**, when `TIF_NEED_RESCHED` flag
+  in the thread descriptor has been set (forced process switch)
+- If a **task in the kernel explicitly blocks and calls** `schedule()` (planned
+  process switch). It is however always **assumed that the code that explicitly
+  calls** `schedule()` **knows it is safe to reschedule**
+
+**Atomic context** refers to the places where, while it could be possible to
+admit a preemption point, **it is not safe to call the scheduler and switch to a
+different thread**. Typical atomic context are when:
+
+1. The kernel is running an interrupt or trap handler
+2. The kernel is holding a spin lock
+3. All programmers' defined places where it is not safe to preempt
+
+`preempt_count` is the **variable used for controlling when a task in kernel
+mode can be preempted**:
+
+1. Every time a task **acquires a lock**, we **increase** `preempt_count`; when
+   we release a lock we decrement it
+2. If `preempt_count == 0`, it is **safe** to switch to another task
+
+The **real-time patch** makes **all kernel functions preemptible**, even
+interrupt handling.
+
+### Synchronization
+
+If we had a uniprocessor machine, atomic context and interrupt enable/disable
+would be enough to ensure mutual exclusion. On SMP machines, however, we need an
+explicit mechanism. The spinlock is the primitive used.
+
+A spinlock **continuously polls the lock until unlocked**. They are generally
+**useful when contention rates and critical section length are small** and/or
+you **can't afford the overhead** of a sleeping lock. Spinlock do not support
+recursion (the same thread trying to take the same lock multiple times).
+
+To lock a section with a spinlock we can do:
+
+```c
+DEFINE_SPINLOCK(mr_lock);
+spin_lock(&mr_lock);
+/* critical region ... */
+spin_unlock(&mr_lock);
+```
+
+Spinlocks can be **implemented with a generic atomic operation** called
+**"compare and swap"**. The pseudocode for this instruction is the following:
+
+```c
+T _atomic_compare_xchg(T *ptr, T old, T new) {
+  T a = *p;
+  if (a == old) *p = new;
+  return a;
+}
+```
+
+The spinlock can then implemented as such:
+
+```c
+int lock;
+while (_atomic_compare_xchg(&lock, 0, 1)) {};
+```
+
+#### `rwlock`
+
+Readwrite locks are still **spinlocks**, but allow for **unlocking only
+reading/writing** and come with **irq save/restore variants**.
+
+```c
+DEFINE_RWLOCK(mr_rwlock);
+read_lock(&mr_rwlock);
+/* critical section (read only) ... */
+read_unlock(&mr_rwlock);
+
+write_lock(&mr_rwlock);
+/* critical section (read and write) ... */
+write_unlock(&mr_lock);
+```
+
+#### `seqlock`
+
+A `seqlock` allows **writers to push through concurrent reads** and, at the same
+time, **avoid to use locks if there are no concurrent writes**. **Writers will
+not get blocked by concurrent reads** (useful when writes are done in interrupt
+context).
+
+```c
+write_seqlock(&mr_seq_lock); // increment seq. counter
+/* write lock is obtained... */
+write_sequnlock(&mr_seq_lock); // increment seq. counter
+
+// -----
+do {
+//    V---- loops if seq. counter odd
+seq = read_seqbegin(&mr_seq_lock);          // ^
+// read/copy data here ...                     | check if seq. counter equal.
+} while (read_seqretry(&mr_seq_lock, seq)); // V
+```
+
+`jiffies`, the variable that stores a Linux machine's uptime, is frequently read
+but written rarely by the timer interrupt handler; a `seqlock` is thus used for
+machines that do not have atomic 64 bit read. If seqlocks are used the function
+is the following:
+
+```c
+u64 get_jiffies_64(void) {
+  unsigned long seq;
+  u64 ret;
+  do {
+    seq = read_seqbegin(&xtime_lock);
+    ret = jiffies_64;
+  } while (read_seqretry(&xtime_lock, seq));
+  return ret;
+}
+```
+
+#### Sleeping lock
+
+They are **semaphores**, but in the kernel.
+
+```c
+/* define and declare a semaphore, named mr_sem, with a count of one */
+static DECLARE_MUTEX(mr_sem);
+/* attempt to acquire the semaphore ... */
+if (down_interruptible(&mr_sem)) { // we could use down(), but we wouldn't react
+                                   // to any signal
+  /* signal received, semaphore not acquired ... */
+} else {
+  /* critical region ... */
+  /* release the given semaphore */
+  up(&mr_sem);
+}
+```
+
+`up` and `down` increase/decrease the semaphore. `down_interruptible` allows a
+waiting task to be woken up by a signal.
+
+#### `lockdep`
+
+If configured with `CONFIG_PROVE_LOCKING=y`, the kernel can be **run with a
+run-time mechanism for checking deadlocks**. This mechanism is called `lockdep`
+and detects violations of the following locking rules:
+
+1. Locks acquired in **different order**
+2. Spinlocks acquired in **interrupt handlers and also in process contexts when
+   interrupts are enabled**
+
+`lockdep` works with:
+
+1. **Lock classes**: types of locks
+2. **Lock instances**: instances of lock type (concrete locks)
+
+It **keeps track of the lock instances state and dependencies**, checking the
+order of acquisition between the classes. If the order corresponds to that of a
+deadlock-able situation, it logs the situation.
+
+#### Cache aware spinlocks
+
+In SMP systems, **every attempt to acquire a lock requires moving the cache line
+containing that lock to the local CPU**. For contended locks, this cache-line
+bouncing can hurt performance significantly (**cache ping-pong**).
+
+The general idea is the following:
+
+1. When a CPU finds a **locked spinlock**, it **duplicates it in its cache**,
+   **links** it with the one in the cache of the initial locker and **spins on
+   the lock in its own cache**
+   - This chain of links, we introduced a sort of **queue**
+2. On **unlock**, the **unlocker gives the lock to the next in line**
+
+This type of lock is implemented by the `qspinlock` structure.
+
+In reality, cache-aware spinlock is implemented a bit differently. The structure
+is a 32-bit integer that is divided into the following **fields**:
+
+1. `lock`: status of the lock
+2. `pending`: used by the second locker for "optimistic waiting"
+3. `tail`: pointer to the last lock in the queue
+
+The **first process to wait for the lock doesn't duplicate it**, but instead
+**spins on the same `lock` bit and sets `pending = 1`**. When a **third
+process** arrives, it **starts** duplicating and **building the queue**,
+**storing** in the central lock the **tail of the queue**.
+
+### Lock-free algorithms and data structures
+
+Lock-free algorithms are vital in improving the performance of the Linux kernel.
+They **allow for synchronisation and concurrent access to shared resources
+without the need for locks**, which can cause contention and stall processing.
+
+#### Per-CPU variables
+
+The simplest way to reduce shared data is using **per-CPU variables**:
+
+- A per-CPU variable is an **array of data structures, with one element per
+  CPU** in the system, typically aligned to the size of the hardware cache
+- **Each CPU can only access and modify its own element**
+- **Access** to per-CPU variables should be **done with kernel preemption
+  disabled** to avoid a CPU change during the variable manipulation.
+
+```c
+#include <linux/percpu.h>
+#include <linux/sched.h>
+
+DEFINE_PER_CPU(int, counter); // array of struct
+void do_something(void)
+{
+  /* Disables preemption as otherwise we could go to sleep and
+  wakeup on a different cpu */
+  cur_counter = get_cpu_var(counter);
+  counter = counter + 1;
+  /* Reenables preemption */
+  put_cpu_var(counter);
+}
+```
+
+#### Shared variables
+
+There exists a Linux API to enforce the use **atomic read-modify-write
+instructions when available** in the ISA. It is based on `atomic_t` (32bit) and
+`atomic64_t` types and always **guarantees that such operations are not
+interruptible** by using under the hood `_atomic_compare_xchg`. Compare And Swap
+(CAS), however, is **not the silver bullet since it can still be fooled (see ABA
+problem)**.
+
+#### Read-copy-update
