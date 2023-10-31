@@ -1385,4 +1385,76 @@ $2\mathrm{rank}_L(x)$).
 
 ##### Theorem: MTF is $\mathcal{O}(1)$-competitive
 
-MTF is 4-competitive for self-organizing lists.
+MTF is **4-competitive** for self-organizing lists.
+
+**Proof**. Let $L_i$ be the MTF list after the $i$-th access and let $L_i^\star$
+be the optimal list after the $i$-th access. Let:
+
+1. $c_i = 2\cdot\mathrm{rank}_{L_{i-1}}(x)$ the MTF cost for the $i$-th
+   operation
+2. $c_i^\star = \mathrm{rank}_{L_{i-1}^\star}(x) + t_i$ the cost of the optimal
+   list for the $i$-th operation
+   - $t_i$ is the number of transpositions that the optimal algorithm performs
+
+Let us define the potential function as:
+
+$$
+\begin{aligned}
+  \Phi(L_i) &= 2|\{(x,y): x \prec_{L_i} y \land y \prec_{L_i^\star} x\}| \\
+            &= 2 \cdot \#\mathrm{inversions}
+\end{aligned}
+$$
+
+For any $i$ the potential function is greater than zero and $\Phi(L_0) = 0$ if
+MTF and the optimal algorithm start both from the same list. A transposition
+create/destroys 1 inversion, so $\Delta\Phi = \pm 2$. Suppose that operation $i$
+accesses element $x$, we can define:
+
+1. $A = \{y \in L_{i-1} : y \prec_{L_{i-1}} \land x \prec_{L_{i-1}^\star} x\}$
+2. $B = \{y \in L_{i-1} : y \prec_{L_{i-1}} \land y \succ_{L_{i-1}^\star} x\}$
+3. $C = \{y \in L_{i-1} : y \succ_{L_{i-1}} \land y \prec_{L_{i-1}^\star} x\}$
+4. $D = \{y \in L_{i-1} : y \succ_{L_{i-1}} \land y \succ_{L_{i-1}^\star} x\}$
+
+```txt
+        ┌─────────┬─┬──────┐
+ L_{i-1}│A U B    │x│C U D │
+        └─────────┴─┴──────┘
+        ┌──────┬─┬─────────┐
+L*_{i-1}│A U C │x│B U D    │
+        └──────┴─┴─────────┘
+```
+
+Let $r$ and $r^\star$ be respectively the rank of $x$ in the MTF list and in the
+optimal list. We have $r = |A| + |B| + 1$ and $r^\star =  |A| + |C| + 1$. When
+MTF moves $X$ to the front, it creates $|A|$ inversions and destroys $|B|$
+inversions. Each transpose by the optimal algorithm creates less than 1
+inversion. Thus be have $\Delta\Phi \leq 2(|A| - |B| + t_i)$. The amortized cost
+is going to be:
+
+$$
+\begin{aligned}
+  \hat{c}_i &= c_i + \Delta\Phi(L_i) \\
+            &\leq 2r + 2(|A| - |B| + t_i) \\
+            &= 2r + 2(|A| – (r – 1 – |A|) + t_i) \\
+            &= 2r + 4|A| – 2r + 2 + 2t_i \\
+            &= 4|A| + 2 + 2t_i \\
+            &\leq 4(r^\star + t_i)  \\
+            &= 4c_i^\star
+\end{aligned}
+$$
+
+Thus we have:
+
+$$
+\begin{aligned}
+  C\sum_i^{|S|} c_i &= \sum_i^{|S|} (\hat{c}_i + \Delta\Phi(L_i)) \\
+                    &\leq (\sum_i^{|S|} 4c_i^\star) + \Delta\Phi(L_i)) \\
+                    &\leq 4 C_{OPT}
+\end{aligned}
+$$
+
+$\square$.
+
+If we count transpositions that move $x$ to the front as "free", then MTF is
+2-competitive.
+
