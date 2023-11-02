@@ -1435,8 +1435,8 @@ $$
 \begin{aligned}
   \hat{c}_i &= c_i + \Delta\Phi(L_i) \\
             &\leq 2r + 2(|A| - |B| + t_i) \\
-            &= 2r + 2(|A| – (r – 1 – |A|) + t_i) \\
-            &= 2r + 4|A| – 2r + 2 + 2t_i \\
+            &= 2r + 2(|A| - (r - 1 - |A|) + t_i) \\
+            &= 2r + 4|A| - 2r + 2 + 2t_i \\
             &= 4|A| + 2 + 2t_i \\
             &\leq 4(r^\star + t_i)  \\
             &= 4c_i^\star
@@ -1458,3 +1458,153 @@ $\square$.
 If we count transpositions that move $x$ to the front as "free", then MTF is
 2-competitive.
 
+## Parallel programming introduction
+
+### Dependencies
+
+Parallel execution, from any point of view, will be constrained by the sequence
+of operations needed to be performed for a correct result. Parallel execution
+**must address control, data, and system dependences**. A **dependency** arises
+when one **operation depends on an earlier operation** to complete and produce a
+result before this later operation can be performed.
+
+Our **fundamental concurrent execution assumption** will be the following:
+
+1. **Processors execute independently of each other**
+2. **No assumptions** are made **about speed** of processor execution
+
+We want sequential consistency. This means that each statement's execution does
+not interfere with each other and that computation results are the same,
+independent of the order. If this holds true, we call the two statements
+independent, otherwise they are dependent. We can have **3 types of
+dependencies:**
+
+1. **True (flow) dependencies**: Read After Write
+2. **Output dependencies**: Write After Write
+3. **Anti-dependencies**: Write After Read
+
+**Output and Anti-dependencies are called "name" dependencies, meaning we can
+get rid of them by changing the code** (with e.g. register renaming). True
+dependencies cannot be removed. Two statements are said to be **independent if
+there are no dependencies between them**.
+
+Data dependence relations can be found by comparing the $IN$ and $OUT$ sets of
+each node. The $IN$ and $OUT$ sets of a statement S are defined as:
+
+- $IN(S)$: set of memory locations (variables) that may be used in $S$
+- $OUT(S)$: set of memory locations (variables) that may be modified by $S$
+
+Thus we have:
+
+1. $OUT(S_1)\cap IN(S_2)\neq\emptyset$: true dependency ($S_1\delta S_2$)
+2. $IN(S_1)\cap OUT(S_2)\neq\emptyset$: anti-dependency ($S_1\delta^{-1} S_2$)
+3. $OUT(S_1)\cap OUT(S_2)\neq\emptyset$: output dependency ($S_1\delta^0 S_2$)
+
+### Loop-level parallelism
+
+Significant parallelism can be identified within loops. The **"DOALL" loop**
+(a.k.a. foreach loop) is the maximum in term of loop-level parallelization:
+**all different iterations are independent of each other** (statements inside an
+iteration might have dependencies). foreach loops can be unrolled and fully
+parallelized.
+
+Parallelism can be achieved even between two different loops if there are not
+dependencies.
+
+We have a **loop-carried dependency** if **some statements are dependant on
+previous iterations**. If there are **no loop-carried dependencies** the loop is
+**loop-independent**. The loop-carried dependency can be **lexically forward**
+(if the source comes after the target) or **lexically backward**. This type of
+dependencies can limit the parallelization we can extract: we need to pipeline
+different loop executions.
+
+## Parallel Patterns
+
+Parallel patterns are a **recurring combination of task distribution and data
+access** that solves a specific problem in parallel algorithm design. They
+provide us with a "vocabulary" for algorithm design.
+
+### Nesting pattern
+
+Nesting is the ability to hierarchically compose patterns. "Pattern diagrams"
+are used to visually show the pattern idea where each "task block" is a location
+of general code in an algorithm. Each "task block" can in turn be another
+pattern.
+
+### Control patterns
+
+#### Serial control
+
+Structured serial programming is based on these patterns: sequence, selection,
+iteration, and recursion.
+
+1. **Sequence**: ordered list of tasks that are executed in a specific order
+   - Assumption: program text ordering will be followed
+2. **Selection**: condition $c$ is first evaluated; either task $a$ or $b$ is
+   executed depending on the true or false result of $c$
+   - Assumption: $a$ and $b$ are never executed before $c$, and only $a$ or $b$
+     is executed - never both
+3. **Iteration**: a condition $c$ is evaluated; if true, $a$ is evaluated, and
+   then $c$ is evaluated again. This repeats until $c$ is false
+4. **Recursion**: dynamic form of nesting allowing functions to call themselves
+   - Tail recursion is a special recursion that can be converted into iteration
+
+#### Parallel control
+
+Parallel control patterns extend serial control patterns. Each parallel control
+pattern is related to at least one serial control pattern, but relaxes
+assumptions of serial control patterns.
+
+1. **Fork-join**: allows control flow to **fork into multiple parallel flows,
+   then rejoin later**
+   - A "join" is different than a "barrier":
+     - In a join, only one thread continues
+     - In a barrier, all threads continue
+2. **Map**: performs a **function over every element of a collection**
+   - Replicates a serial iteration pattern where each iteration is independent
+     of the others, the number of iterations is known in advance, and
+     computation only depends on the iteration count and data from the input
+     collection
+     - **Basically a foreach loop**
+   - The replicated function is referred to as an "elemental function"
+3. **Stencil**: **elemental function accesses a set of "neighbors"**
+   - It is a **generalization of map**
+   - Boundary conditions must be handled carefully
+4. **Reduction**: **combines every element in a collection using an associative
+   "combiner function"**
+5. **Scan**: computes **all partial reductions** of a collection
+   - For every output in a collection, a reduction of the input up to that point
+     is computed. If the function being used is associative, the scan can be
+     parallelized
+6. **Recurrence**: **more complex version of map**, where the **loop iterations
+   can depend on one another**
+   - For a recurrence to be computable, **there must be a serial ordering of the
+     recurrence elements so that elements can be computed using previously
+     computed outputs**
+
+### Data management patterns
+
+#### Serial data management
+
+Serial programs can manage data in many ways. Data management deals with how
+data is allocated, shared, read, written, and copied.
+
+1. **Random R/W**: memory locations indexed with addresses, pointers are
+   typically used to refer to memory addresses
+   - Aliasing can cause problems
+2. **Stack allocation**: dynamically allocate data in LIFO manner
+   - Efficient and preserves locality
+   - When parallelized, typically each thread will get its own stack
+3. **Heap allocation**: useful when data cannot be allocated in a LIFO fashion
+   - Slower and more complex than stack allocation
+   - A parallelized heap allocator should be used when dynamically allocating
+     memory in parallel (using e.g. different allocation pools)
+4. **Objects**: language constructs to associate data with code to manipulate
+   and manage that data
+
+#### Parallel data management
+
+To avoid things like race conditions, it is critically important to know when
+data is, and isn't, potentially shared by multiple parallel workers.
+
+Some parallel data management patterns can help us with data locality
