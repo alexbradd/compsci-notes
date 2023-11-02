@@ -1607,4 +1607,68 @@ data is allocated, shared, read, written, and copied.
 To avoid things like race conditions, it is critically important to know when
 data is, and isn't, potentially shared by multiple parallel workers.
 
-Some parallel data management patterns can help us with data locality
+Some parallel data management patterns can help us with data locality.
+
+1. **Pack**: used to **eliminate unused space in a collection**; elements marked
+   false are discarded, the remaining elements are placed in a contiguous
+   sequence in the same order
+   - Useful when used with map
+   - Unpack is the inverse and is used to place elements back in their original
+     locations
+2. **Pipeline**: connect tasks in a producer-consumer manner
+   - A linear pipeline is the basic pattern idea, but a pipeline in a DAG is
+     also possible
+3. **Geometric decomposition**: **arrange data into sub-collections**
+   (overlapping or not)
+4. **Gather**: **read** a collection of data **given a collection of indices**
+   - The output collection shares the same type as the input collection, but it
+     shares the same shape as the indices collection
+5. **Scatter**: the **inverse of gather**
+   - A set of inputs and indices is required, but each element of the input is
+     written to the output at the given index
+
+### Other patterns
+
+- Superscalar Sequences: write a sequence of tasks, ordered only by dependencies
+- Futures: similar to fork-join, but tasks do not need to be nested
+  hierarchically
+- Speculative Selection: general version of serial selection where the condition
+  and both outcomes can all run in parallel
+- Workpile: general map pattern where each instance of elemental function can
+  generate more instances, adding to the “pile” of work
+- Search: finds some data in a collection that meets some criteria
+- Segmentation: operations on subdivided, non- overlapping, non-uniformly sized
+  partitions of 1D collections
+- Expand: a combination of pack and map
+- Category Reduction: Given a collection of elements each with a label, find all
+  elements with same label and reduce them
+
+### Map pattern
+
+It applies a **function to each element in a list and returns a list of
+results**. In natural language: "Do the same thing many times". The operation
+applied is a map if it can be **applied to each element without knowledge of
+neighbours or without shared state**.
+
+Independence is a big win. We can run map **completely in parallel**, more
+precisely: $T(\cdot)$ is $\mathcal{O}(1)$ plus implementation overhead that is
+$\mathcal{O}(\log n)$.
+
+Maps are **usually unary** (one input), but they can be also **N-ary** (N input
+from N arrays). All inputs must have the same number of elements.
+
+Often several map operations occur in sequence. We can sometimes **"fuse"
+together** the operations to perform them at once. Sometimes it can be
+impractical to fuse together the map operations. We can instead **break the work
+into blocks**, giving each CPU one block at a time, hoping to **maximize cache
+usage**.
+
+**Similar** patterns:
+
+- **Stencil**: each instance of the map function **accesses neighbors of its
+  input**, offset from its usual input.
+- **Workpile**: work **items can be added to the map while it is in progress**,
+  from inside map function instances
+- **Divide and conquer**: applies if a problem can be divided into smaller
+  subproblems recursively until a base case is reached that can be solved
+  serially
