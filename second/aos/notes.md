@@ -1193,7 +1193,161 @@ There exists a Linux API to enforce the use **atomic read-modify-write
 instructions when available** in the ISA. It is based on `atomic_t` (32bit) and
 `atomic64_t` types and always **guarantees that such operations are not
 interruptible** by using under the hood `_atomic_compare_xchg`. Compare And Swap
-(CAS), however, is **not the silver bullet since it can still be fooled (see ABA
-problem)**.
+(CAS), however, is **not the silver bullet since it can still be fooled**.
+
+The problem arises from the **"Compare" part**: as long as the **value involved
+in the comparison is the same**, the swap can proceed. Let us consider the
+following sequence on a linked list:
+
+1. Thread 1: `pop()` but interrupted before the CAS
+
+   ```txt
+   s.top -------+
+                V
+   T1.curh ->  [ ]
+                |
+   T1.nexth -> [ ]
+                |
+                |
+   ```
+
+2. Thread 2: `pop(); pop();`
+
+   ```txt
+   s.top -----------+
+                    |
+   T1.curh ->   X   |
+                    |
+   T1.nexth ->  X   |
+                    |
+               [ ] <+
+   ```
+
+3. Thread 3: `push();`
+
+   ```txt
+   s.top -------+
+                V
+   T1.curh ->  [ ]--+
+                    |
+   T1.nexth ->  X   |
+                    |
+               [ ]--+
+   ```
+
+4. Thread 1: resumes at the CAS
+
+   ```txt
+   s.top -------+
+                |
+                |
+                V
+                X
+
+               [ ]
+   ```
+
+This is a case of the so-called **ABA problem**.
 
 #### Read-copy-update
+
+RCU is a synchronization mechanism that allows for **lock-free read-side access
+to shared data** while ensuring **consistency with simultaneous writes**. It is
+a **deferred reclamation system** just like hazard pointers except that it is
+for anything happening in a critical section. The goal is to **provide the same
+low latency read performance to shared data that is frequently read and
+non-frequently written**.
+
+The idea is for:
+
+1. **Readers**:
+   - Avoid locks
+   - Tolerate concurrent writes (might be multiple concurrent versions)
+   - **Might see old version for a limited time**
+2. **Writers**:
+   - Are essentially **delayed**
+   - **Create a new version** (copy) of data structure
+   - **Publish new version with a single atomic instruction**
+
+The reader uses `rcu_read_lock` to **inform the reclaimer that it is reading**
+and to create copies in case of writes. When they are finished they use
+`rcu_read_unlock`. A **"grace period" must elapse between the two parts**, and
+this grace period must be **long enough that any readers accessing the item
+being deleted have since dropped their references** (they entered the so called
+**"quiescent state"** and invoked `rcu_read_unlock`). This is called
+quiescent-state-based reclamation.
+
+Since the read section cannot block, a **context switch is a quiescent state**.
+The kernel can **infer that a grace period elapsed when all other CPUs have
+executed a context switch**. The **reclaim callback is scheduled by the writer
+with** `call_rcu` or `synchronize_rcu`.
+
+```c
+// READER
+void manipulate_task_list(...) {
+  rcu_read_lock(); // inform the reclaimer and disable preemption
+  // cannot issue any blocking (sleeping) actions that might switch the context
+  for_each_process(p) {
+    /* Do something with p */
+  }
+  rcu_read_unlock();
+}
+
+// WRITER
+void release_task(struct task_struct *p) {
+  spin_lock(&tasklist_lock);
+  list_del_rcu(&p->tasks); // removal phase. Must allow concurrent read/write access
+  spin_unlock(&tasklist_lock);
+  synchronize_rcu(); // wait for a grace period to pass
+  kfree(p);
+}
+```
+
+RCU used this way **synchronizes multiple readers and 1 writer**. If we have
+**multiple writers**, we need to use **proper locking**.
+
+### Memory consistency models
+
+A memory model defines the **behavior of the visibility (and consistency) of the
+operations done by one thread of an SMP processor from another thread**. Put in
+another way, it determines **which values can be returned by read primitives**.
+A memory model is best understood in terms of possibilities that are excluded;
+essentially "if you write this, then the following cannot happen...".
+
+Due to write buffering, speculation and cache coherency protocols of modern
+processors, the order in which memory accesses are seen by another thread occur
+might be different from the order in the issuing thread.
+
+#### Sequential consistency
+
+We define a $<_p$, which defines a **program order** of the instructions in a
+single thread, and a $<_m$ which defined the **order in which these are visible
+in shared memory** (also called the _happens-before_ relations). A
+multi-processor is called **sequentially consistent if and only if for all pairs
+of instructions** $(I_{p,i}, I_{p,j})$ you have:
+
+$$
+I_{p,i} <_p I_{p,j} \implies I_{p,i} <_m I_{p,j}
+$$
+
+In practice the operations of each individual processor appear in this sequence
+in the order specified by its program.
+
+### Total store order
+
+This is the model that **Intel processors** use. When these processors issue a
+store, they utilise a **local write queue** - also known as a store buffer - to
+hide memory latency (a global lock is also used).
+
+The **order of the stores is agreed upon by all processors** (due to the write
+queue). However, the **write queues are local to each processor**, so we can
+have **inconsistencies on reads** (which if possible **fetch the value in the
+queue**):
+
+1. We can have **older writes writes that appear after newer writes** (old write
+   is still in the queue while the new has been flushed)
+2. **Reads can read different values depending on the processor** (one read
+   reads from the queue, while the other from shared memory)
+
+To avoid inconsistencies, **"fence" instructions** are provided. These
+instructions simply **flush the write queue**.
