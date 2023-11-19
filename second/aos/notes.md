@@ -1333,7 +1333,7 @@ $$
 In practice the operations of each individual processor appear in this sequence
 in the order specified by its program.
 
-### Total store order
+#### Total store order
 
 This is the model that **Intel processors** use. When these processors issue a
 store, they utilise a **local write queue** - also known as a store buffer - to
@@ -1351,3 +1351,126 @@ queue**):
 
 To avoid inconsistencies, **"fence" instructions** are provided. These
 instructions simply **flush the write queue**.
+
+#### Partial store order
+
+It is the memory order of the **ARM processors** and is even **weaker than
+TSO**. Each processor **reads from and writes to its own complete copy of
+memory** (it is not a whole duplicate, but it is just a model). **Each write
+propagates** to the other processors **independently**, with **reordering
+allowed** as the writes propagate.
+
+A small program that allows us to find out whether a machine uses a memory model
+or another is called a litmus test.
+
+### Hardware synchronization techniques
+
+A data race is a **situation where the correctness of our program depends on the
+memory model and the ordering of threads**. In general, to **avoid data races**
+you want to reason more intuitively about the memory model behavior of TSO and
+PSO by **enforcing manually sequential consistency guarantees**. We can do this
+by using instructions such as fences or acquire/release.
+
+1. **Fences** (barriers): **enforce the memory order to be equal to program
+   order**. They **solve the ordering problems of TSO**.
+
+   They are pretty **costly** since they **require flushing the whole write
+   queue** and stop the compiler from optimizing.
+
+2. **Acquire/release**: they are two instructions:
+
+   - When we `store-release`, we want that **all necessary buffers are flushed
+     before that store** (ensures that the release **happens after all write
+     operations before it in program order**)
+   - When we `acquire-load`, we want that this **load is executed before all
+     other instructions after it** (ensures that the **program order is
+     respected for the load in question**)
+
+   Acquire/release is **lighter on resources** since it requires **flushing only
+   the buffer we need and enforcing only the ordering strictly needed**,
+   allowing the processor to still do some work/speculation in the meantime.
+
+### The linux kernel memory model (LKMM)
+
+**Compilers can introduce additional reordering of instructions** that might
+appear as if the machine had a weaker memory model. This adds another layer of
+complexity to hardware memory models.
+
+**Higher level languages must give the programmer a way to enforce ordering**
+happens-before relations just as it is done at the ISA level. This is called the
+**language memory model**. These ways **must work portably across SC/TSO/PSO
+platforms** and account for hardware differences. Moreover, **if we write a data
+race free program**, we will get that **it will behave like a sequentially
+consistent one, even exploiting hardware and software optimizations**.
+
+In the kernel, the **primitives** `READ_ONCE` (`R[once]`) , `WRITE_ONCE`
+(`W[once]`) **prevent the compiler from reordering writes/reads, omitting them
+or doing too many of them**.
+
+The **linux memory model** is the **least common denominator of all CPU families
+supported** by the kernel. Essentially, it is **PSO**. It is described as the
+**cumulative effect of a language-level model** (the subset of C specific to the
+kernel) **and the hardware models targeted** and describes the effect produced
+by special C instructions (or primitives).
+
+For **synchronization**, the **primitives** `smp_store_release` (`W[release]`)
+and `smp_load_acquire` (`R[acquire]`) are used to create happens-before arcs
+between different threads.
+
+## Linux memory management
+
+Every process has its **virtual address space**. Pages are then **mapped onto
+the physical space in the page directory**. The linux **kernel mappings are
+common to all processes** and **live on the upper range** of the address space.
+The kernel space is **divided** into two:
+
+1. **Logical** space: logical mappings **map 1:1 in a continuous fashion** to
+   the physical space from a known offset
+   - In this area we can find, for example, the kernel code
+   - Very easy to manipulate (simply add/remove an offset)
+   - To allocate here we use `kmalloc(size)`
+2. **Virtual** space: pages are **mapped in a non-contiguous way**
+   - To allocate here we use `vmalloc(size)`
+
+### Process address space
+
+In theory, a page table is all the kernel needs to implement virtual memory.
+However, **page tables represent only pages that are present in memory, not all
+the pages of a process**. How can we:
+
+- Understand if a VPN is valid but not mapped?
+- Get the corresponding data (disk, other existing pages in memory)?
+
+Linux uses **Virtual memory areas (VMA)**. They are **basically virtual address
+ranges** of the process address space **with some flags that specify the
+permissions/behaviour** and **whether it is mapped to files or such**.
+
+Many of them **correspond to file mappings** (executable or not) (**areas with a
+backing store**). Many VMA are **not mapped to any file** (e.g the stack and the
+heap), and we **call them anonymous**.
+
+A **page fault** it is an **intervention by the virtual memory subsystem**. The
+**function** that is invoked on a page fault to **find and inspect the VMA** is
+`find_vma()`. Depending on the outcome we can have:
+
+1. **Wrong permission**: causes a segmentation fault
+2. **Unmapped address**: causes a segmentation fault
+3. **Mapped, but not physically**: `handle_mm_fault` is called, **if a page
+   table entry needs to be created**, `handle_pte_fault` uses the following
+   functions:
+   - `do_anonymous_page` to provide anonymous page for e.g. the stack
+   - `do_swap_page`: read from backing store a page previously swapped out
+   - `do_wp_page`: allocate a new anonymous CoW page for private mappings
+   - `do_fault` + `filemap_fault`: read from file
+
+**VMA** enable us to **do demand paging**. What is demand paging can be
+explained by looking at what happens on a `brk()`:
+
+1. Program calls `brk()` to enlarge heap
+2. `brk()` enlarges the VMA but does not allocate pages in physical memory
+3. Process tries to access new memory: page fault happens and `find_vma` is
+   called
+4. `handle_mm_fault` and `handle_pte_fault` are invoked to build VPN to PPN
+   mapping
+
+Thus demand paging **means allocating physical memory only when needed**.
