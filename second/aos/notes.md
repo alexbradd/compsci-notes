@@ -1474,3 +1474,225 @@ explained by looking at what happens on a `brk()`:
    mapping
 
 Thus demand paging **means allocating physical memory only when needed**.
+
+**VMAs with a backing store** can be **created explicitly** using `mmap()` with
+the backing store file descriptor:
+
+```c
+int fd;
+struct stat st;
+char *addr;
+
+// Open the file for reading
+fd = open("test.txt", O_RDONLY);
+
+// Get the size of the file
+fstat(fd, &st)
+
+// Map the file into memory, from here on, accessing
+// *addr will access file's content
+addr = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+/// ...
+```
+
+In this way, we are given direct access to the kernel internal page cache!
+
+### Kernel address space
+
+`kmalloc` is the main function we are going to use. It takes 2 arguments:
+
+1. Size of the block to be allocated
+2. **Allocation flags**, controls the behaviour of the function in a number of
+   ways:
+   - `GFP_KERNEL`: **normal allocation** of kernel memory, **may sleep**
+   - `GFP_ATOMIC`: used to **allocate memory from interrupt handlers** and other
+     code **outside of a process context**, **never sleeps**
+   - `GFP_USER`: used to **allocate memory for user-space pages**, it may sleep
+
+If there no more pages left, the **allocation may fail**. `kmalloc`
+**"sleeping"** means that **if there isn't much memory, the kernel may put the
+process to sleep until there is more memory**.
+
+`kmalloc` is **used for smaller allocations**. If we need **large chunks of
+contiguous pages**, we have three functions available:
+
+```c
+get_zeroed_page(unsigned int flags);
+_get_free_page(unsigned int flags);
+get_free_pages(unsigned int flags, unsigned int order);
+```
+
+These functions can be **used at any time**, but **they may fail** due to lack
+of available memory. It's also **crucial to ensure that the same number of pages
+allocated are freed**, or **else the system memory map gets corrupted**.
+Over-allocation can degrade system responsiveness as the kernel tries its best
+to fulfill allocation requests. This can potentially render the computer
+unusable or open new security vulnerabilities like denial-of-service.
+
+If we want to have **precise control down to the NUMA node level** of where you
+want to allocate, you must **use a function called** `alloc_pages_node`:
+
+```c
+struct page *alloc_pages_node(int nid, unsigned int flags, unsigned int order);
+```
+
+The `vmalloc` function is a Linux memory allocation mechanism that **allocates a
+contiguous memory region in the virtual address space**, returning a pointer to
+a linear memory area of size at least size or 0 if an error occurs. **Underlying
+physical pages are not contiguous** however. It's **important that it's not used
+for small allocations due to its overhead** and **shouldn't be used in an atomic
+context because it could potentially sleep**.
+
+All allocation functions have **corresponding functions to free** the allocated
+memory.
+
+### Kernel space allocation
+
+In general, within the kernel, **small fixed size data structures are very often
+allocated and released**. We **cannot allocate a whole page just for a small
+object**, meaning we cannot use the previous functions (which deal in whole
+pages). The **kernel buffers its requests through two additional allocators**:
+
+1. **Quicklists**: used only for paging
+2. **Slab allocator**: used for other buffers
+
+Basically, they are **pools of pre-allocated memory used for managing small
+object**.
+
+#### The slab allocator
+
+The slab allocator works with **frames, pages that are allocated to contain
+small data structures**. **Each pool is accessed through a** `kmem_cache`
+object, and there is **one for each type of data structure we want to
+allocate**. The **function used to allocate** in this structure is the
+following:
+
+```c
+void *kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags);
+```
+
+**For each** `kmem_cache`, **for each CPU we have a slab**. This allows to
+**allocate memory without any spinlock** since it is **data local to each CPU**.
+If a **slab fills up**, it is **swapped out with a partially filled one**
+(`kmem_cache_node` keeps track of partially filled slabs). This **swapping
+requires, however, locking** since the slab may be associated with another CPU.
+
+After a `kmem_cache_free`, the **object is left in an initialized state**,
+enabling a future allocation to start using the object immediately without
+wasting time initializing the structure.
+
+The slab allocator provides **two main classes of caches**:
+
+- **Dedicated**: These are **caches that are created in the kernel for commonly
+  used objects** (e.g., `mm_struct`, `vm_area_struct`, etc...); they are
+  reinitialised at free
+- **Generic** (size-N and size-N(DMA)): These are **general purpose caches**,
+  which in most cases **are of sizes corresponding to powers of two**
+
+Under the hood, `kmalloc` also uses the slab allocator.
+
+#### The buddy allocator
+
+It is a **coarser-grain allocator** that **sits on top** of the slab allocator
+and the other allocator. The buddy allocator **handles**:
+
+1. The **slab-allocator's pages**
+2. The **`vmalloc`** requests
+3. The **`alloc_pages`** requests
+4. **User space pages**
+
+For how it works, wikipedia has a very nice explanation.
+
+### Physical address space
+
+#### Zonal page allocation
+
+The system may be composed of different NUMA nodes. **Each node has fast access
+to the memory directly connected to it**; to access other memory it needs
+multiple hops to other CPUs. The **kernel is aware of the NUMA node layout** and
+**tries to account for it when allocating memory**.
+
+The kernel **holds a list** (`pgdat_list`), with **one element** (`pg_data_t`)
+**for each NUMA node**. Each element is **subdivided into zones**. A **zone is
+basically a memory range that stores info on the pages that are in that range**.
+The **two most important** zones are:
+
+1. `ZONE_DMA`: used for DMA
+2. `ZONE_NORMAL`: used for everything else
+
+Each zone contains **two structures**:
+
+- `free_area`: **lists (one list of each order) of free contiguous page blocks**
+- `watermarks`: parameters that are **used to regolate the free page usage**
+
+#### User-space page caching
+
+The **page cache is the set of physical page descriptors** (`struct page`)
+**corresponding to pages that contain data read and written** from regular
+filesystem files or associated with anonymous VMAs. It is accessible through:
+
+1. **Forward mapping**: useful to **get to the physical page containing the
+   file's data at an offset**
+2. **Backward mapping**: useful **when we want to invalidate page tables entries
+   of shared pages in different processes**
+
+**Some physical pages can be shared between VMAs** for example because they are
+packed by the same file or are CoW. **Reverse mapping** allows to answer the
+question: **"given a page, find all VMAs that contain it"**. The page descriptor
+support reverse mapping with the following fields:
+
+- `_count`: how many user space sharings there are
+- `struct address_space`: how to reach the mapping in the case we want to
+  invalidate it
+- `flags`: describes the state of a page
+- A reference counter for all the uses of the page
+
+### Page frame reclaim
+
+We have seen that **each zone contains some watermarks**. These watermarks are
+an **indicator of how much free pages are there** in that zone (`high`, `low`,
+`min`). **Page reclaim** is handled by a **kernel thread called** `kswapd`.
+
+1. If the zone has `high`, everything is normal
+2. If the **zone is under** `high` (meaning it is `low`) `kswapd` is **started
+   and periodically evicts pages asynchronously**
+3. If the **zone is under** `low`, our **allocations trigger directly the**
+   `kswapd` process
+4. If the **zone reaches** `min`, the **allocator will start evicting pages**
+   - **There can be cases** (`GFP_ATOMIC` allocations) **where pages can go
+     under `min`**
+
+The **page frame reclaim algorithm** is **derived from an algorithm** called
+**"clock algorithm"**. The **basic** algorithm goes like this:
+
+- Keep a **circular list of pages in memory**
+- We have a **cursor that goes along the list** (like the hands of a clock)
+- Each **page has a reference bit**, which is **set if the page has been
+  recently referenced** and is **automatically turned back to 0 after some
+  time**
+- If the **cursor finds a page with the reference bit set to 0**, that page is
+  chosen to be **evicted**
+
+This algorithm is very simple to implement and **efficiently approximates the
+LRU algorithm**, which is the optimal algorithm for this case. The true LRU
+algorithm requires using timestamps and timers, which are expensive.
+
+The **in-kernel implementation** has a one **important tweak**: it
+**acknowledges the difference between anonymous and backed pages**. The
+optimization is based on the fact that **most often files are accessed only once
+and then never again**, it is roughly like this:
+
+- The following is done both for anonymous and backed pages, with minor
+  differences (we are going to see how it works for backed pages)
+- We have **two lists**:
+  - An **inactive list** containing **pages that have not been referenced for
+    some time**, the **eviction "cursor" loops this** list
+  - An **active list** containing pages that have been referenced recently
+- **Pages** need to be **referenced two times to go back to the active list**
+  - **Once** sets the reference bit to one and **moves the page to the front**,
+    **twice** **moves** the page **to the active list**
+- **Periodically** the **reference bit** of pages **in the active list is
+  flipped to 0**
+  - **Flipping** the reference bit **to 0 causes a move-to-front** of the page
+- **Periodically the head of the active list will be moved to the inactive
+  list**
