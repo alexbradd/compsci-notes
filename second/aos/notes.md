@@ -1696,3 +1696,106 @@ and then never again**, it is roughly like this:
   - **Flipping** the reference bit **to 0 causes a move-to-front** of the page
 - **Periodically the head of the active list will be moved to the inactive
   list**
+
+## System virtualisation
+
+A **system virtual machine** is an efficient, **isolated duplicate of the real
+system that can run a commodity OS**. This is different than a process virtual
+machine, which is what we have seen up until now:
+
+- Process virtual machine have the illusion of having the whole machine's
+  resources to themself
+- Process virtual machines, however, do not access peripherals directly, but
+  through the operating system's abstractions
+  - This makes the virtualisation easier
+
+It is **based on a virtual machine monitor**, or hypervisor, that relies solely
+on direct execution. The definition boils down to the following
+**requirements**:
+
+- **Fidelity**: equivalence of behavior with the real machine
+- **Safety**: the virtual machine cannot override the VMM's control of
+  virtualised resources
+- **Efficiency**: programs should "show at worst only a minor decrease in
+  performance"
+
+Some terminology:
+
+- **Host system**: the OS where virtual machines run
+- **Guest system**: the OS that runs on top of the virtual machine
+- **Virtual machine monitor/Hypervisor**: software program that translates or
+  mediates access to physical resources such as interrupts or sensitive
+  processor state
+  - Ensures isolation
+  - **Type 1 Hypervisor**: also called native hypervisor; runs on bare metal
+    without any OS abstraction
+  - **Type 2 Hypervisor**: runs in the context of another OS (think about KVM or
+    VirtualBox).
+- **Instruction types**: unprivileged and privileged. The latter are those that
+  trap in user mode. The virtualisation idea is to run privileged instructions
+  in a de-privileged mode.
+- **Instruction sensitivity**: an instruction is virtualisation-sensitive if it
+  is:
+  - **Control sensitive**: it modifies directly the machine state (e.g.,
+    enabling or disabling interrupts, modifying the interrupt vector table)
+  - **Behavior sensitive**: instructions that behave differently when used in
+    either user or supervisor mode. It might affect fidelity.
+
+This allows us to formulate the following **theorem** (from Popek and Goldberg):
+
+> For any conventional computer, a virtual machine monitor may be built if the
+> set of sensitive instructions for that computer is a subset of the set of
+> privileged instructions.
+
+During the years, however, this theorem was **proven to not be 100% accurate**.
+
+We can have **two types of virtualisation**:
+
+1. **Software based virtualisation**: both **user and supervisor (OS) are run in
+   user mode**, special instructions are "trapped and emulated" or binary
+   translated
+2. **Hardware based virtualisation**: the **CPU offers some hardware support**
+   to reduce hypervisor interventions
+   - CPUs with **virtualisation extensions** allow to **distinguish host
+     user/supervisor modes and the guest user/supervisor modes**: the guest user
+     and supervisor modes are running in guest-user and guest-supervisor modes,
+     removing the need to collapse everything in user mode
+   - **System calls need not to be trapped** any more, as the hardware routes
+     them to the guest supervisor, we **need to intervene only when hardware is
+     directly accessed** (since the guest sees only virtualised resources)
+
+### Software based virtualisation
+
+Software-based virtualisation means **deprivileging**:
+
+- The **guest supervisor is translated into host user mode** (e.g. x86 ring 1)
+- **Privileged instructions or memory access produces an interceptable trap**
+- The **host supervisor installs its own structures** (shadow structures)
+  **instead of those dictated by the guest supervisor**
+
+This mechanism becomes complicated when we analyze **how we handle the page
+table**:
+
+- The **guest has its own page table**
+- The **hypervisor needs to set up another level of indirection**: the
+  **physical tables of the guest** (which are in reality the host virtual pages)
+  **need to be re-mapped to physical pages on the host**
+  - **Final map** installed by the hypervisor **needs to translate guest-virtual
+    to host-physical**
+
+This generates **a lot of interactions between supervisor and hypervisor**.
+Moreover, since we have **deprivileged both user and supervisor**, we can **have
+cases where the user might be able to read into the supervisor's memory**,
+breaking the fidelity requirement. This means that **we also need to trap on
+supervisor range accesses to check permissions**.
+
+#### Problems with pure trap-and-emulate on Intel machine
+
+Originally, Intel had **unprivileged virtualisation sensitive instructions**:
+
+- **Instructions manipulating the interrupt flags** (`pushf`, `popf`...): either
+  **creating confusion in supervisor or hypervisor** as it cannot track the
+  state of interrupts correctly.
+- **Reading and writing segment descriptors and registers** (`pop seg`,
+  `push seg`, `mov seg`, `sgdt`): the **supervisor can see that it has been
+  deprivileged** by reading the Current Privilege Level and/or VMM state.
