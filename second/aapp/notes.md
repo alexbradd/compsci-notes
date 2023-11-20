@@ -1672,3 +1672,108 @@ usage**.
 - **Divide and conquer**: applies if a problem can be divided into smaller
   subproblems recursively until a base case is reached that can be solved
   serially
+
+## Parallel programming
+
+There is a difference between designing a parallel algorithm or a parallel
+program:
+
+1. To design a **parallel algorithm** we need to:
+   - **Understand the problem** to be solved
+   - Analyze **data dependencies**
+   - **Partition** the solution
+2. To design a **parallel program** we need to:
+   - **Analyze** the target **architecture**(s)
+   - **Select** the best **parallel programming model and language**
+   - Analyze the communication strategies (cost, latency, bandwidth, visibility,
+     synchronization, etc.)
+
+To evaluate a sequential algorithm we used its sequential complexity. When we
+are **evaluating a parallel program** we use **two metrics**:
+
+1. **Time complexity**: the amount of time required to produce a solution
+2. **Resource complexity**: how many resources are needed to produce the
+   solution in that time
+
+To analyze a parallel algorithm we can consider its structure as a DAG, each
+task is a node and each edge is a data dependency.
+
+> Note:
+>
+> - Concurrent tasks are tasks that can be executed independently from each
+>   other
+> - Parallel tasks are tasks that are executed at the same time (due to multiple
+>   computing resources being available)
+
+For a **qualitative evaluation** of parallel algorithms we can define the
+following metrics:
+
+1. **Work**: number of operations performed
+2. **Span**: longest chain of dependences (i.e. critical path)
+3. **Parallelism**: measures the efficiency of the utilization of resources
+
+   $$ P = \frac{W}{S} $$
+
+   It can be seen as the average number of processors in used
+
+**Good parallel algorithms** are designed to have **low work and high
+parallelism**. Do not forget the trade-off between work and span (mainly
+communication/synchronization overhead).
+
+### POSIX threads
+
+PThread (and OpenMP) implements the shared memory parallel programming model
+with threads.
+
+How PThread works has been discussed to death, so I am not repeating my self.
+
+### OpenMP
+
+OpenMP (Open Multi-Processing) is an API for **multi-platform shared memory
+multi-threaded programming**. It is based on **compiler directives** (~80%) and
+provides library routines (~19%) and environment variables. It is slightly
+higher level than PThread. To use it we add the `-fopenmp` compiler option,
+include the `omp.h` header (for library routines) and wrap routine calls inside
+`#ifdef _OPENMP`.
+
+It can **implement both coarse-grained and fine-grained parallelism**. It is
+based on the **fork-join paradigm**, like PThreads:
+
+1. A **master thread forks** a specified number of **slave threads**
+2. **Tasks** are **divided among all available threads (including the master)**
+3. Slaves run concurrently as the runtime environment allocates threads to
+   different processors
+4. **Threads can survive single tasks and be assigned multiple tasks** according
+   to the scheduling policy selected by the user
+
+The directives are `#pragma omp <name> [clauses]` directives. If the name is not
+valid, they are ignored. These **directives** are **applied to the block
+following them**. The auxiliary functions are usually used to set/get relevant
+information such as the number of threads and to manage explicit locks.
+
+#### Parallel
+
+The most basic directive we have is `parallel`. The **main thread spawns a team
+of slaves and becomes the master**. Each **thread runs a copy of the body**. All
+threads are **joined with an implied barrier at the end** of the block. **If any
+thread terminates, all threads in the team terminate**, leaving the work done
+until then undefined. Clauses supported:
+
+- `if(condition)`: conditional parallelisation
+- `num_threads(int)`: set the number of threads to use. Can be done also with
+  - `omp_set_num_threads()` library function
+  - `OMP_NUM_THREADS` envvar
+- Data scope clauses (explained later)
+
+#### Work sharing
+
+**Work-sharing constructs divide the execution of a code region among the
+members of the team** that encounter it. They must be **enclosed within a**
+`parallel` directive. Work sharing constructs **do not launch new threads**;
+there is no implied barrier at the entry but there is one at the end. We have 3
+constructs:
+
+1. `for`: shares iterations of a loop across the team (**data parallelism**)
+2. `sections`: breaks work into separate, discrete sections, each executed by a
+   thread (**functional parallelism**)
+3. `single`/`master`: **serializes** a section of code
