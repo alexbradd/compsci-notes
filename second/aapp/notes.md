@@ -1947,3 +1947,159 @@ cancellation. It is done in a **best-effort manner**.
 There is an overhead in checking for cancellation, so `OMP_CANCELLATION` is
 **disabled by default**.
 
+### MPI
+
+It is a standard that **defines interfaces for distributed memory
+communications**. The **target** is the **HPC scenario**: performance is key.
+MPI is standard and has open source implementations as well as vendor specific
+ones. An MPI implementation contains:
+
+1. `libmpi.so`: library that implements MPI
+2. `mpifort`/`mpicc`/`mpicxx`: compiler wrappers
+3. `mpiexec`: launcher to spawn `n` instances of the application
+   - It can spawn instances across multiple nodes
+   - Each application can spawn threads, so it is common to see MPI + OpenMP
+
+At the beginning, we need to **initialize MPI and negotiate the thread usage**
+level. We have the following levels:
+
+1. `MPI_THREAD_SINGLE`: there is **only the main** thread
+2. `MPI_THREAD_FUNNELED`: **multithreaded**, but only **one thread uses MPI**
+3. `MPI_THREAD_SERIALIZED`: **multithreaded**, but only **one thread at a time
+   will call MPI functions**
+4. `MPI_THREAD_MULTIPLE`: **multithreaded**, no restrictions
+
+```c
+// - argc, argv need to be passed to remove MPI related command line args
+// - required is the thread level we want
+// - provided is the actual level that we get from the implementation
+int MPI_Init_thread(int *argc, char ***argv, int required, int *provided);
+```
+
+Most modern implementations support all the thread levels. If multithreading is
+supported **all the MPI functions are thread-safe and progress independently**.
+**At the end** of our application we need to **finalize** it.
+
+```c
+int MPI_Finalize(void);
+```
+
+Finalizing **ensures that no pending operations or unprocessed data is left**.
+It should be the **last MPI function** we call and we **can't re-initialize it
+afterwards**.
+
+Almost all the MPI functions return `MPI_SUCCESS` on success or the error code.
+
+An **MPI communicator is a group(s) of processes that share a communication
+context** (represented by a variable with type `MPI_Comm`). Two communicators
+are available by default:
+
+1. `MPI_COMM_WORLD`: a group that involves **all the MPI processes**
+1. `MPI_COMM_SELF`: a group that involves **only the current process**
+
+```c
+// Number of processes in the communicator
+//
+// size is an output variable
+int MPI_Comm_size(MPI_Comm comm, int *size);
+
+// A unique address of the process in a communicator (range is [0; size]).
+// A process can have different ranks in different communicators.
+//
+// rank is an output variable
+int MPI_Comm_rank(MPI_Comm comm, int *rank);
+```
+
+#### Point-to-point communication
+
+MPI provides a set of functions to **send/receive a message between two
+processes**, in both **blocking and non blocking** ways. A message is
+**composed** of:
+
+- The **rank** of sender and receiver
+- The **tag**, an int that represents the topic of the message (semantics
+  decided by application developer)
+- Optionally, **content**
+
+```c
+int MPI_Send(const void *buf,
+             int count,
+             MPI_Datatype datatype,
+             int dest,
+             int tag,
+             MPI_Comm comm);
+
+// when supported, also available
+int MPI_Send_c(const void *buf, // ptr to start of data
+               MPI_Count count, // number of elements to send
+               MPI_Datatype datatype, // the type of data (an enum of POD)
+               int dest, // destination rank
+               int tag,  // topic
+               MPI_Comm comm)
+```
+
+There are **different ways that MPI can handle outgoing messages**:
+
+1. **Synchronous**: send is **blocking** until there is a **matching recv**
+2. **Buffered**: bundle messages together before sending
+3. **Standard**: **implementation chooses** between buffered and synchronous
+4. **Ready**: send **can start only if matching recv is already started**
+   - Used to **optimize out some hand-shaking**
+
+Based on the flavours of communications, we have different `Send` functions:
+`MPI_Bsend` , `MPI_Ssend` , `MPI_Rsend`. The **blocking semantics** are the
+following:
+
+- The call **blocks until**:
+  - The **implementation has stored the buffer** in "safe" storage
+  - [synchronous] There is a matching recv operation
+
+```c
+int MPI_Recv(void *buf,
+             int count,
+             MPI_Datatype datatype,
+             int source,
+             int tag,
+             MPI_Comm comm,
+             MPI_Status *status)
+
+// when supported, also available
+int MPI_Recv_c(void *buf, // ptr to start of the receiving buffer
+               MPI_Count count, // number of elements in buffer
+               MPI_Datatype datatype, // type of the data to receive
+               int source, // sender rank in communication context (or MPI_ANY_SOURCE)
+               int tag, // target topic (or MPI_ANY_TAG)
+               MPI_Comm comm,
+               MPI_Status *status) // output messages info (or MPI_STATUS_IGNORE)
+```
+
+**Blocking semantics**:
+
+- The call **blocks until**:
+  - There is a **matching send operation**
+  - The **implementation has completed all the data transfers**
+
+To **correctly size the receiving buffer** we can **"probe"** the next message
+(with the **same blocking semantics**):
+
+```c
+typedef struct MPI_Status {
+  // ...
+  int MPI_SOURCE; // who sent the message
+  int MPI_TAG;
+  // the message tag
+} MPI_Status;
+
+int MPI_Probe(int source, int tag, MPI_Comm comm, MPI_Status *status);
+int MPI_Get_count(const MPI_Status *status, MPI_Datatype datatype, int *count)
+
+// when available, also
+int MPI_Get_count_c(const MPI_Status *status, MPI_Datatype datatype, MPI_Count *count)
+```
+
+**Messages from the same process to the same destination do not overtake**,
+however, there is no order guarantee between messages of different processes,
+nor fairness (always overtaken). Even if the implementation supports
+multithreading, **order-preservation** is **guaranteed only at the process
+level**.
+
