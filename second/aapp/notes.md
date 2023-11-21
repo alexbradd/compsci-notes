@@ -1774,6 +1774,176 @@ there is no implied barrier at the entry but there is one at the end. We have 3
 constructs:
 
 1. `for`: shares iterations of a loop across the team (**data parallelism**)
+   - **Clauses**:
+     - `schedule` describes **how iteration of the loop are divided among the
+       team**
+       - `static`: loop iterations are **divided into blocks of size** `chunk`
+         (if not specified they are evenly divided) and then **statically
+         assigned** to threads
+       - `dynamic`: loop iterations are **divided into blocks of size** `chunk`,
+         and **dynamically scheduled** among the threads; when a thread finishes
+         one chunk, it is dynamically assigned another.
+       - `runtime`: depends on the `OMP_SCHEDULE` envvar
+     - `nowait` **avoids synchronizing** at the end of the parallel loop
+     - Data-scope
 2. `sections`: breaks work into separate, discrete sections, each executed by a
    thread (**functional parallelism**)
+   - Each section is delimited by a `section` directive
 3. `single`/`master`: **serializes** a section of code
+   - The `single` directive specifies that a **section of code is executed only
+     by a single thread**
+   - The `master` directive specifies that a **section of code is executed only
+     by the master**
+4. `task`: specifies a **work unit which may be executed or deferred to another
+   thread** in the same team
+   - The `taskwait` directive introduces a **barrier**
+   - The `taskyield` directive **interrupts execution of the current task**
+     (must be resumed by the same thread (`tied` clause) or by another (`untied`
+     clause))
+
+A **reduction** variable in a loop aggregates a value that depends on each
+iteration of the loop but does not depend on the iteration order. The
+`reduction (operator: list)` **clause** helps to perform a reduction:
+
+1. A **private copy of each variable in the list** is updated by each thread
+2. **At the end** the **reduction operation is applied** to all private copies
+   and the **end result is written into a global variable**
+3. Available operators: `+`, `*`, `-`, `&`, `|`, `^`, `&&`, `||`, `min`, `max`
+
+#### Synchronization
+
+The **`critical`** directive specifies a **region of code that must be executed
+by only one thread at a time**. The optional `name` clause enables multiple
+different critical regions. **Names act as global identifiers, different
+critical regions with the same name are treated as the same region** and all
+`critical` sections which are unnamed are treated as the same section.
+
+The `barrier` directive **synchronizes all threads** in the team. When a
+`barrier` directive is reached, a **thread will wait at that point until all
+other threads have reached that barrier**. All threads **then resume** executing
+in parallel.
+
+The `atomic` directive **ensures that a specific storage location is accessed
+atomically**. Only valid for the following statement, not for a structured
+block.
+
+#### Data environment
+
+OpenMP is based upon the shared memory programming model so most variables are
+shared by default. The OpenMP data scope attribute clauses are used to
+explicitly define:
+
+- How and which data **variables** in the serial section of the program **are
+  transferred to the parallel sections**
+- **Which** variables will be **visible to all threads** in the parallel
+  sections and **which** variables will be **privately allocated to all
+  threads**
+
+These clauses are:
+
+1. `private(list)`: declares variables in its list to be **private to each
+   thread**
+   - A new object of the same type is declared once for each thread in the team
+   - Assume that each variable is uninitialized for each thread - or use
+     `firstprivate`
+2. `shared(list)`: declares variables in its list to be **shared among all
+   threads** in the team
+   - These variables exists in only one memory location and all threads can read
+     or write to that address
+   - It is the programmer's responsibility to ensure that multiple threads
+     properly access `shared` variables
+3. `default(shared | none)`: the **scope of all variables is set** to `shared`
+   or `none`
+   - Specific variables can be exempted from the default using specific clauses
+   - Using `none` as a default requires that the programmer explicitly scope all
+     variables
+   - Depending on the implementation `private` can also be used
+4. `reduction(operator: list)`: already seen in the work sharing section
+
+#### Memory model
+
+OpenMP employs a **relaxed memory consistency model**, i.e., all **threads have
+the same view of memory at specific points** in the code, called **consistency
+points**.
+
+The `flush` directive **enforces global consistency** of shared variables.
+**Between a `flush` and the next update of shared variables all threads are
+guaranteed to have the same global view of all shared memory**. If we don't
+specify `flush-set` all shared variables are affected (please avoid
+`flush-set`). A **`flush` is implied**:
+
+1. During a `barrier` region
+2. At entry and exit of `parallel` and `critical`
+3. At exit from work sharing constructs (unless `nowait` is specified)
+
+`flush` is not implied at:
+
+1. Entry of work sharing constructs
+2. Entry and exit of `master`
+
+#### Runtime functions
+
+1. `int omp_get_num_threads()`: number of threads that are currently in the team
+   executing the parallel region from which it is called
+2. `int omp_get_thread_num()`: identifier of the current thread
+3. `void omp_set_num_threads(int num_threads)`: sets the number of threads to be
+   used in the next parallel region
+4. `double omp_get_wtime()`: provides a wall-clock timing routine
+5. `double omp_get_wtick()`: returns the number of seconds between two clock
+   ticks
+
+#### Nested parallelism
+
+OpenMP `parallel` **constructs can be nested** to achieve different levels of
+parallelism. **Each thread** that encounters a new `parallel` region **spawns
+new threads**. **Work-sharing constructs can also be nested**.
+
+Not all OpenMP implementations include nested parallelism, check with
+`OMP_DISPLAY_ENV=true` that it is supported. By default it could be disabled, to
+enable it:
+
+1. Use the runtime function `omp_set_nested()`
+2. Set `OMP_NESTED=true`
+
+We can set the default number of threads for different levels of parallelism by
+using `OMP_NUM_THREADS=<list,of,integers>`. If the nesting level is deeper, the
+last value will be used.
+
+`OMP_MAX_ACTIVE_LEVELS` defines the upper nesting limit while `OMP_THREAD_LIMIT`
+controls the maximum total number of threads spawned.
+
+When nesting, **each threads spawn a new team**, meaning that **TIDs start from
+0 again**. `omp_get_thread_num()` is not enough to identify a thread any more.
+
+Useful runtime functions for nested parallelism:
+
+- `omp_get_thread_limit`
+- `omp_get_max_active_levels`
+- `omp_set_max_active_levels(int max_levels)`
+- `omp_get_level`
+- `omp_get_active_level`
+
+For regions with more that one thread:
+
+- `omp_get_ancestor_thread_num`
+- `omp_get_team_size`
+
+#### Thread cancellation
+
+Until OpenMP 3.1, parallel execution cannot be aborted; OpenMP 4.0 introduced
+cancellation. It is done in a **best-effort manner**.
+
+- `cancel` directive **activates cancellation**
+  - The thread that wishes to terminate the execution must have `cancel` in its
+    path
+  - The directive basically **raises a flag and then terminates**
+- `cancellation point` **checks** for cancellation
+  - The directive basically **checks the if `cancel` raised the flag; if it is
+    raised, it terminates**
+- The status of cancellation is **also checked**:
+  - At **another `cancel` region**
+  - At a **barrier**
+
+There is an overhead in checking for cancellation, so `OMP_CANCELLATION` is
+**disabled by default**.
+
