@@ -1924,3 +1924,201 @@ mean to segregate system resources**, similar to `chroot`. Processes have a
 pointer to a table (one for each namespace) that translates the namespace-local
 PID to OS PID.
 
+## IO and peripherals
+
+**Logically**, memory and most peripherals are **accessible through a shared
+system bus**. **Device registers are exposed in the address space of the CPU**,
+where the processor can read/write commands/data (memory-mapped IO). **Some
+peripherals are accessible through logically different bus** (port bus); for
+this type of access we **need specific instructions** (port-based IO).
+
+The **physical implementation is different than what we see logically**. We have
+**multiple point-to-point connections** to memory or different peripherals like
+graphics cards. We could also be **required to do different hops to reach a
+device**, passing through e.g. the IO chipset. Common bus types are: PCIe, SATA,
+USB.
+
+### CPU to device interactions
+
+For **port-based** IO, IO is **done through explicit IO instructions**, for
+example on Intel we have `in` and `out`. Those are **usually privileged
+instructions**. Each **device is assigned a port number in the IO address space
+which names the device**.
+
+> Example: UART. To read more about what is go to Wikipedia.
+>
+> The device exposes some control register and a Receive (`RBR`) 8-bit register
+> and a Transmit (`THB`) 8-bit register. To read from the device we can use `in`
+>
+> ```asm
+> in RBR, %al
+> ```
+
+For **memory-mapped** IO, IO ops are **done implicitly through loads/stores**.
+The **hardware makes the device registers available as if they were memory
+locations**.
+
+Instructions such as `in`/`out` are **inefficient and limited by their use of
+registers**. Additionally, there is a **restriction of only** $2^{16}$ **port
+numbers**. **Devices registers can be operated on with loads/stores to specific
+physical addresses** (also called memory mapped registers), making port-based IO
+less useful.
+
+### Device to CPU communication
+
+Devices can communicate with the CPU in various ways, like polling, interrupts
+or DMA.
+
+1. **Polling**: the **processor waits until the device requires attention**
+   - Can result in **wasted processor cycles if the device is slow**, but it is
+     very inexpensive if the device is fast
+2. **Interrupts**: the **OS puts the calling process to sleep**, when the
+   **device** is done it **sends an hardware interrupt**, causing the CPU to
+   **jump into the OS and execute and interrupt handler**
+   - Better if the device is slow
+3. **DMA**: introduces an **additional device, the DMA controller**, that can
+   **manage transfers between different devices and memory autonomously**,
+   without CPU involvement.
+
+### Linux low-level IO
+
+Before interacting with the device, **we need to first request access to it**.
+This ensures that **no other process can access the device while we have it**.
+We can do this in two ways:
+
+1. `request_region(start, len)`: request a **port range** that starts from
+   `start` and goes for `range`
+2. `request_mem_region(start, len)`: for **memory-mapped IO**, does the same
+   thing
+
+After access is granted, depending on the type of IO we can go about it in two
+ways:
+
+1. For **port-based IO** we can **use** `inw`, `outb`, `outl` **instructions**
+   to write to directly to the ports.
+
+   If we want to **treat the region as memory-mapped** (e.g. for platform
+   agnostic drivers) we **need to call** `ioportmap()` to **map it in memory**.
+
+2. For **memory-mapped** IO, we need to **call** `ioremap()` to **map the
+   physical address in virtual space** and ensure other safe access precautions
+   (disable caching etc). The **we can write to it by calling** `writel()`.
+
+To **write to memory-mapped or port-based-but-mapped regions in a generic way we
+can call** the `iowrite32()` function.
+
+**After we are done** with the device, we **need to unmap** (if mapped) the
+memory **and then release** the region.
+
+### Interrupt management
+
+**Interrupts are associated with a specific number, called "vector"**. In linux
+**vectors range from 0 to 200**. Vectors are divided into **3 sections**:
+
+1. `[0; 19]`: used for **NMI**
+2. `[20; 31]`: **reserved**
+3. `[32; 127]`: used by **external** interrupts
+
+**Interrupts arrive from the device identified by an IRQ number**, which is
+**architecture specific**. IRQs are then **mapped by the PIC** (Programmable
+Interrupt Controller) **to the corresponding vector**.
+
+The **Interrupt Description Table** (pointed to by the IDTR register) **contains
+entries with pointers to functions that handle that interrupt** (ISRs). We of
+course can **register our own ISRs**.
+
+When linux **receives an interrupt it starts a function**, called `do_irq(n)`,
+that **receives the interrupt vector**. This function **disables local
+interrupts, executes our action and then re-enables interrupts**. To register an
+action we have a dedicated API:
+
+```c
+static irqreturn_t handler(int irq, void *mydata) {
+  // ...
+  // acquire locks on shared data (remember we are in an interrupt context!)
+  // read/write from peripherals through MMIO
+  // defer work
+  // release lock
+  return IRQ_HANDLED;
+}
+static int __init mydriver_init_module(void) {
+  // allocate space for mydata
+  ret = request_irq(irqnum, handler, flags, mydata);
+  // ...
+}
+```
+
+What we **usually want to do in an ISR is to defer work**, since **what we can
+do in an interrupt context is very limited**. Deferring work also improves
+system responsiveness, since ISRs are run with all interrupts disabled, and we
+can also aggregate many small operations into a single one, reducing work.
+Interrupt management is **structured in two levels**:
+
+1. **Top half**: executes a **minimal amount of work which is mandatory** to
+   later finalize the whole interrupt management work
+   - Runs in non-interruptible mode
+   - Schedules some deferred work
+2. **Bottom half**: **finalizes the work deferred** from a queue and executes
+   them. The bottom half is **invoked in particular reconciliation points**.
+
+Deferred work is **done by softIRQs**. They are of different types, some of them
+are:
+
+1. `HI_SOFTIRQ`
+2. `TIMER_SOFTIRQ`
+3. `TASKLET_SOFTIRQ`: provide a simpler interface to run deferred work
+
+SoftIRQs are **work that is never interrupted and might be executed
+simultaneously in parallel on different CPUS**. If we schedule our work as a
+**tasklet, linux guarantees that only one instance of a tasklet can run at any
+time**.
+
+To **schedule a softIRQs** for later execution we **call** `raise_softirq()`. A
+softIRQ is **executed** by `do_softirq()`. This function is **called at
+reconciliation points, which are**:
+
+1. When linux **exits from an interrupt context**
+   - At this point, we are still uninterruptible, so the kernel **only executes
+     a bounded number of softIRQs** to maintain responsiveness
+2. The **remaining work is executed by kernel threads** called `ksoftirqd/n`
+   (one for each CPU) that **sit idle and cleanup softIRQ queues**
+
+#### Tasklets
+
+Like we said, they have a simpler interface and the kernel ensures no more than
+one instance of them is running concurrently. It is a **one-shot deferral
+scheme**: if you schedule two, only one is ran. A tasklet is a **pointer to a
+function plus some data**; it is **represented by the kernel with a list of**
+`tasklet_struct`.
+
+```c
+struct tasklet_struct {
+  struct tasklet_struct *next;
+  unsigned long state; /* 0, scheduled or running */
+  // ...
+  void (*func)(unsigned long);
+  unsigned long data;
+};
+
+
+// To declare a tasklet we have a handy macro:
+DECLARE_TASKLET(my_tasklet, my_tasklet_handler, my_data);
+// ...
+tasklet_schedule(&my_tasklet); // this is invoked by the interrupt handler to
+                               // schedule it
+```
+
+#### Work queues
+
+If our **deferred action must block, we cannot use tasklets** (remember that
+tasklets cannot sleep!). In this case **we can use a work queue**, which is a
+**schedulable entity that runs in process context** and **executes the bottom
+half of an interrupt routine**. It is a **general mechanism to submit work to
+worker kernel threads** called `name_of_workqueues/n` with one for each
+processor. To **create work** for the worker we have a handy macro:
+
+```c
+DECLARE_WORK(work, void (*func)(void *), void *data)
+```
+
+To **schedule it** we can call `schedule_work(&work)`
