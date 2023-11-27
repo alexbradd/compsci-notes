@@ -1799,3 +1799,128 @@ Originally, Intel had **unprivileged virtualisation sensitive instructions**:
 - **Reading and writing segment descriptors and registers** (`pop seg`,
   `push seg`, `mov seg`, `sgdt`): the **supervisor can see that it has been
   deprivileged** by reading the Current Privilege Level and/or VMM state.
+- **Excessive faulting**: On x86-32, sysenter and sysexit are used for each
+  system call but trap into the VMM any time they are executed by the guest OS.
+
+X86 CPUs also provide **many execution modes**, which means **higher
+complexity** in virtualisation. Between these modes, the `v8086` **mode was
+strictly virtualizable** according to the Popek and Goldberg **theorem**.
+
+Indeed, before the introduction of VMware, engineers from Intel Corporation were
+convinced their processors could not be virtualized in any practical sense.
+
+### Hardware assisted virtualisation
+
+The goals are:
+
+1. **Avoid** the **problems** of **deprivileging** by **adding new modes**
+2. Allow the **state of the guest** to be explicitly and comprehensively **saved
+   and resumed**
+3. **Allow x86** to finally be **virtualisable according to Popek-Goldberg**
+4. **Improve performance** by **reducing** the number of **traps** and
+   **avoiding** **shadow-paging** overhead
+
+It has been **implemented** in different ways by different vendors:
+
+1. A **third mode** (hypervisor) in addition to user/supervisor (PowerPC, ARM)
+2. A **second "dimension" for virtual machines** (x86, s390, RISC-V)
+   - **RISC-V** has an **hybrid** approach:
+     - **Guest code** runs in a **"Virtual User" mode**, while the **guest OS in
+       a "Supervisor mode"**
+     - **Host user code** runs in **normal "User" mode**, while the **host OS
+       runs in "Hypervisor" mode**
+
+#### Intel VT-x
+
+Processors with this technology **basically duplicate all state of the
+processor: one copy for root mode, one copy for non-root (guest) mode**.
+
+Every time a **hypervisor intervention** is needed, the **guest stops execution
+and dumps all the processor state into a hardware backed store** (`vmcs`) and
+**hands over control** to the root mode. The root mode has **instructions to
+query and modify** this structure.
+
+**Shadow paging** is handled by **hardware assisted "extension"**:
+
+- We basically have **2 `cr3` registers**, one for the root and one for the
+  non-root
+- The **non-root only works with guest virtual pages**, the **root maps the
+  guest virtual guest pages to the physical** ones
+- The **hardware** then **composes** the two tables, obtaining the complete page
+  table
+
+This means that **page table coherency is done by hardware**, without hypervisor
+intervention. This **reduces significantly the number of hypervisor traps**. The
+drawback is, however, an **overhead on every TLB miss**.
+
+#### KVM
+
+It is an open source virtualisation technology built into the linux kernel that
+**allows Linux to function as a type 1 hypervisor** that provides memory
+management, scheduling, I/O etc. **Virtual machines are run as threads**.
+
+```c
+// Super basic C-like VMM pseudocode
+
+// Setup: interact with KVM from userspace
+open("/dev/kvm");
+
+ioctl(KVM_CREATE_VM); // Issue device specific commands
+ioctl(KVM_CREATE_VCPU);
+
+for(;;) {
+  ioctl(KVM_RUN); // Switches to guest mode
+  switch(vmcs -> exit_reason) { // Any event that causes a vmexit triggers a
+                                // resume of our application from here
+                                // Exit reason is stored in the vcms
+    case KVM_EXIT_IO:
+      // Interrupted due to IO request
+      // ...
+    case KVM_EXIT_HLT:
+      // Interrupted because the VM stopped execution
+      // ...
+  }
+}
+```
+
+**QEMU can be used as a VMM** by launching it with `--enable-kvm`. It provides a
+**solid ecosystem of emulated devices** and can provide fast access to them
+using the **`VIRTIO` interface**.
+
+As **KVM VMs are processes**, **Linux virtual memory** allows by default to have
+each process consume all its address space, **enabling memory overcommitment**.
+
+**Balooning** is a way to **enforce** that some **VMs actually stay with their
+memory usage under a certain threshold**. This is achieved by a **driver that
+reserves a certain amount of physical pages within the VM, forcing swapping**.
+Which pages are given back is the decision of the guest operating system.
+
+**Kernel same-page merging** has the goal of **enabling sharing memory pages
+that have identical contents between multiple processes and virtualised
+guests**. It does this by **scanning physical pages that have identical content
+and identifying the virtual pages mapped to those physical pages**; then it
+**re-maps** all pages to one of the duplicates **as CoW** and then **releases
+the unused duplicates**. It was originally developed for KVM, but it can be used
+also for other things. Comparing whole pages can **consume a lot of computing
+power**, so use only when strictly necessary.
+
+### Containerization
+
+Containers are a way to **isolate a set of processes and make them think that
+they are the only ones running** on the machine. The **machine they see may
+feature only a subset of the resources** actually available on the entire
+machine.
+
+Containers are **not virtual machines**:
+
+- **Processes** running inside a container are **normal processes running on the
+  host kernel**
+- There is **no guest kernel**
+- You **cannot run an arbitrary operating system in a container**, since the
+  **kernel is shared** with the host
+
+**Namespaces** is the mechanism used to implement containers. It **provides a
+mean to segregate system resources**, similar to `chroot`. Processes have a
+pointer to a table (one for each namespace) that translates the namespace-local
+PID to OS PID.
+
