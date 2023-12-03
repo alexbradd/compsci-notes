@@ -2377,3 +2377,47 @@ nor fairness (always overtaken). Even if the implementation supports
 multithreading, **order-preservation** is **guaranteed only at the process
 level**.
 
+A **`recv`** operation **can end only when it is matched by a suitable** `send`,
+meaning **deadlocks** can happen **due to sending order** and the mixing of
+operation types. Maybe the communication pattern is determined at runtime; maybe
+we need to squeeze performance and overlap as much as possible computation with
+synchronization. Each **non-blocking communication function is split into two**:
+
+1. The **one that begins** the communication **returns immediately**
+2. The **one that ends** the communication is **blocking**
+
+MPI defines **accessory functions to check and contribute to the progress**. A
+blocking `send` can be matched with non-blocking `recv` and viceversa.
+**Non-blocking communication can be cancelled**.
+
+Non-blocking communication functions are **prefixed with the** `I` letter
+(`Isend`, `Irecv`) and **output a handle of type** `MPI_request`. These
+functions **begin the non-blocking** communication. To **block until the end of
+communication** we use `MPI_wait(MPI_Reques*, MPI_Status*)`. **Checking for
+operation completion** without blocking is done with
+`MPI_Test(MPI_Request*, int*, MPI_Status*)`. **Canceling** requests is done with
+`MPI_Cancel`.
+
+**Multithreading can provide benefits similar to those of non-blocking semantics
+with clearer code. However, threads cannot be canceled.**
+
+#### Communicator handling
+
+**Communicators** can be **created** using the provided **operations**:
+
+1. **Duplicate** a communicator with `MPI_Comm_dup`
+2. **Split** a communicator **into multiple communicators** with
+   `MPI_Comm_split`
+   - Splitting is **based on "color" values** associated to each process
+
+**Lower level** manipulation can be done by **first extracting the process
+group** from a communicator, **manipulating the group** and then **creating a
+communicator from the new group**.
+
+Obsolete communicators are freed using `MPI_Comm_free`
+
+#### Synchronization
+
+To **synchronize processes in a communicator**, we can use a **barrier**. It
+behaves exactly like barriers from PThreads or OpenMP. To create a barrier we
+can use `MPI_Barrier(MPI_Comm)`.
