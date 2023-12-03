@@ -2113,6 +2113,114 @@ cancellation. It is done in a **best-effort manner**.
 There is an overhead in checking for cancellation, so `OMP_CANCELLATION` is
 **disabled by default**.
 
+#### Tasking
+
+Tasks are useful to **parallelize algorithm with irregular and runtime-dependent
+execution flow** (like a while loop). An OpenMP task is a **block of code
+contained in a parallel region** that can be **executed simultaneously with
+other tasks** in the same region.
+
+Tasks are **enqueued in a queue system** that **dynamically assigns work** to
+threads. Tasks are **not guaranteed to be executed where they are defined** in
+the source code: **threads start picking up tasks at the end of the block where
+the task has been defined**. `taskwait` **forces all the pending child task to
+complete** before continuing, `taskgroup` synchronizes also eventual descendants
+of said tasks.
+
+Tasking works if the threads encounter a barrier where they can stop so that
+they can pickup work; this means that **constructs like** `master`, which **do
+not have implicit barriers** at the end, **or** `nowait` **do not work with
+tasking**.
+
+Tasks can have **dependencies** on **work done by other tasks** by specifying
+`depend`:
+
+- `depend(out: variable)`: task **outputs** to the variable
+- `depend(in: variable)`: task **reads from** the variable, so any task that
+  outputs to it need to be executed beforehand
+
+The `priority` clause can be used to **hint** that more important tasks should
+be executed more frequently.
+
+`taskloop` is a **convenience construct that simplifies the usage of tasks in
+loops**. It **assigns** each **task a number of iterations** between `grainsize`
+and the total number of iterations. This **eliminates need for dependencies**,
+since each iteration is a task, allowing **lower scheduling overhead at the cost
+of less flexibility** to handle load imbalance.
+
+#### SIMD
+
+A SIMD processor **exploits data parallelism by providing instructions that
+operate on blocks of data**. SIMD provides **data parallelism at the instruction
+level**, it can be **combined** with other **OpenMP constructs** to achieve
+**multi-level parallelism**. Vectorisation is usually done by the compiler by
+running different analyses on our code to determine if it is legal to vectorize.
+
+We can **tell the compiler explicitly to use SIMD** instructions by using the
+**`simd` directive**. It is **our job to guarantee correctness** in this case.
+The **loop is divided into chunks**, **each** chunk is **executed by a single
+thread** with SIMD vector instructions and **should fit a vector register** for
+optimal performance. Each iteration of the chunk will be executed by a SIMD
+lane.
+
+We can **use datascope** clauses as before, we **also have**:
+
+- `collapse`: can be used to fuse two perfectly nested loops
+- `simdlen(size)`: suggests a preferred vector length
+- `safelen(size)`: sets an **upper limit to the vector length** (useful for
+  **loop-carried dependencies**)
+
+We can **extend work-sharing constructs**, enabling them with SIMD parallelism,
+by **adding the** `simd` option to the directive (e.g. `for simd`). It allows us
+to **distribute iterations among threads** in a team, with each of them using
+SIMD. The **number of threads and the scheduling can greatly affect
+performance** (each thread should work with a chunk corresponding to the vector
+length), thus we can **add the `simd:` to the scheduling directive**.
+
+We can **declare functions to be compiled with SIMD** by adding the
+**`declare simd` directive** before the function definition. **Multiple
+directives** can be added to **generate multiple versions**.
+
+#### Heterogeneous architectures
+
+The `target` directive **offloads the execution to an accelerator device**, if
+present other wise it executes it on the host. By default it **the code we
+offload will be execute synchronously** (we wait until the accelerator is done),
+this can be changed by using the `nowait` directive.
+
+The `map(map-type:var...)` clause **copies variables** that are needed by the
+target region **to the target device's memory**. A **mapped variable** is a
+**shared variable**, meaning that we need to ensure **coherency between host and
+target**. `map-type` gives information to the compiler about the usage of the
+variable, allowing it to optimize out unnecessary data transfers. Possible
+values:
+
+|    `map-type`    | map-enter copy | map-exit copy |
+| :--------------: | :------------: | :-----------: |
+|      alloc       |       no       |      no       |
+|        to        |      yes       |      no       |
+|       from       |       no       |      yes      |
+| tofrom (default) |       no       |      yes      |
+|     release      |       -        |      no       |
+|      delete      |       -        |      no       |
+
+When working in a **multi-GPU environment** we can **divide the work** in two
+ways:
+
+1. **Batch processing**: execute the same task multiple times with different
+   data
+   - Typical steps:
+     1. Get the number of devices
+     2. Initialize and copy the memory needed by the algorithm
+     3. Create CUDA streams for each of the concurrent tasks
+     4. Launch the kernel in parallel
+2. **Cooperative patterns**: tasks cooperate between each other to collectively
+   reach a goal
+   - There is no one-size-fits-all solution, however the typical steps are:
+     1. Launch the code in parallel
+     2. Profile
+     3. Analyze and remove bottlenecks
+
 ### MPI
 
 It is a standard that **defines interfaces for distributed memory
