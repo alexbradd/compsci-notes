@@ -1986,10 +1986,10 @@ Before interacting with the device, **we need to first request access to it**.
 This ensures that **no other process can access the device while we have it**.
 We can do this in two ways:
 
-1. `request_region(start, len)`: request a **port range** that starts from
-   `start` and goes for `range`
-2. `request_mem_region(start, len)`: for **memory-mapped IO**, does the same
-   thing
+1. `request_region(start, len, driver_name)`: request a **port range** that
+   starts from `start` and goes for `range`
+2. `request_mem_region(start, len, driver_name)`: for **memory-mapped IO**, does
+   the same thing
 
 After access is granted, depending on the type of IO we can go about it in two
 ways:

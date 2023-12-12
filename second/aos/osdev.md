@@ -449,3 +449,87 @@ registered in `/dev` (like in other UNIX-likes). Device files are created by
 subclassing the `Device` class and providing implementations for needed
 functions (`readBlock`, `writeBlock` and `ioctl`). Devices are instantiated by
 adding an instance of the class to the devfs in the board support package.
+
+## Working with the linux kernel
+
+### Accessing peripherals
+
+The Linux kernel lives in a virtual address space, however peripherals are
+located to physical address spaces. To interact with them we need to first
+request the region using `request_mem_region` and then map it into virtual space
+using `ioremap`. Then we can interact with it using regular load and stores.
+
+For x86 systems, we might have to use port-based I/O, which uses a different
+API and ad-hoc machine instructions:
+
+1. `request_region(peripheral_base_addr, peripheral_size, "drivername")`
+2. `inb(addr)` / `inw(addr)` / `inl(addr)` to read
+3. `outb(addr)` / `outw(addr)` / `outl(addr)` to write
+
+### Concurrency in the linux kernel
+
+Linux does not support POSIX inside the kernel, has its own API:
+
+1. `task_struct *t = kthread_run(threadfunc, arg, "threadname")` creates a
+   kernel thread
+2. `kthread_stop(t)`: join a kernel thread
+3. `kthread_should_stop()`: must be called periodically in the kernel thread;
+   calling `kthread_stop` from another thread makes it return true
+
+Mutexes take the for of `struct mutex` (with `mutex_init`, `mutex_lock` and
+`mutex_unlock`). There is no support for the fancy scope-locking of cpp and for
+condition variables.
+
+On multicore architectures a shared variable may be accessed by an interrupt on
+one core and by normal code on another. Since interrupts cannot be stopped anche
+re-scheduled, we need to use spinlocks:
+
+1. `spin_lock_init`
+2. `splin_lock` and `spin_unlock`: must be called from the interrupt side while
+   accessing shared data
+4. `spin_lock_irq` and `spin_unlock_irq`: must be called from the normal code
+   side, also disables interrupts
+
+To block code waiting for an interrupts we use `wait_queue_head_t`:
+
+1. `init_waitqueue_head`: initializes the waitqueue
+2. `wait_event_interruptible_lock_irq(queue, condition, spinlock)`: equivalent
+   to condition variable wait; atomically unlocks the spinlock and blocks until
+   the condition becomes true
+3. `wake_up(&waitqueue)`: equivalent to `notify_one`, wake one thread from the
+   waitqeue; can be called from an IRQ
+
+### Filesystem
+
+Linux drivers are exposed in `/dev`. To register our driver we can do:
+
+```c
+struct file_operations my_driver_fops = {
+  .owner=THIS_MODULE,
+  .write=my_driver_write,
+  .read=my_driver_read,
+};
+//...
+int major = register_chrdev(0, "name", &my_driver_fops);
+```
+
+While to unregister we use `unregister_chrdev(major, "name")`.
+
+The registered r/w functions must have the following prototypes:
+
+- `ssize_t write(struct file *f, const char __user *buf, size_t size, loff_t *o)`
+- `ssize_t read(struct file *f, char __user *buf, size_t size, loff_t *o)`
+
+There also other functions for e.g. `ioctl`. Note the `__user`: the linux kernel
+requires to explicitly copy data to and from userspace using:
+
+- `unsigned copy_from_user(void *to, const void __user *from, unsigned n)`
+- `unsigned copy_to_user(void __user *to, const void *from, unsigned n)`
+
+The functions copy `n` bytes to/from userspace to/from kernelspace and  return
+the number of bytes NOT copied (0 unless an error occurs). These functions also
+perform validation, so not using them poses a serious security risk.
+
+To expose, then the driver in `/dev`, depending on the system (usually a daemon
+does it for us, but sometimes it might not be present), we need to create the
+special file by calling `mknod`.
