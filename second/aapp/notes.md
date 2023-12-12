@@ -2421,3 +2421,96 @@ Obsolete communicators are freed using `MPI_Comm_free`
 To **synchronize processes in a communicator**, we can use a **barrier**. It
 behaves exactly like barriers from PThreads or OpenMP. To create a barrier we
 can use `MPI_Barrier(MPI_Comm)`.
+
+#### Data transfer
+
+MPI provides a collection of **functions** to **cover well-known patterns for
+exchanging data**. Usually, each function includes both sending and receiving
+operations.
+
+1. **Broadcasting**: send the same data to everyone
+
+   ```c
+   int MPI_Bcast(void *buffer,
+                 int count,
+                 MPI_Datatype datatype,
+                 int root, // rank of the process in comm that will have the
+                           // data to receive
+                 MPI_Comm comm);
+   // Identical signature for MPI_Bcast_c
+   ```
+
+2. **Gather**: Collecting data from other MPI processes
+
+   ```c
+   int MPI_Gather(const void *sendbuf,
+                  int sendcount,
+                  MPI_Datatype sendtype,
+                  void *recvbuf,
+                  int recvcount,
+                  MPI_Datatype recvtype,
+                  int root, // rank of the process in comm that will have the
+                            // data to receive
+                  MPI_Comm comm);
+   // Identical signature for MPI_Gather_c
+   ```
+
+   Possible **shortcomings**:
+
+   1. **All** processes exchange the **same amount of data**
+      - Use `MPI_Gatherv` / `MPI_Gatherv_c` to shape the receive operation
+   2. Only **one process ends up having all the data**
+      - Use `MPI_Allgather` / `MPI_Allgather_c` to also broadcast the buffer
+   3. You can use `MPI_Allgatherv` / `MPI_Allgatherv_c` to solve both of them
+
+3. **Scattering**: dispatch data to other processes
+
+   ```c
+   int MPI_Scatter(const void *sendbuf,
+                   int sendcount,
+                   MPI_Datatype sendtype,
+                   void *recvbuf,
+                   int recvcount,
+                   MPI_Datatype recvtype,
+                   int root,
+                   MPI_Comm comm);
+   // Same signature for MPI_Scatter_c
+   ```
+
+   Possible **shortcomings**:
+
+   1. **All** processes **exchange the same amount of data**
+      - Use `MPI_Scatterv` / `MPI_Scatterv_c` to shape the send operation
+
+#### Reductions
+
+We can perform **element-wise reductions** (all 0-th elements in all processes,
+all first elements in all processes etc...) using the **following functions**:
+
+```c
+int MPI_Reduce(const void *sendbuf,
+               void *recvbuf,
+               int count,
+               MPI_Datatype datatype,
+               MPI_Op op, // enumeration specifying one of the supported
+                          // functions
+               int root,
+               MPI_Comm comm);
+// Same signature for MPI_Reduce_c
+```
+
+**Most supported operations** work with all the **numeric datatypes**
+(`MPI_INT`, `MPI_FLOAT` etc...). One of the operation, **`MPI_MAXLOC`, returns
+the maximum and the rank** of the process containing said maximum. To enable it
+doing so we **need to declare a `struct`** formatted as such:
+
+```c
+struct loc_value_type {
+  float return_value;
+  int process_rank;
+};
+MPI_Datatype mpi_type_value = MPI_FLOAT_INT
+```
+
+If we want to **send the reduced data to all processes**, we can use
+`MPI_Allreduce` / `MPI_Allreduce_c`.
