@@ -1,0 +1,102 @@
+\documentclass[a4paper,12pt]{article}
+
+\usepackage[
+  margin=0.5cm,
+]{geometry}
+\usepackage[italian]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsthm}
+
+\usepackage{titlesec}
+\usepackage{multicol}
+
+\titleformat{\section}{\normalfont\large\scshape}{\thesection}{1em}{}
+\titlespacing{\section}{0pt}{0pt}{0pt}[0pt]
+
+\title{ACA performance formulas}
+\author{Alexandru Gabriel Bradatan}
+\date{\today}
+
+\begin{document}
+\thispagestyle{empty}
+\begin{multicols*}{2}
+  \section{General}
+  {\large\begin{gather*}
+    \mathit{CPU}_t = \mathit{IC}\cdot\mathit{CPI}\cdot T_{\mathit{CLK}} \\
+    \text{X \% faster than Y} = \frac{\text{Exec}_{tY}}{\text{Exec}_{tX}}
+                              = \frac{\text{Perf}_X}{\text{Perf}_Y}\\
+    \mathit{CPI}   = \sum_{i=1}^n (\mathit{CPI}_i F_i) \\
+    F_i            = \frac{I_i}{\mathit{IC}} \\
+    \mathit{MIPS}  = \frac{f_{\mathit{CLK}}}{\mathit{CPI}\cdot 10^6} \\
+  \end{gather*}}
+
+  \section{Amdahl's law}
+  {\large\begin{gather*}
+    \text{Exec}_t(E) = (1-\text{Frac}_E + \frac{\text{Frac}_E}{\text{SpUp}_E})\text{Exec}_t(\bar{E}) \\
+    \text{SpUp} = \frac{\text{Exec}_{t\text{old}}}{\text{Exec}_{t\text{new}}}
+                = \frac{1}{1-\text{Frac}_E + \frac{\text{Frac}_E}{\text{SpUp}_E}}
+  \end{gather*}}
+
+  \section{MIPS Pipelining}
+  {\large\begin{gather*}
+    \#_\mathit{cycles} = \mathit{IC} + \#_\mathit{stalls} + 4 \\
+    CPI_{as} = \frac{m + k}{m} \text{// m inst., k stalls} \\
+    CPI_{ideal} = \frac{1}{\#_{\mathit{issues}}} \\
+    \text{SpUp}_\text{Pipe} = \frac{\text{Depth}}{1+\#_\mathit{stalls}}
+  \end{gather*}}
+
+  \section{VLIW}
+  {\large\begin{gather*}
+    \text{Code efficiency} = \frac{\mathit{IC}}{\#_\mathit{cycles}\cdot\#_\mathit{issues}} \\
+  \end{gather*}}
+
+  \section{Cache}
+  {\large\begin{gather*}
+    H_\text{rate} + M_\text{rate} = 1 \\
+    M_\text{time} = H_\text{time} + M_\text{pen} \\
+    \mathit{AMAT}_1 = H_\text{rate}\cdot H_\text{time} + M_\text{rate}\cdot M_\text{time} \\
+                                 = H_\text{time} + M_\text{rate}M_\text{pen} \\
+    \mathit{AMAT}_2 = H_\text{time}^{L1} + M_\text{rate}^{L1}H_\text{time}^{L2} + M_\text{rate}^{L1L2}M_\text{pen}^{L1L2} \\
+    \mathit{MAPI} = \frac{\#_{mem acc}}{\mathit{IC}} \\
+    \mathit{CPI}_{\text{full}} = \mathit{CPI} + \#_\mathit{stalls} + \text{Mem stalls} \\
+    \text{Mem stalls}' = \mathit{MAPI} M_\text{rate} M_\text{pen} \\
+    \begin{aligned}
+      \text{Mem stalls}'' &= \mathit{MAPI} M_\text{rate}^{L1} H_\text{time}^{L2} + \\
+                          &+ \mathit{MAPI} M_\text{rate}^{L1L2} M_\text{pen}^{L2}
+    \end{aligned}
+  \end{gather*}}
+
+  \section{Network}
+  {\large\begin{gather*}
+    P = \text{n.\ nodes} \\
+    M = \text{n.\ links} \\
+    b = \text{bandwidth of link} \\
+    b_{tot} = Mb = \begin{cases}
+      b  &\text{single-bus} \\
+      Pb &\text{ring} \\
+      \frac{P(P-1)}{2}b &\text{crossbar} \\
+      2N(N-1)b &\text{2d mesh} \\
+      \frac{NP}{2}b &\text{hypercube} \\
+    \end{cases} \\
+    b_{bis} = \begin{cases}
+      b  &\text{single-bus} \\
+      2b &\text{ring} \\
+      {(\frac{P}{2})}^2 b &\text{crossbar}\\
+      Nb &\text{2d mesh} \\
+      2^{N-1}b &\text{hypercube} \\
+    \end{cases} \\
+  \end{gather*}}
+
+  \section{Notes}
+  {\large\begin{enumerate}
+    \item It is not possible to calculate speedup by comparing the CPIs if the
+      clock frequencies are different.
+  \end{enumerate}}
+\end{multicols*}
+\end{document}
