@@ -4,3 +4,6 @@
 [submodule "second/aapp/aapp-homework"]
 	path = second/aapp/aapp-homework
 	url = git@github.com:alexbradd/aapp-homework.git
+[submodule "first/cg/assignments"]
+	path = first/cg/assignments
+	url = git@github.com:alexbradd/cg-assignments-2023.git
