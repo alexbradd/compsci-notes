@@ -1,7 +1,9 @@
-all: notes.pdf
+artifacts = notes.pdf osdev.pdf cpp.pdf
 
-notes.pdf: notes.md
-	md_to_pdf.sh notes.md notes.pdf
+all: $(artifacts)
+
+$(artifacts): %.pdf: %.md
+	md_to_pdf.sh $< $@
 
 clean:
-	rm notes.pdf
+	rm $(artifacts)
