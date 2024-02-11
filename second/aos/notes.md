@@ -25,19 +25,27 @@ The **task is the common denominator between a thread and a unix process**
 (which are basically processes without threads). It contains:
 
 1. A unique **program counter**
-2. **Two stacks**, one in user mode and one in kernel mode
+2. **Two stacks**, one in user mode and one in kernel mode (2 pages wide)
 3. A set of **registers**
 4. An **address space** (for kernel mode this is the whole kernel address space)
 
 `task_struct`, or the Task Control Block (TCB), is the C `struct` that contains
 all of the data about a given task. The **TCB is doubly linked to the
-`thread_info` structure, which resides on the process's kernel mode stack**.
-`thread_info` is used by the kernel to **retrieve the TCB of the currently
-executing task**. One very important variable contained in `thread_info` is
-`preempt_count`, which will be seen when we talk about kernel concurrency.
+`thread_info` structure (one per CPU), which resides at the bottom of the
+process's kernel stack**. This structure is used to **move between TCB and
+kernel stack**:
 
-NOTE: `thread_info` is **architecture specific**, it could be different of even
-not present at all.
+1. The TCB contains a **pointer to its** `thread_info` (called `*stack`)
+   - Due to how `thread_info` is located, `*stack` is the **bottom of the kernel
+     stack**
+2. `thread_info` contains a **pointer** to its `task_struct`
+
+One very important variable contained in `thread_info` is `preempt_count`, which
+will be seen when we talk about kernel concurrency. `thread_info` is
+**architecture specific**.
+
+NOTE: On newer kernels, the link between `task_struct` and `thread_info` is
+different.
 
 When the kernel does a context switch, the **preserved registers will be saved
 in** a structure called `thread_struct`.
@@ -1517,9 +1525,10 @@ process to sleep until there is more memory**.
 contiguous pages**, we have three functions available:
 
 ```c
-get_zeroed_page(unsigned int flags);
-_get_free_page(unsigned int flags);
-get_free_pages(unsigned int flags, unsigned int order);
+get_zeroed_page(unsigned int flags); // return address of 1 zeroed out page
+__get_free_page(unsigned int flags); // return address of 1 page
+__get_free_pages(unsigned int flags, unsigned int order); // return start address of
+                                                          // `order` contiguous pages
 ```
 
 These functions can be **used at any time**, but **they may fail** due to lack
@@ -1631,10 +1640,10 @@ The **page cache is the set of physical page descriptors** (`struct page`)
 **corresponding to pages that contain data read and written** from regular
 filesystem files or associated with anonymous VMAs. It is accessible through:
 
-1. **Forward mapping**: useful to **get to the physical page containing the
-   file's data at an offset**
-2. **Backward mapping**: useful **when we want to invalidate page tables entries
-   of shared pages in different processes**
+1. **Forward mapping**: from a file descriptor + an offset, we can **arrive to
+   the page descriptor backing the data at the offset** (chain:
+   `file->address_space->rtree->page`)
+2. **Backward mapping**: we can get all VMAs that use the given page descriptor
 
 **Some physical pages can be shared between VMAs** for example because they are
 packed by the same file or are CoW. **Reverse mapping** allows to answer the
@@ -1642,7 +1651,7 @@ question: **"given a page, find all VMAs that contain it"**. The page descriptor
 support reverse mapping with the following fields:
 
 - `_count`: how many user space sharings there are
-- `struct address_space`: how to reach the mapping in the case we want to
+- `struct address_space*`: how to reach the mapping in the case we want to
   invalidate it
 - `flags`: describes the state of a page
 - A reference counter for all the uses of the page
@@ -2122,3 +2131,120 @@ DECLARE_WORK(work, void (*func)(void *), void *data)
 ```
 
 To **schedule it** we can call `schedule_work(&work)`
+
+### Devices in Linux
+
+Devices are divided into three categories:
+
+- A character device is characterized by a character stream. Writing Or reading
+  from the file has direct impact on the device itself; no Buffering is
+  performed
+- A block device is seen as a sequence of numbered blocks. Each block can be
+  individually addressed and accessed through a cache (random access)
+- A network device, essentially a sequence of packets
+
+Devices are integrated into the filesystem as special files stored under `/dev`.
+Processes use the standard file syscalls (`read` and `write`) to interact with
+devices. The VFS system routes said syscalls to the driver's implementation of
+the syscalls.
+
+Each driver has a "major device number" that identifies it. If a driver supports
+multiple devices (like two disks of the same type) each device has a "minor
+device number" that identifies it.
+
+In legacy systems, devices where created statically, meaning we had multiple
+devices for all supported drivers. Today, thanks to the introspection provided
+by sysfs (a virtual files system that contains files representing the state of
+the system), we have `udev` that handles on-demand device creation/destruction
+and persistent device naming.
+
+### Block devices
+
+For a process to interacts with a block device (usually a disk) we need to go
+through different layers:
+
+1. Virtual filesystem: handles all the `open`, `read`, `write`, `close` files
+   operations
+2. The mapping layer (filesystem specific) translates the file+offset
+   representation into a block number
+3. The VFS checks if the page is already mapped in the page cache, otherwise we
+   need to fetch it using a Block Input/Output (abbreviated as bio) request
+4. The block layer receives the bio requests and dispatches them to the device
+   driver
+   - The interface the device driver needs to implement is the Request Queue
+     interface
+
+<!-- TODO: finish block device -->
+
+### The linux device model
+
+The Linux kernel runs on several architectures and hardware platforms. We thus
+need a way to:
+
+1. Maximize the re-usability of code between platforms
+2. Manage device lifetime
+3. Cleanly organize the code based on a framework/bus matrix
+
+The basic components are:
+
+1. Device: structure that encapsulates information about the device
+   - Each type of device driver specializes the generic `device`
+2. Device driver: a structure that provides all information about devices that
+   the driver can handle
+   - Specializations of the generic device driver are created for the specific
+     implementation/bus the driver uses (e.g. `i2c_driver`, `pci_driver`,
+     `platform_driver`)
+
+The kernel has various ways to discover the list of connected devices on a
+certain bus (ACPI/DT). Each driver announces what types of devices it can handle
+to the bus. For each device registered, the bus will ask if the driver can
+handle the device (by matching the vendor/model IDs); if the driver can handle
+it, we probe the device with said driver. Probing sets up the device resources
+(e.g. IRQs etc). If the probe completes successfully , the device is now
+operational and the driver interfaces with it.
+
+Kernel frameworks are just libraries that simplify configuration of certain
+categories of devices. Each device/driver is the intersection between the
+various frameworks and a given bus.
+
+<!-- VV 18/12 VV -->
+
+### The platform bus framework
+
+It is designed for system-on-chip (SoC) and embedded devices and manages
+non-easily-discoverable hardware components. It is defined in board-specific
+code or Device Tree.
+
+### The PCI bus framework
+
+In normal systems (like desktops) we usually attach peripherals to the PCI bus.
+
+<!-- TODO: pci bus framework -->
+
+## Linux platform configuration and boot
+
+When booting, the OS must know a lot of things to start working, like which
+devices are already present on the machine, how interrupts are managed or how
+many processors are present. Peripheral devices standards such as PCI are not
+enough to find and configure everything in a platform. Two standards have
+evolved to provide the kernel with all the data of a platform (comprising PCI
+data):
+
+1. ACPI (Advanced Configuration and Power Interface): used mainly on x86 and
+   other general purpose platforms
+2. Device Tree: used mainly on ARM and on embedded platforms
+
+### ACPI
+
+Jointly developed by Intel, Microsoft and Toshiba in 1996, it provides an open
+standard for operating systems to:
+
+1. Discover and configure computer hardware components
+2. Perform power management e.g. putting unused hardware components to sleep
+3. Perform auto configuration
+4. Perform status monitoring
+
+This removes the need to include platform-specific code for every platform,
+allowing to ship a single binary kernel that supports multiple platforms.
+
+<!-- TODO: ACPI -->
