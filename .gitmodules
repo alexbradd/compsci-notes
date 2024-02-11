@@ -7,3 +7,6 @@
 [submodule "first/cg/assignments"]
 	path = first/cg/assignments
 	url = git@github.com:alexbradd/cg-assignments-2023.git
+[submodule "first/cg/project"]
+	path = first/cg/project
+	url = https://github.com/alexbradd/cg-project-2023
