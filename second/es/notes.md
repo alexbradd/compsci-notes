@@ -542,3 +542,149 @@ the requirements:
    signature check
 
    The expensive task of creating the chain is left to the server.
+
+## Hardware architectures
+
+### PCBs
+
+Traditionally a plastic board with traces where we connect various components.
+New technologies are:
+
+1. Flexible electronics: generally refers to a class of electronic devices built
+   on conformable or stretchable substrates
+2. Flexible hybrid electronics: printed electronics combined with silicon-based
+   integrated (active) circuits on a conformable substrate
+3. Other types of materials like organic, plastic and printed (with traditional
+   printing methods)
+
+PCB-based systems employ off-the-shelf components (COTS) with different types of
+packages, or tailored for specific application classes. Components are available
+in different packages, with different levels of protections, size and cost. The
+main characteristics are:
+
+1. Mounting:
+   - Through-hole, surface mounted or hybrid solutions
+2. Positioning of the pins:
+   - In-line, small-outline, quad surface mount or grid array
+3. Material:
+   - Plastic, ceramic and even metal
+4. Effectiveness: ratio between die and the whole package
+5. Pin-count
+6. Pitch: space between pins
+7. Thermal conductivity (resistance): capability to transfer the generated heath
+   from the die to the package
+
+The physical support consists of three main components:
+
+1. Conductor: copper, in multi-layer boards typically 4-8 layer for
+   supply/ground and 6-10 layers for wires
+2. Insulator: it has the double goal of preventing electrical shorts between
+   planes/wires and providing mechanical support for mounting components.
+
+   Most used material is fiberglass epoxy resins, FR-2 and FR-4. Kevlar of
+   Kapton can be used to create flexible supports.
+
+3. Glue: Dielectric layers containing the wirings, are joined using adhesive
+   materials (fiberglass impregnated of epoxy resin) called pre-preg.
+
+   Pre-preg layers, at room temperature, are not adhesive solid foils. At high
+   temperature and pressure, they become more fluid and adhesive, while
+   maintaining the property to be insulators. Going back to room temperature, at
+   normal pressure, the epoxy resin become solid again, with the desired
+   mechanical, chemical and electrical properties
+
+The starting point for creating a PCB is the Gerber, which is created bu a CAD
+program.
+
+See slides and POuL's PCB course.
+
+<!-- TODO: boundary scanning -->
+
+### SoC
+
+In general, a SoC is a complete system where all the parts are integrated in a
+single silicon die. However, some parts of the overall system cannot be
+integrated for electrical and/or mechanical reasons like:
+
+- High currents
+- Unavailability of the component in the integrated silicon process
+- Robustness of the connection
+- In any case, presumably, a small board will be necessary
+
+Why implement an application as a SoC:
+
+- Lower unit cost
+- Higher performance (we can increase clocks, have lower
+  resistances/capacitance)
+- More efficiency
+- Smaller size
+- Number of requested I/O
+- Security:
+  - Protection of IP since it is difficult to reverse a die
+  - Sensitive information/data since it is difficult to extract data from a die
+
+To design a SoC, the first step (like in PCB design) is partitioning in terms of
+HW vs SW functionalities and then allocation of the different functionalities on
+the different computing resources. Based on the chosen allocation, the next step
+is the identification of the memory hierarchy and of the access policies, driven
+mainly by performance aspects and the locality of data. The communication
+infrastructure is strongly linked to the memory structure and the partitioning
+of the functionality:
+
+- Classical (hierarchical bus) solutions are losing popularity in favor of NoC
+  (Network on Chip) architectures
+- NoC: a small net, encompassing addressing and on-chip routing, is in charge of
+  the information delivery
+  - solves several complex problems, the main being the synchronization of
+    sub-systems with different clocks
+
+SoC are difficult to test: COTS can be tested before integration and the tested
+together in the system; we cannot do the same with SoC. Prototype systems can
+provide a solution, however usually the effort is offloaded at design time by
+introducing additional modules with the sole purpose to support testing.
+
+<!-- TODO: testing -->
+
+### Distributed/networked embedded systems
+
+Processing and storing of data is split over a number of interconnected devices,
+which can be equally distributed or just connected (respectively we call them
+distributed or networked). When the interconnection and the communication is not
+trivial, the design approach need to be ad-hoc selected.
+
+We can divide them in two classes depending on communication infrastructures:
+
+- Wired: Infrastructure fixed, well-known and characterized
+- Wireless: Infrastructure not fixed and more complex to characterize
+
+Typical wired applications:
+
+- Domotic: many apparatuses need to be connected and controlled, distributed
+  nature of the systems; some commercial solutions exploit a centralized control
+  encompassing most of the control logic and some nodes to detect and to collect
+  specific information
+- Automotive: automation and control of sub-systems installed and operating on a
+  generic vehicle; the classical approach consists of a central unit driving a
+  number of actuators
+
+  There is a push towards a distributed solution, impacting on the budget of the
+  system, due to safety: the cabling could be a weak point
+
+- Industrial and others
+
+A relevant interest is towards Sensor Networks, wired or wireless. Wireless
+Sensor Networks (WSNs) are networks of sensor nodes, rather autonomous,
+distributed in the space and equipped with several sensors. They cooperate to
+provide a global monitoring function for the controlled environment. There are
+specific commonalities among the different WSNs:
+
+- Limited possibility to collect and to store energy
+- Operation in harsh environments
+- Heterogeneity and mobility of nodes
+- Failures and possible breakdown of single nodes or communication
+- Variable topology of the network infrastructure
+- Possibility to operate for long periods of time without maintenance
+
+<!-- TODO: prototyping -->
+
+# INCOMPLETE
