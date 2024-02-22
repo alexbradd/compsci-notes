@@ -180,3 +180,201 @@ attacker:
 CCA model models well an attacker able to interact with a device containing a
 private key. **IND-CCA2 is the reference property to be guaranteed in proper
 cipher design**.
+
+## Historical ciphers and unconditional security
+
+### Historical ciphers
+
+- **Shift cipher**:
+
+  - Given the usual latin alphabet, identify each letter with a number, consider
+    a message space that includes messages composed of single letter
+  - the key of the cipher is a number $0\leq k\leq 25$ ($|\mathcal{K}| = 26$)
+  - To encrypt replace each plaintext letter $p$ by the letter $p + k \mod 26$
+
+  Analysis:
+
+  - Easily brute-forceable: maximum 26 keys
+
+- **Monoalphabetic substitution cipher**: generalization of a shift cipher
+
+  - The message space is defined over an alphabet $\mathcal{A}_m$, the
+    ciphertext space is defined over an alphabet $\mathcal{A}_c$
+    - The sizes of the two alphabets must match
+  - The message spaces $\mathcal{M},\mathcal{C}$ include messages composed of a
+    single letter respectively
+  - The **encryption transformation can be defined as the application of any
+    bijective map between the elements of** $\mathcal{M}$ **and the elements
+    of** $\mathcal{C}$
+  - The keyspace is the amount of possible bijective maps, which is
+    $26! \approx 2^{88}$
+
+  Analysis:
+
+  - More resilient to brute forcing
+  - **COA easily reveals the key**:
+    - The statistics of the plaintext distribution is known
+    - The statistics of the ciphertext space can be computed over the available
+      ciphertexts
+    - The substitution map can be inferred easily by matching the symbols
+      occurring with similar frequencies
+
+- **Polyalphabetic cipher**:
+
+  - The plaintext and ciphertext spaces include finite sequence of letters
+    (words) from the respective alphabets
+  - The **encryption transformation is defined as the application of** $L > 1$
+    **bijective maps between the two alphabets**
+    - The encryption transformation applies $\mu_0$ to the first letter, $\mu_1$
+      to the second, etc. periodically
+  - The **key is constructed as the tuple of the different bijective maps**
+  - The **keyspace** is $(|\mathcal{A}_m|!)^L$, which is **way too large to
+    brute force**
+
+    Famous cipher:
+
+    - **Vigenère cipher**: it employs $L$ **cyclic shifts**, the **cipher key is
+      given as a sequence of letters**, each one of them denotes the **first
+      letter of a cyclic shift of the alphabet**
+
+      - Limits the keyspace to $|\mathcal{K}|^L$
+
+      Analysis:
+
+      - Can be easily broken with COA:
+
+        **Find the length of the keyword** $L$ through the **Kasisky Test**. Key
+        observation: two identical segments of $2\leq l\leq L$ plaintext letters
+        (l-gram), will be encrypted to the same sequence of $l$ ciphertext
+        letters (when properly aligned with the keyword). The distance $d$
+        between two repeated sequences of $l$ chars in the ciphertext may
+        suggest a multiple of the key length $L$.
+
+        **Split up the ciphertext** into $L$ **sequences** of letters (one
+        sequence for each keyword letter): **each** sequence is **computed by
+        aligning letters corresponding to the same "shift ciphertext"**.
+
+        Apply **frequency analysis** to each "shift ciphertext" Use the
+        retrieved shift cipher keys to derive the value of the keyword
+
+    - **Beale cipher**: variant of the Vigenère cipher
+      - Based on the clue that "Longer the key lengths, lower the possibility of
+        re-enciphering the same d-grams in the same way"
+      - **Keyword is taken as the first few words of a book** that is agreed
+        upon by the cipher users
+
+- **Permutation ciphers** (transposition cipher):
+
+  - **Encryption transformation consists of a permutation of the positions of
+    the plaintext letters**
+  - The **cipher key is a random permutation with length** $L$, the key length
+    is kept secret
+
+  Analysis:
+
+  - Pros:
+    - **Keyspace can be quite large**
+    - It **does not alter the d-gram frequency distribution** between plaintext
+      and ciphertext message space
+    - **COA is not very effective**
+  - Cons:
+    - It **does not alter the single letter frequency distributions**
+    - **KPA and CPA can easily reveal the key** if $L$ is small
+
+- **Affine ciphers**: it is a polyalphabetic cipher where the cipher key can be
+  thought as a $m\times m$ invertible matrix of numbers modulo 26; a block of
+  $m$ plaintext letters is then considered as a column vector. To encrypt we
+  multiply mod 26 the cipher key with the column vector, to decrypt we invert
+  the cipher key and multiply it mod 26 with a vector from the cipher text.
+
+  Analysis:
+
+  - Pros:
+    - The **keyspace is quite large**: $\approx 26^{m^2}$
+    - Cipher **alters the frequency distribution of texts in a complex way**
+    - **COA is not effective**
+  - Cons:
+    - **KPA easily reveals the keys** by just solving a linear system of
+      equations
+    - Given a **pair of ctx and ptx**, the **key is computed** as $K = C P^{-1}$
+
+Takeaways:
+
+- The cipher **key should be long enough to withstand brute force attacks**
+  - Rule of thumb: **keyspace** should have a size which is **encoded with at
+    least 80-bit**
+- The **mapping between ptx and ctx letters**, in the definition of the
+  encryption/decryption transformation, **should not be the same for every
+  occurrence** of the same ptx letter
+- **Linear mapping** between ptx and ctx is **vulnerable to KPA**
+- Frequency attacks **exploit the redundancy of the English language**
+
+  - Lossless compression before encryption removes it
+  - Using an uncommon/dead natural language may also help
+
+### Perfect secrecy
+
+A perfectly secret cipher should be **unbreakable regardless of the effort
+thrown at it**. This implies that **the ciphertext alone provides no
+information** to an attacker. **Shannon proved the existence** of such a scheme.
+
+A perfectly secure cipher is proven to be resistant to COA, KPA and CCA.
+
+Given a **generic symmetric cipher**, assume that the attacker can analyze an
+arbitrary number of chosen ptx-ctx pairs. We will make the following **basic
+assumptions** about the schemes parameters:
+
+- Each **item** in $\mathcal{M},\mathcal{K},\mathcal{C}$ is **modeled as a
+  random variable** $P, K, C$ with certain distribution
+- $P, K$ are **statistically independent**
+
+Due to the statistical independence, the **probability of observing a particular
+ctx** is:
+
+$$
+Pr(C = c) = \sum_{k:c\in\{\mathbb{E}_k(m) \forall m\in\mathcal{M}\}}
+  Pr(K = k)Pr(P = \mathbb{D}_k(c))
+$$
+
+**When we try to break a cipher** we are interested in the **conditional
+probability of guessing the ptx value**, knowing the value of the ctx, i.e.:
+
+$$
+Pr(P=m|C =c) = \frac{Pr(P = m)Pr(C = c | P - m)}{Pr(C = c)}
+$$
+
+**Definition** of perfectly secure cryptosystem:
+
+> A symmetric-key cryptosystem is perfectly secure if the ciphertext does not
+> reveal any information about the plaintext
+>
+> $$ Pr(P=m|C =c) = Pr(P=m) \forall m\in\mathcal{M}, c\in\mathcal{C}$$
+
+**Lemma**:
+
+> A symmetric-key cryptosystem is Perfectly Secure if the plaintext does not
+> reveal any information about the ciphertext:
+>
+> $$ Pr(C=c|P=m) = Pr(C=c) \forall m\in\mathcal{M}, c\in\mathcal{C}$$
+>
+> > Proof on slides
+
+**Lemma**:
+
+> Given a perfectly secure symmetric key cryptosystem, the following condition
+> hold:
+>
+> $$ |\mathcal{K}| \geq |\mathcal{C}| \geq |\mathcal{M}| $$
+>
+> > Proof on slides
+
+**Shannon's Theorem**:
+
+> Let a symmetric key cryptosystem where keys are picked independently of
+> plaintexts values and $|\mathcal{K}| = |\mathcal{C}| = |\mathcal{M}|$. The
+> cyptosystem is perfectly secure iff:
+>
+> 1. Every key is used with probability $\frac{1}{|\mathcal{K}|}$
+> 2. $\forall (m,c)\in\mathcal{M}\times\mathcal{C}\quad\exists! k\in\mathcal{K}: \mathbb{E}_k(m) = c$
+>
+> > Proof in slides
