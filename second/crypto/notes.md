@@ -378,3 +378,139 @@ $$
 > 2. $\forall (m,c)\in\mathcal{M}\times\mathcal{C}\quad\exists! k\in\mathcal{K}: \mathbb{E}_k(m) = c$
 >
 > > Proof in slides
+
+Is this perfect cipher **implementable?**
+
+In 1919 Eng. Gilbert S. Vernam patented a telegraphic device able to encrypt the
+symbols typed in by an operator (in Baudot encoding - i.e., a 5-bit ASCII
+encoding). The ciphertext was composed through a bitwise XOR with a sequence of
+symbols provided on a paper tape (the key) having the same length of the input
+message (i.e., the plaintext). This matches the premises of the Shannon Theorem.
+
+US army General Joseph Mauborgne proposed to employ a distinct paper tape (key
+value) for each ptx (condition 2 of Shannon’s Th.) containing random information
+(condition 1 of Shannon’s Th.). This idea combined with the Vernam’s XOR-ing
+machine became known as the **One-Time-Pad (OTP)** enciphering machine.
+
+The aforementioned **OTP** system employed with binary keys and messages is the
+**most effective implementation of a perfectly secure cryptoscheme**.
+
+The **security** of the OTP method **DEPENDS on the fact that that each key is
+used only once** and **each key must be truly random**. Moreover, the key must
+be available to both communication parties. **If the same key is reused**:
+
+- The cipher is **vulnerable to KPA**
+- If the **same key** is used to encrypt **two different messages**,
+  **information about the ptx is leaked from the ctx**
+
+Also, the **Vigenère** cipher can be **modified to be perfectly secure**: just
+make sure the **key is as long as the ptx and is truly random**.
+
+### Computationally secure cipher
+
+Computationally secure ciphers **use the fact that an attacker doesn't have
+unbounded computational power**. Practically the computational limit is made so
+high that no realistic attacker is able to break the cipher.
+
+We will use the term "information" as a synonym for Uncertainty: if you are
+uncertain (or unaware) about the meaning of something, then revealing the
+meaning gives you fresh knowledge and hence information. From the point of view
+of a crypto-analyst you want to find out the meaning of a ciphertext: the level
+of uncertainty you have about either the (correct) plaintext or the (correct)
+key quantifies the amount of information leaked by the ctx.
+
+The **level of uncertainty that the receiver (Bob) has about the value of the
+received answer is called entropy** of $X$, denoted as $\Eta(X)$, and measured
+in bit.
+
+> Let $X$ be a random variable which takes values in $\{x_1, x_2, \ldots x_n \}$
+> with probability distribution $p_i = Pr(X = x_i), \forall 1\leq i\leq n$. The
+> Entropy of X is defined as:
+>
+> $$
+> \Eta(X) = -\sum_{i=1}^n p_i \log_2 p_i
+> $$
+>
+> assuming conventionally that $p_i\log_2 p_i = 0$, if $p_i =0$.
+
+Properties:
+
+1. Entropy is **semipositive** and zero only if one event is certain, while the
+   others are impossible
+2. If the **probability distribution is uniform** then $\Eta(X) = \log_2 n$
+3. If $X$ is a random variable, $0 \leq \Eta(X) \leq \log_2 n$
+
+Some **notable definitions**:
+
+- **Joint entropy**:
+  $\Eta(X,Y) = -\sum_{i=1}^n \sum_{j=1}^m Pr(X=x_i, Y=y_i) \log_2 Pr(X=x_i, Y=y_i)$
+- **Entropy given observation**:
+  $\Eta(X|Y=y) = -\sum_{i=1}^n Pr(X=x_i | Y=y) \log_2 Pr(X=x_i | Y=y)$
+- **Conditional entropy**:
+  $\Eta(X|Y) = -\sum_{i=1}^n \sum_{j=1}^m Pr(Y=y_j)Pr(X=x_i, Y=y_i) \log_2 Pr(X=x_i|Y=y_j)$
+
+**Notable statements**:
+
+- $\Eta(X, Y) \leq \Eta(X) + \Eta(Y)$, equality holds if $X,Y$ are independent
+- $\Eta(X,Y) = \Eta(Y) + \Eta(X|Y)$
+- $\Eta(X|Y) \leq \Eta(X)$, equality holds if $X, Y$ are independent
+
+Going back to a generic symmetric cipher, we can **apply** our formulas:
+
+- $\Eta(P|K,C) = 0$ and $\Eta(C|P,K)=0$ are obvious
+- $\Eta(C, P, K) = \Eta(P, K) + \Eta(C|P,K) = \Eta(P, K) = \Eta(P) + \Eta(K)$
+- $\Eta(C, P, K) = \Eta(K, C) + \Eta(P|K, C) = \Eta(K, C)$
+- From the last two points we can **deduce that**:
+  $\Eta(K, C) = \Eta(P) + \Eta(K)$
+
+**Definition** (Key equivocation):
+
+> Key equivocation is the **amount of information (uncertainty) about the key,
+> that you got by the knowledge of a ctx**:
+>
+> $$ \Eta(K | C) = \Eta(K, C) - \Eta(C) = \Eta(P) + \Eta(K) - \Eta(C) $$
+
+The amount of **information about the key leaked** by a ciphertext is
+$\Eta(K) - \Eta(K|C)$.
+
+The **redundancy** of the natural language employed for the plaintext messages
+is of **great help to the attackers**. We can **quantify the amount of
+redundancy** with the following formula:
+
+$$
+R_L = 1 - \frac{\Eta_L}{\log_2 |\mathcal{M}|}
+$$
+
+For English we have that
+$|\mathcal{M}| = 26, 1.0 \leq \Eta_L \leq 1.5, R_L \approx 0.75$.
+
+There is the possibility that **a key may decode the message into multiple
+"meaningful" but wrong plaintexts** (however only one key will ever decode the
+message into the correct one); these are called **spurious keys**. Let us denote
+$|K_{meaningful}(c)|$ as the number of keys which decrypt a ctx $c$ into a
+meaningful ptx. The **average number of spurious keys** is:
+
+$$
+\bar{s}_n = \sum_{c\in\mathcal{C}} Pr(C = c)(|K_{meaningful}(c)| -1)
+$$
+
+As the length of the ptx and ctw words increase ($n\to\infty$) we can define the
+following **lower bound**:
+
+$$
+\bar{s}_n \geq \frac{\mathcal{K}}{\mathcal{M}^{nR_L}} - 1
+$$
+
+**Definition** (Unicity distance):
+
+> The unicity distance is the **length of ciphertext words** (i.e., the number
+> of ctx) $n = n_0$ such that **the number of spurious keys is equal to zero**,
+> i.e.: $\bar{s}_n = 0$
+>
+> $$
+> n_0 = \frac{\log_2\mathcal{K}}{R_L \log_2\mathcal{M}}
+> $$
+
+Alternatively, we can see the **unicity distance as the amount of ctx symbols
+you need to provide to a bruteforcer to be reasonably sure that the first
+meaningful output is the right ptx**. If $R_L = 0$, $n_0 \to\infty$.
