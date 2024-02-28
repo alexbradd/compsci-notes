@@ -178,4 +178,151 @@ predecessor** (e.g. because of two conditional branches converging), **the idea
 of "most recent definition" becomes nonsense** since the definition used to
 assign the new value depends on the control flow. We thus **introduce** the
 $\phi$-function, a **special notation that denotes a runtime choice of the
-predecessor**. The $\phi$-function has as many arguments as predecessors.
+predecessor**. The $\phi$-function has as many arguments as predecessors. To
+know which edge was taken, if the program has to be made executable, we
+**place** a `MOVE` instruction **on each incoming edge**; during compilation
+**data-flow analysis will provide the connection** between a use `a_i` and a
+definition `a_j`.
+
+**Dominance properties**:
+
+1. If `x` has the `j`-th argument of a $\phi$-function in block `n`, then the
+   **definition** of `x` **is always executed before** (pre-dominates) the
+   `j`-th predecessor of `n`
+2. If `x` is **used in a non**-$\phi$-**statement** in block `n`, then the
+   **definition** of `x` **must dominate** `n`
+
+$\phi$-function conversion algorithm outline:
+
+0. Hypothesis: the start node contains an implicit definition of every variable
+1. Inserting $\phi$ functions
+2. Assigning subscripts
+
+We know already how to do the second point. The first one is more difficult. One
+way to do it is verify the **path-convergence criterion**:
+
+> Place a $a = \phi(\ldots)$ at node `z` if all conditions are met:
+>
+> 1. There exist two basic blocks such that $x: a = \ldots$ and $y: a = \lots$
+> 2. There exist two non-empty paths $P_{xz}$ from `x` to `z`, and $P_{yz}$ from
+>    `y` to `z` such that:
+>
+>    1. $P_{xz}$ and $P_{yz}$ do not have any node in common except $z$
+>    2. Node `z` does not occur within both $P_{xz}$ and $P_{yz}$ prior to the
+>       end
+
+The algorithm then becomes:
+
+```txt
+while exists blocks x,y,z staisfying PCC and z does not contain a phi for a
+  insert "a = phi(a, a, ldots, a)" at z
+... # relabel
+```
+
+This algorithm is **simple**, but **very slow** since verifying the PCC implies
+verifying two existential quantifiers over all of the instructions space.
+
+**Another way is to leverage the dominance properties of SSA**. First let us
+introduce some **preliminaries**:
+
+1. Node $x$ **strictly dominates** node $w$ if $x$ dominates $w$ and $x \neq w$
+2. Predecessor/successor denote CFG relations
+3. Parent/child denote dominance tree relations
+4. In a tree, an **ancestor** of node $n$ is the parent of $n$ or the parent of
+   an ancestor of $n$
+   - An ancestor is proper if it is not the parent
+
+**Definition** (Dominance frontier):
+
+> The dominance frontier $DF(x)$ of a node $x$ is the set of all nodes $w$ such
+> that $x$ dominates a predecessor of $w$, but does not strictly dominate $w$
+>
+> If $x$ dominated all predecessor of $w$ it would dominate $w$ too.
+
+Intuitively, DF is the border between dominated and non-dominated nodes,
+therefore it is a point of convergence of disjoint paths.
+
+To **implement the algorithm using DF, for each variable defined in node** $x$
+we **insert** a $\phi$ function **in every node that is in** `DF(x)`. This is
+**equivalent to the path convergence criterion**:
+
+1. If $a_x$ is the i-th argument of a $\phi$ function in block z, then the
+   definition $x : a = \ldots$ dominates the i-th predecessor of z
+2. If $a$ is used in a non-$\phi$ statement in block $n$, then the definition of
+   $a$ dominates $n$
+
+Since a $\phi$ function is a kind of definition, we must **apply the criterion
+to each newly introduced** $\phi$ functions. This requires an **iterative
+procedure** that terminates when no nodes need new $\phi$ functions.
+
+## Instruction selection
+
+After we have our IR, we need to **generate instructions for said** IR. The
+**mapping** between the two **can vary depending on CPU ISA** type:
+
+- **RISC** architectures usually have a **one-to-one or one-to-many** relation
+  between IR nodes and target instructions
+  - Instructions are very simple and often we need may instructions to do a
+    single operation
+- **CISC** architectures usually **may also have a many-to-one** relation
+  - Instructions are complex and can do multiple operations
+
+We have **two main strategies**:
+
+1. **Tabular**: we have a lookup table where each node is translated to snippet
+   of machine code
+   - **Very simple** method
+   - Works **very well for RISC** targets where we have one-to-one or
+     one-to-many
+2. **Pattern matching** algorithms
+   - More **complicated**
+   - Works very well for CISC targets where we have many-to-one
+
+Since the tabular method is trivial to implement, we will outline the pattern
+matching one.
+
+### Pattern matching
+
+The main idea is the following:
+
+1. **For each IR instruction**, we define a **subtree-pattern** (called tile)
+   and a relative output instruction
+2. We apply a **tree-covering algorithm**
+
+This way we can **reduce** the problem to a **minimum-cost tree-covering**. The
+**cost criterion depends on our application** requirements (execution time,
+energy, code size etc...).
+
+There are many algorithms for doing what we need, one of the simplest is the
+**top-down greedy algorithm**:
+
+1. Consider the **root** $O$ of the tree
+2. Choose the **largest instruction tile matching** $O$ and possibly some of its
+   siblings (`munch(O)`)
+3. Let $O_1, O_2, \ldots, O_k$ be the roots of subtrees which border with the
+   covered tile
+   - **Recursively call** `munch` on $O_1, 0_2, \ldots, O_k$ (in that order)
+4. **Terminate** when the **entire tree has been munched**
+5. **While** the algorithm **visits** the tree in depth-first order, it
+   **appends the tiles to a list**, to produce the actual code, the list is
+   reversed.
+
+The algorithm is fast and operates in **linear time**, w.r.t the tree size.
+
+We can **improve** this approach in different ways:
+
+- Use **different cost criterion** instead of tile size
+- Improve the performance by leveraging **dynamic programming**
+
+### Other code generation approaches
+
+One alternative approach is "**peephole optimization**". Consider some
+**generated suboptimal code** created using a simple approach. Using a **sliding
+window** on the instruction sequence, **apply pattern matching** to detect
+sequences of instructions that admit a replacement with a faster semantically
+equivalent code snippet.
+
+To leverage **idiomatic complex instructions** (like vector instructions or
+packed shifts etc...), we need to have a **pre-pass and match them as early as
+possible**, since they would be very difficult to generate afterwards,
+especially with a top down algorithm.
