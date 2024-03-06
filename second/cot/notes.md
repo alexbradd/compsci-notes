@@ -326,3 +326,206 @@ To leverage **idiomatic complex instructions** (like vector instructions or
 packed shifts etc...), we need to have a **pre-pass and match them as early as
 possible**, since they would be very difficult to generate afterwards,
 especially with a top down algorithm.
+
+## Data-flow analysis
+
+To perform data-flow analysis, we **start from the CFG**. We will **work at the
+function granularity**. Program **variables** and procedure **arguments** are
+**undifferentiated, and treated as temporary symbols**. The **entry point** has
+**no predecessor**, the **return point** has **no successor**.
+
+An assignment to a variable is termed a definition. An occurrence of a variable
+in an expression is termed a use. A **node** `p` has **two sets of properties**:
+`def(p)` and `use(p)` **such that**:
+
+- `p: a = a + b` implies `def(p) = {a}`, `use(p) = {a,b}`
+- `read(a)` and `a = 7` implies `def(p) = {a}`, `use(p) = {}`
+
+An **instruction may be replaced by the indication of the variables that occur
+in the instruction**, qualified as used or defined.
+
+We can **read our CFG as a FSA** where:
+
+- Terminal **alphabet**: instruction **labels** `l`
+- The **language of strings** on `l**` which label a path in the CFG from the
+  initial state to a final state\*\*
+
+**Not all paths accepted by the CFG automaton are feasible**, e.g. contradictory
+conditionals are ignored. Thus, **answers from static analysis are conservative
+approximations**.
+
+### Liveness analysis
+
+Consider a CFG graph and an edge `(p, q1)`. A variable `a` is **live on the edge
+if it exists a path** `(p, q1, ..., qn)` with $n\geq 1$ reaching `qn` **such
+that**:
+
+1. `a` **is** in `use(qn)`
+2. **None of the nodes traversed on this path defines** `a` (excluding `p` and
+   `qn`)
+
+The node `qn` may coincide with `p`.
+
+If `p` has two successors, we say that `a` is **live on exit from** `p` if it is
+**live on one or the other edge**. `a` **being live on exit** from node `p` does
+**not imply that the variable is defined in** `p`.
+
+`a` is **live on entry to node** `p` if it is **live on any of the edges
+entering** the node.
+
+We can **formalize** the property of being **live on exit** as follows:
+
+- Consider the sets `D(a)` and `U(a)` respectively defining the sets defining
+  and using `a`
+- In the **language** `L(A)` **of the CFG automaton there exists a string** (a
+  path) of the following form:
+
+  ```txt
+  u*vqw
+  ```
+
+  Where:
+
+  - `u` is a path from the initial node
+  - `v` is an instruction that does not define `a`
+  - `q` are instructions that use `a`
+  - `w` is a path to the final node
+
+  This forms a **regular language**.
+
+For each node `p`, we can define **two equations** that:
+
+- **Correlate the variables live on exit with that on entry** of `p`
+- **Correlate the variables live on exit** of `p` to those on **entry of the
+  immediate successor** of `p`.
+
+Let $live_{in}(p)$ and $live_{out}$ be the sets of vars live on entry and exit.
+Let $suc(p)$, $pred(p)$ be the immediate successors and predecessors. For a
+final node `p` we have $live_{out}(p) = \emptyset$. For any other node:
+
+$$
+\begin{aligned}
+  live_{in}(p)  &= use(p) \cup (live_{out(p)} \setminus def(p)) \\
+  live_{out}(p) &= \bigcup_{\forall q \in succ(p)} live_{in}(q)
+\end{aligned}
+$$
+
+The **solution to the equations can be solved by iteration**, starting with the
+empty sets as iteration `0`. We iterate substituting the unknowns until two
+different subsequent iterations do not differ. This is the **fixed point**,
+which is the **solution** to the system. To guarantee convergence, let us see if
+these equations respect the **convergence criterion**:
+
+1. **Bounded cardinality**: both sets has a finite size bounded by the number of
+   variables in the subprogram
+2. **Monotonicity**: an iteration never removes a variable from the previous
+   approximation
+3. **Halt**: if an iteration lets the previous approximation unchanged, the
+   algorithm halts
+
+Thus the algorithm converges. The **speed of convergence is dependant on the
+scanning order**, the **solution** is, however, **always the same**.
+
+Considering the following algorithm:
+
+```txt
+for each n
+  in(n) = {}
+  out(n) = {}
+
+repeat
+  for each n
+    in'(n) = in(n)
+    out' = out(n)
+    in(n) = join(use(n), minus(out(n), def(n)))
+    out(n) = for each q in succ(n) join(q)
+until for each n in'(n) = in(n) and out'(n) = out(n)
+```
+
+Each join on the in/out sets takes linear time. The inner for loop computes a
+constant number of unions per CFG node (at most $N$), since there are
+$\mathcal{O}(N)$ nodes we have that the loop takes $\mathcal{O}(N^2)$. Each
+iteration must add some elements to some set, but each set has a cardinality
+bounded by the number of variables $N$. The sum of the cardinalities of all in
+and out sets is therefore bounded by $2N^2$ . It follows that the repeat loop
+can iterate at most $2N^2$ times. Hence the **worst-case run time** of the
+algorithm is $\mathcal{O}(N^4)$.
+
+To optimize the complexity we can choose between **two set data structures**:
+
+- **Bit vector**: each element is a bit in an integer; union and intersection
+  are implemented with a OR and AND respectively
+  - Set operation take $N/|w|$ cycles, independently of how many values are in
+    the set
+  - Better for **dense sets**
+- **Linked list**: the elements in a set are represented by a linked list. The
+  union of two sets is realized by merging the two lists and discarding
+  duplicated elements
+  - The time to perform union is proportional to the size of the sets being
+    united
+  - Better for **sparse sets**
+
+### Generalization
+
+The method for computing liveness can be **generalised into a general
+framework** for performing other kinds data-flow analysis:
+
+- **For forward analysis**:
+
+  - For each node in a basic block, define **two sets** `gen(p)` and `kill(p)`
+  - **Compute iteratively** the two sets:
+
+    ```txt
+    out(p) = transfer(in(p), gen(p), kill(p))
+    in(p) = for each q immediate predecessor of p: join(q)
+    ```
+
+  Where the `transfer()` function is a function that combines in some way the
+  three argument sets
+
+- **For backward analysis**:
+
+  - For each node in a basic block, define **two sets** `gen(p)` and `kill(p)`
+  - **Compute iteratively** the two sets:
+
+    ```txt
+    in(p) = tranfer(out(p), gen(p), kill(p))
+    out(p) = for each q immediate successor of p: join(q)
+    ```
+
+E.g. liveness analysis is a backward analysis where:
+
+- `gen` and `kill` are equivalent to `use` and `def`
+- $transfer(\cdot) =  use(p) \cup (out(p) \setminus def(p))$
+
+The same properties we have seen for liveness stil hold.
+
+Using this framework we can define **different kinds of analysis** such as:
+
+- **Useless definitions**: an instruction defining a variable which is not in
+  the live-out set is useless (dead-code), and may be deleted (provided it does
+  not have side-effects)
+- **Elimination of common subexpressions**: if an expression is computed more
+  than once, save the result into a temporary the first time is computed, and
+  eliminate the subsequent computations
+- **Constant folding**: if the operands of an expression are constant, do the
+  computation at compile time, thus saving the code for computing the
+  expressions
+- **Constant propagation**: If a temporary is assigned a constant value, replace
+  a subsequent use of the temporary with the constant
+
+Usually analysis are done in a loop of three phases:
+
+1. Statically analyze the program to gather information on program properties
+2. Use the information to identify the instructions or instruction patterns that
+   can be transformed
+3. If a transformation improves the program, apply it
+4. After the transformation, the program has changed, and static analysis may be
+   partially invalidated, repeat the steps
+
+**Since the optimization phase may change, delete, and generate IR statements,
+machine-code generation phase typically comes after**.
+
+### Reaching definitions
+
+See FLC notes.
