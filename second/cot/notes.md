@@ -529,3 +529,190 @@ machine-code generation phase typically comes after**.
 ### Reaching definitions
 
 See FLC notes.
+
+## Register allocation
+
+Access to registers much faster than access to memory, thus we want to **map the
+most used variables to registers**. However, the **number of live variables may
+exceed available registers**, meaning we **need to save variables into memory**
+to free the needed registers (e.g. for some instruction).
+
+The **scopes** at which we can do register allocation is:
+
+1. Complex expressions
+2. Basic blocks
+3. Procedure
+4. Program
+
+A **smaller allocation unit is easier to work with**, can be easily integrated
+into the instruction-selection phase and can be more suitable for dynamic
+compilation. **Global management of registers across procedure can improve
+performance, but is much more complex**. We will look at intra-procedural
+regalloc.
+
+The **principles** we are working with are the following:
+
+1. If **two variables are both live** in the **same program point**, they
+   **cannot be stored in the same register**
+2. If the **liveness intervals** of two variables are **disjoint**, the **same
+   register can be used**
+
+### Graph coloring approach
+
+**Definition** (Liveness interference relation):
+
+> A binary, symmetric relation between two variables a and b denoting the fact
+> that the liveness intervals of a and b overlap. The interference relation can
+> be depicted as a non-directed graph.
+
+This relation can be **represented as a graph**, and **registers can be viewed
+as colors**. The assignment needs to **paint nodes of the graph with colors, so
+that adjacent nodes differ in color**. This is the **graph-coloring problem and
+is not always solvable**, we however have heuristics that are polynomial. **To
+solve the intractability, we spill (store) variables to memory and recompute
+liveness until we can color the graph**.
+
+Algorithm **outline**:
+
+- Repeat until successful
+  1. **Build**: construct the Liveness Interference Graph
+     - Until the graph is empty:
+       1. **Simplify**: Reduce the graph removing colorable nodes
+       2. **Spill**: Select from remaining nodes a candidate for spilling
+  2. **Select**: Assign registers or mark nodes as spilled
+  3. Start over: modify code to manage spills
+
+Let us look more in depth at the most important procedures:
+
+- **Simplify**:
+  1. If `G` contains a node `m` with fewer than `K` neighbours
+  2. Construct the graph `G' = G \ {m}`
+  3. Push `m` on `S`
+  4. Repeat until fixed point
+- **Spill**:
+  1. If `G = {}`, all remaining nodes have `>= K` neighbours
+  2. Choose a node `s` and mark it as candidate for spilling
+  3. Push `s` on `S` and compute `G' = G \ {s}`
+  4. Retry simplify
+- **Select**:
+  1. For each node `s in S`, assign a color to it
+  2. If `s` does not interfere with the previous popped node, reuse the same
+     color
+  3. As long as `s` is not marked for spilling, it is guaranteed to be colorable
+  4. If `s` is a spilling candidate, either the node can be colored or the
+     potential spill is marked as an actual spill
+
+WCET is $\mathcal{O(n^3)}$, but in average is almost quadratic (most expensive
+operation is building the live interference graph).
+
+### Linear scan
+
+Guarantees linear time.
+
+```txt
+def LinearScan:
+  active = {}
+  for each live interval i, in order of increasing start point:
+    ExpireOldIntervals(i)
+    if length(active) = R:
+      SpillAtInterval(i)
+    else:
+      register[i] = a register removed from the pool of free registers
+      active += {i} // sorted by increasing end point
+
+def ExpireOldIntervals:
+  for each interval j in active, in order of increasing end point:
+    if endpoint[j] >= startpoint [i]:
+      return
+    else:
+      active \= {j}
+      add_to_free_pool(register[j])
+
+def SpillAtInterval:
+  spill = active.tail
+  if endpoint[spill] > endpoint[i]:
+    register[i] = register[spill]
+    location[spill] = get_new_stack_location()
+    active \= {spill}
+    active += {i} // sorted by increasing end point
+  else:
+    location[i] = get_new_stack_location()
+```
+
+Let `V` be the number of variables and `R` be the number of registers. Since
+`|active| <= R`, if `R` is assumed to be smaller than `V`, linear scan is
+$\mathcal{O}(V)$. In architecture with a lot of available registers, the
+complexity is more $\mathcal{O}(V\times R)$.
+
+### Register allocation with SSA
+
+**SSA form makes it easy to perform interference analysis** due to the
+**dominance property** (definitions dominate uses). **Liveness analysis should
+be done before** $\phi$-function translation.
+
+For each variable `v`, **start from each use site and walk backwards** on the
+CFG, **stopping when the definition site is reached**. The algorithm processes
+only the blocks where `v` is live. Thus the **running time becomes proportional
+to the size of the interference graph** that it constructs.
+
+## Optimization
+
+In this sections we will explore some optimizations assuming a procedural
+language compiled for a hypothetical superscalar processor called S-DLX.
+
+Characteristics of the **source language**:
+
+1. Similar to **Fortran 90**
+2. We use `do all` **loops** to indicate that all iterations may be **executed
+   concurrently**
+3. **Arrays are stored contiguously in memory in column-major form**
+4. **All arguments are passed by reference**
+
+The optimization are not limited to by this assumptions, it's just that these
+assumptions simplify the explanation.
+
+For a compiler to apply an optimization to a program, it must do 3 things:
+
+1. Decide a part of the program to optimize and the transformation to apply
+   - Most difficult and poorly understood part
+2. Verify that the transformation is acceptable
+3. Transform the program
+   - This will be our focus
+
+### Correctness
+
+**Definition** (Legal transformation):
+
+> A transformation is legal if the **original and the transformed programs**
+> produce exactly the **same output for all identical executions**.
+
+**Definition** (Identical executions):
+
+> Two executions are identical if they are **supplied with the same input data**
+> and if every **corresponding pair of non-deterministic operations** in the two
+> executions produces the **same result**.
+
+**Definition** (Semicommutative and semiassociative):
+
+> We call operations that are **algebraically but not computationally
+> commutative** (or associative) semicommutative (or semiassociative).
+
+We can now define when a transformation is legal:
+
+Definition (Criterion for legal transformation):
+
+> A transformation is legal if, **for all semantically correct program
+> executions**, the **original and the transformed programs produce exactly the
+> same output for identical executions**.
+
+For languages that define a specific semantics for exceptions (i.e. IEEE
+floating-point standard), **meeting the previous definition tightly constraints
+the permissible transformations**.
+
+If we **assume** that **exceptions are only generated when the program is
+semantically incorrect**, a transformed program **can produce different results
+when an exception occurs and still be legal**. An **alternative** correctness
+criterion is to **consider equivalent all permutations of semicommutative
+operations**. In practice we **check whether the numeric results differ by more
+than a certain tolerance**, and if they do, force the compiler to employ the
+previous definition.
