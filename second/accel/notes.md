@@ -147,3 +147,63 @@ co-design**. Thus, this is an act of **balancing**:
    - Doing things in hardware is faster but costs more
 2. **Programmability** of low-cost **SW components**
    - Doing things in software is slower but costs less
+
+## Open challenges
+
+1. System-level **optimization**: understand how to **generate** and
+   **optimize** an **efficient SoC architecture** also given the technology
+   constraints and the synthesis process
+2. **Programmability**: understand the interactions between hardware and
+   software, and how to optimally control the component execution
+   - Divided into **2 orthogonal concerns: component generation and system
+     integration**
+   - Our components need to have the following **properties**:
+     - **Modularity**: possibility of creating an SoC as a collection of
+       components
+     - **Flexibility**: possibility of adapting one component to changes in the
+       behavior of the others
+     - **Scalability**: possibility of creating larger SoCs without significant
+       performance degradations
+     - **Reusability**: possibility of reusing pre-existing components
+3. **Reliability/Fault tolerance**: understand how to **protect** the system
+   execution **against random faults**
+   - No two transistors are equal, we can have slower or faster ones, due to
+     process variations or degradation (due to aging)
+   - Transistors can come out broken
+   - Input can also be corrupted/garbage
+4. **Testability**: Design needs to be testable to ensure proper behaviour
+   - Needs to be **accounted for during design since components** (depending on
+     application) **need to be reliable in all conditions**
+   - Needs to be **accounted for during the design phase since it requires
+     additional resources** (e.g. JTAG)
+5. Hardware **security**: understand how to protect the IP but also the data
+   within the SoC itself
+   - **Increasing complexity demands design & reuse approaches**
+   - **Possibility of different attacks at different levels**:
+     - Supply-chain attacks
+     - Hardware trojan horses (HTH)
+     - Microarchitectural side-channel attacks
+   - IPs can be stolen/cloned
+6. Input language for system verification:
+   - Verilog/VHDL or HLS?
+   - **Synthesis is very dependent on how the code is written**
+7. **Coprocessor coupling**: two main models
+   - **Tightly-Coupled Accelerator** (TCA) shares key resources with the CPU
+     (registers, MMU, L1 cache etc...)
+   - **Loosely-Coupled Accelerator** (LCA) is outside the CPU and uses an
+     integrated DMA controller to transfer data between their memory and the
+     system memory
+8. **Memory**: which type and how much memory will we use?
+   - Registers: many ports at the cost of more area, good for small to medium
+     structures
+   - IP blocks: area efficient provided by technology providers, good for medium
+     to large arrays; limited ports
+9. **Data footprint gap**: the data the algorithms process is becoming much more
+   than what is needed for the chip itself to run
+10. **Increasing manufacturing costs**: chips are becoming bigger and scaling is
+    expensive
+    - Smaller transistors require newer lithography instruments with larger
+      error margins
+    - **Reduce costs by reusing pre-designed components** (programmability
+      suffers)
+    - **Reduce costs by outsourcing fabrication** (security suffers)
