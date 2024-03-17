@@ -207,3 +207,77 @@ co-design**. Thus, this is an act of **balancing**:
     - **Reduce costs by reusing pre-designed components** (programmability
       suffers)
     - **Reduce costs by outsourcing fabrication** (security suffers)
+
+## Latency insensitive design
+
+A **system** with multiple components **works correctly as far as it is running
+with a clock period that is the maximum of the clock periods of the components**
+(reg to reg). What happens if the **wire delay is greater than the component
+delay**?
+
+In a deep **sub-micron** process technology (< 90nm), **process variability is a
+serious concern**. Technology improvements are on the transistors but not on the
+wires at the same level. This means that **long wires will play significant role
+in logic synthesis optimization**. We need a global protocol that is insensitive
+to delays.
+
+To **design** a complex system in a **correct** way we need to:
+
+- **Relax time constraints** during the early phases
+- **Simplify the composition of sequential modules** in pipeline mode
+- **Facilitate the insertion of extra pipeline stages between one module and the
+  next one** with the purpose of **buffering** those signals which propagate on
+  long wires
+
+Asynchronous systems require designer to think digital systems completely
+differently (e.g. removing the concept of global clock and use an event-based
+architecture). A **latency-insensitive design is a specified synchronous system
+where components are still synchronous but can tolerate arbitrary communication
+delays**.
+
+A **simple communication protocol is to stall the transmission if the data link
+is not ready**.
+
+In a Latency-Insensitive Design (LID), a **design is correct if and only if the
+sequence of the events (and not their timing) is correct**: **timing** becomes a
+**non-functional metric** to evaluate the quality of the evaluation. LID
+introduces the **following concepts**:
+
+- A **relay station** is a module that is inserted wherever it is necessary to
+  tolerate delays
+- Each relay station introduces one **stalling event**
+- A **modules receiving a stalling event as input emits stalling events as
+  outputs at the next cycle**
+
+We call a **shell a wrapper that encapsulates a module and interfaces with
+channels**, providing services to it like: getting incoming module, filtering
+void packets, etc. It **guarantees input synchronization and data propagation**.
+
+There are tools that implement latency-insensitive primitives. The area overhead
+for these wrappers is usually 3%.
+
+## Communication synthesis
+
+**Multiprocessors** can communicate in **two methods**:
+
+1. **Shared addresses**: offer to the programmer a single memory address space
+   that all processors share/
+   - Different processors communicate through shared variables in memory, with
+     all processors capable of accessing all memory locations
+   - Simpler, but less scalable
+   - Memory access time can be uniform or non-uniform. NUMA machines can scale
+     to a much larger size so there is more potential for performance.
+2. **Message passing**: Communicating between multiple processors by explicitly
+   sending and receiving information
+   - More complex (requires protocols) but more scalable
+
+Processors can be **connected with**:
+
+- **Busses**:
+  - Low area, simple interface
+  - Lower scalability (due to bus contention) and cache coherency problems
+- **NoC**:
+  - Higher performance, much more scalable
+  - Higher area of occupation, we still have cache coherency problems
+
+**The connection type is orthogonal to the type of communication type**.
