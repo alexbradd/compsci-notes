@@ -545,7 +545,7 @@ Ciphers that do **not offer** effective **confusion** are **vulnerable to
 frequency analysis**. Ciphers suffering from **poor diffusion** can usually be
 **broken by means of KPA**.
 
-### Block cipher design
+## Block cipher design
 
 Block ciphers **operate on a block of plaintext** to produce a block of
 ciphertext through a key-parametric transformation. The **block size n is in
@@ -592,7 +592,7 @@ We can **categorize the designs** into two macro categories:
      permutation, or pairs of rotate and XOR operations
    - The addition of a part of the key schedule
 
-#### Feistel networks
+### Feistel networks
 
 A Feistel network **transforms an n-bit ptx block** $m=\langle L_0, R_0\rangle$
 into a **n-bit block** $c=\langle L_r, R_r\rangle$ **through and r-round
@@ -601,11 +601,11 @@ a final one**; where the **sub-blocks** $L_i, R_i$ are $n/2$-bit long.
 
 ```txt
 procedure Feistel({L, R}, k)
-  for i = 0 to r − 2
+  for i = 0 to r - 2
     temp = L
     L = R
-    R = temp ^ F(k_i , R) // L_i = R_{i−1} , R_i = L_{i−1} ^ F(k_i , R_{i−1})
-  R = L ^ F(k_{r−1} , R)
+    R = temp ^ F(k_i , R) // L_i = R_{i-1} , R_i = L_{i-1} ^ F(k_i , R_{i-1})
+  R = L ^ F(k_{r-1} , R)
   return {R, L} // Note: the last round block halves are swapped
 ```
 
@@ -619,9 +619,9 @@ Properties:
 
   $$
   \begin{aligned}
-    & L_i = R_{i−1}, \quad R_i = L_{i−1} \oplus \mathcal{F}(k_i , R_{i−1}) \\
+    & L_i = R_{i-1}, \quad R_i = L_{i-1} \oplus \mathcal{F}(k_i , R_{i-1}) \\
     & \text{Then we can also write:} \\
-    & R_{i−1} = L_i, \quad L_{i-1} = R_i \oplus \mathcal{F}(k_i , L_i)
+    & R_{i-1} = L_i, \quad L_{i-1} = R_i \oplus \mathcal{F}(k_i , L_i)
   \end{aligned}
   $$
 
@@ -726,7 +726,7 @@ keys**.
 Nevertheless, this structure is **vulnerable to meet-in-the-middle** attacks
 that leverage this fact:
 
-$$c = DES(k_1 , DES(k_2 , m)) \iff DES^{−1} (k_1 , c) = DES(k_2 , m)$$
+$$c = DES(k_1 , DES(k_2 , m)) \iff DES^{-1} (k_1 , c) = DES(k_2 , m)$$
 
 Given a **ptx-ctx pair**, to execute this attack we do the following:
 
@@ -996,3 +996,375 @@ two encryptions of the same ptx produce different ctxs**.
   - **IV must not be reused**
   - An **error in a certain ctx block affects the whole decrypted ctx block**
   - **Weak to insertion/deletion** of ctx blocks
+
+### SPN
+
+In substitution-permutation-networks the **round is split into three parts**,
+acting on the whole state:
+
+- **Substitution: nonlinear function** applied to the state
+  - Usually represented as a **LUT**
+- **Permutation**: a permutation of the bits of the state
+  - Instead of bitwise, it is **common to perform xor-linear mixing**
+- **Key mixing**: the **key is added via a XOR**
+  - In case the **key is added via a nonlinear operation** (i.e. a modulo sum)
+    the cipher is called a **product cipher**
+
+Unlike Feistel-based ciphers, the **encryption and decryption transformations
+are distinct**.
+
+### AES
+
+Depending on key-length, **10, 12 or 14 rounds are employed**. Each round has as
+**state** a **4x4-byte matrix** with each round composed by:
+
+1. A **Substitution layer** in the form of **16 S-boxes**, 8-to-8 bit
+2. A **Permutation layer** implemented via a **bytewise rotation** (`ShiftRows`)
+   and a **xor-linear operation** among state bytes (`MixColumn`)
+3. A **key addition**: bitwise **XOR**, with 128 bits of expanded key material
+
+The **last round does not have the Permutation layer** (as it could easily be
+inverted).
+
+```txt
+           ┌┬┬┬┬┬┐
+ Plaintext ├┼┼┼┼┼┤
+           ├┼┼┼┼┼┤
+           └┴┴┴┴┴┘
+              ▼
+         ╭───────────╮
+         │AddRoundKey│
+         ╰────┬──────╯   ╭─────╮
+┌╶╶╶╶╶╶╶╶╶╶╶╶╶▼╶╶╶╶╶╶╶╶┐ │ ┌╶╶╶▼╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶┐
+╎         ╭────────╮   ╎ │ ╎╭────────╮          ╎
+╎         │SubBytes│   ╎ │ ╎│SubBytes│          ╎
+╎         ╰───┬────╯   ╎ │ ╎╰──┬─────╯          ╎
+╎             ▼        ╎ │ ╎   ▼                ╎
+╎         ╭─────────╮  ╎ │ ╎╭─────────╮         ╎
+╎Regular  │ShiftRows│  ╎ │ ╎│ShiftRows│   Final ╎
+╎rounds   ╰───┬─────╯  ╎ │ ╎╰──┬──────╯   round ╎
+╎             ▼        ╎ │ ╎   ▼                ╎
+╎         ╭──────────╮ ╎ │ ╎╭───────────╮       ╎
+╎         │MixColumns│ ╎ │ ╎│AddRoundKey│       ╎
+╎         ╰───┬──────╯ ╎ │ ╎╰───────────╯       ╎
+╎             ▼        ╎ │ └╶╶╶▼╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶┘
+╎        ╭───────────╮ ╎ │   ┌┬┬┬┬┬┐
+╎        │AddRoundKey│ ╎ │   ├┼┼┼┼┼┤  Ciphertext
+╎        ╰────┬──────╯ ╎ │   ├┼┼┼┼┼┤
+└╶╶╶╶╶╶╶╶╶╶╶╶╶│╶╶╶╶╶╶╶╶┘ │   └┴┴┴┴┴┘
+              ╰──────────╯
+```
+
+- `SubBytes`: it is a **8-to-8 bit bijective map**
+
+  1. Take input byte $i$, consider it as the coefficients of a polynomial over
+
+     $$
+     (\mathbb{f}_{2^8}, \oplus, \odot): i_7 x^7 \oplus i_6 x^6 \oplus \ldots \oplus i_0
+       \mod x^8 \oplus x^4 \oplus x^3 \oplus x \olpus 1
+     $$
+
+  2. Compute the inverse $i^{-1}$ over the field
+  3. Consider $i^{-1}$ as a 8-bit vector and compute
+
+     $$
+     o = ai^{-1} \oplus b
+     $$
+
+     Where $a$ is a constant 8x8 bit matrix and $b$ is a constant 8-bit vector
+
+  4. $o$ is the output of the S-box
+
+  **Every byte is modified individually, thus the byte substitutions can be
+  scheduled in any order**
+
+- `ShiftRows`: implements the first half of the permutation layer, consists in a
+  **rotation by** $i$ for each of the rows $i$
+- `MixColumns`: second half of the permutation layer, provides **xor-linear
+  intra-column diffusion**
+
+  1. Every column $I=(i_0, i_1, i_2, i_3)$ is considered as coefficients of a
+     polynomial over the ring:
+
+     $$
+     (\mathbb{f}_{2^8}[X], +, *): i_0 X^0 + i_1 X^1 + i_2 X^2 + i_3 X^3 + i_3 X^3
+       \mod X^4 + 1
+     $$
+
+     Every coefficient $i_i$ lies on $(\mathbb{f}_{2^8}, \oplus, \odot)$
+
+  2. $I$ is multiplied by a fixed polynomial
+
+     $$
+     C(X) = 0x02 X^0 + 0x01 + X^1 + 0x01 X^2 + 0x03 X^3
+     $$
+
+     With the result called $O(X)$
+
+  It is **possible to rewrite the operations in order to deal only with
+  operations in the finite field**. This enables us to **use vector-matrix
+  multiplication with a constant matrix** over the usual finite field.
+
+- `AddRoundKey`: is a **simple bitwise XOR** of the round key with the state
+
+It is possible to **fuse the three round primitives not involving the key**
+(`SubBytes`, `ShiftRows`, `MixColumns`) into a single one. The round is then
+computed column-wise.
+
+The **key-schedule routine expands the user-key into** `rounds + 1` round keys.
+The **first round key(s) are filled with the original user-key**. The key
+scheduling is **invertible** (i.e. the user-key can be retrieved) provided at
+least $s$ consecutive words of the key material are available.
+
+The **decryption** process simply **applies the inverse transformation of each
+cipher step in reverse order**. The **structure of the decryption engine is thus
+different from the one employed for the encryption**. The **key scheduling**
+strategy is the **same**, but the round keys are employed in **reverse order**.
+
+#### Properties
+
+- A **single bit flip** in the input of the cipher is **completely diffused**
+  over the state
+- AES is **completely immune to linear and differential cryptanalysis**
+- The best **known cryptanalytic attacks are**:
+  - **KPA** with:
+    - $2^{126.1}$ computations for AES-128
+    - $2^{189.7}$ computations for AES-192
+    - $2^{254.4}$ computations for AES-256
+  - **Known plaintext, related key attack** (i.e., correct ptx/ctx pairs
+    encrypted with keys similar to the correct one needed) breaks AES-192 and
+    AES 256 with $2^{176}$ and $2^{99.5}$ computations respectively; AES-128 is
+    immune to this attack
+
+## Stream ciphers
+
+A stream cipher **operates on individual ptx bits or digits**, so it is very
+useful for **encrypting streaming communications** and they are **particularly
+suited for environments with limited resources** (e.g. RFID) due the minimal HW
+requirements ($\approx$ 500 gates) and the minimal memory requirements. The
+throughput is usually grater or equal than the fastest block ciphers.
+
+The **basic idea is to mimic the OTP cipher**. The **ptx messages are considered
+as a stream** of digits $m_0, m_1, \ldots$, which is **encrypted into a sequence
+of ctx digits** $c_0 , c_1 , \ldots$ as follows:
+
+- A **sequence of pseudo-random digits** called running-key (or **keystream**)
+  is generated at both communication endpoints
+- The **i-th ctx digit** $c_i$ is **obtained by combinining** the **i-th ptx
+  digit with the i-th keystream one** (usually with a XOR)
+
+```txt
+            ╭─────────────╮              ╭─────────────╮
+            │Pseudo-random│              │Psuedo-random│
+            │bitstream    │              │bitstream    │
+            │    |        │              │    |        │
+ Plaintext  │    ▼        │  Ciphertext  │    ▼        │  Plaintext
+───────────>│──>XOR──────>│─────────────>│──>XOR──────>│────────────>
+            ╰─────────────╯              ╰─────────────╯
+              Encryption                   Decryption
+```
+
+In a OTP cipher, a random key must be employed for every ptx message and the key
+must have the same length of the message, thus **ideally the keystream must be
+truly random with no specific repetitions** whatsoever. For a stream cipher to
+be useful **we would like to**:
+
+1. **Use short keys** to encrypt long message
+2. Use **algorithmically generated pseudo-random values for the keystream**
+   instead of truly random ones
+3. Be sure that **the same keystream sequence is repeated only after a very
+   long** (a practical value for infinity) **sequence** of messages has been
+   encrypted
+
+**Definition** (Synchronous stream cipher):
+
+> The **keystream** is generated as a **function of the cipher key and of the
+> memory elements**, independently of any previous ptx or ctx digit.
+
+Some immediate **properties** that we can see:
+
+1. **No error propagation**: a bit error in the ctx affects one bit in the
+   deciphered ptx, provided that synchronization is maintained
+2. **Synchronization is crucial** for a correct encryption and decryption
+3. An **active adversary can use insertion, deletion or substitution (replay) of
+   ctx digits to get predictable changes on the deciphered ptx**
+
+**Definition** (Asynchronous stream ciphers):
+
+> The **keystream** is generated as a **function of the cipher key and a finite
+> number of previous ctxs**.
+>
+> Given a key $k$ and an initial state
+> $S_0 = \langle s_{L-1}, \ldots , s_0\rangle$ the keystream is composed as:
+> $k_i = f(k, S_i , S_{i-1}, \ldots)$ with
+> $Si = \langle c_{i+L-1}, c_{i+L-2}, \ldots, c_{i+1}, c_i \rangle$
+
+Some immediate **properties**:
+
+1. An **erroneous ctx digit affects at most** $L$ digits of the deciphered ptx
+2. The **decrypting endpoint synchronizes after receiving $L$ ctx digits**
+   - Easier to recover if digits are dropped or added to the ctx stream
+     (self-synchronizing cipher)
+3. An **active adversary can use insertion or deletion or substitution (replay)
+   of ctx digits to get predictable changes on the deciphered ptx**
+
+### Linear Feedback Shift Registers (LFSR)
+
+A LFSR is a **clocked circuit** with $t$ 1-bit memory cells. At each clock
+cycle, **each bit value is moved to the adjacent memory cell** and **cells with
+a non-zero weight** $c_i$ are **XOR-ed together** and the **result is fed into
+the empty cell at the top** of the register.
+
+```txt
+╭──────────────XOR<─────────XOR┈┈┈┈┈┈┈XOR<──────────XOR<───────────╮
+│               ^            ^                       ^             │
+│       ╭───╮   │    ╭───╮   │           ╭───────╮   │     ╭───╮   │
+│       │c_1│─>AND   │c_2│─>AND  ┈┈┈┈┈┈  │c_{L-1}│─>AND    │c_L│─>AND
+│       ╰───╯   ^    ╰───╯   ^           ╰───────╯   ^     ╰───╯   ^
+│ ╭─────────╮   │   ╭────╮   │           ╭───────╮   │     ╭───╮   │
+╰>│s_{t+L-1}│───┴──>│ ...│───┴───>┈┈┈┈──>│s_{t+1}│───┴────>│s_t│───┴──> s_t ... s_1 s_0
+  ╰─────────╯       ╰────╯               ╰───────╯         ╰───╯
+```
+
+This structure is **simple to implement in hardware**, produces a keystream with
+**provable long period and good statistical properties** and can be analyzed
+algebraically.
+
+Given the **initial values of the register**
+$\langle s_{L-1} , \cdots, s_1, s_0\rangle$ and the **configuration** of the
+feedback network $\langle c_1, c_2, \cdots, c_{L-1}, 1\rangle$ ($c_L = 1$
+always) the **cipher key** is:
+$k = \{L, \langle s_{L-1}, \cdots, s_0\langle, \langle c_1 , \cdots, c_{L-1}\rangle\}$
+The **algorithm for updating the contents of the leftmost memory cell** (i.e.,
+$s_{L-1}$) gives a **recurrence** relation:
+
+$$
+s_{t+L} = \sum_{i=1}^L c_i \cdot s){t+L-i}, \quad t\geq 0
+$$
+
+The **period** of the sequence is the smallest positive integer $N$ such that
+$s_{t+N} = s_t , \forall t \geq 0$.
+
+We can describe the LSFR functions using **two polynomials** dependent on the
+values in the status registers:
+
+- A **status polynomial** with degree $L-1$:
+  $s(x) = \sum_{i=0}^{L-1}s_{L-1-i}x^i$, associated with the LSFR
+- A **connection polynomial** with degree $L$:
+  $c(x) = x^L \sum_{i=1}^{L-1}c_i x^i + 1$, associated with the feedback network
+
+At each clock tick, the **bits in the registers** are equal to the
+**coefficients of the status polynomial updated as such**:
+
+$$
+s'(x) = s(x) \cdot x \quad \mod c(x)
+$$
+
+Alternatively one can describe the LFSR with the **characteristic polynomial**
+defined as such:
+
+$$
+g(x) = x^L c(x^{-1}) = x^L \sum_{i=1}^L c_i X^{L-i}
+$$
+
+**Theorem** (Characterization of LFSR output sequences):
+
+> Given an LFSR with $L$ memory cells with a non-zero initial state
+> $\langle s_{L-1} , \cdots, s_1, s_0\rangle$ and a feedback network
+> $\langle c_1, c_2, \cdots, c_{L-1}, 1\rangle$, we have:
+>
+> - If $c(x)$ is **irreducible** then the LFSR produces a **keystream with
+>   period** $N$, where $N$ is a **divisor of the maximum possible period** >
+>   $2^{L-1}$
+>   - $N$ is the smallest integer such that $c_x$ is a factor of $x^N + 1$
+> - If $c(x)$ is **primitive**, then the LFSR produces a **keystream with
+>   period** > $N = 2^{L-1}$
+
+> > Some spoilers of the algebra part:
+> >
+> > A polynomial is called primitive if each of its roots is a generator of
+> > $\mathbb{F}_{2^L}\setminus\{0\}$. A primitive polynomial is also irreducible
+
+A **primitive LSFR has good statistical properties** and can be employed as a
+**fair PRNG**. It is possible to prove the following postulates (**Golomb's
+postulates**): let a sequence ok $k$ consecutive 0s (or 1s) be called a run of
+length $k$
+
+1. In every N-bit sequence, the number of zeros is nearly equal to the number of
+   ones (the disparity does not exceed $1!$)
+2. In every N-bit sequence, $\frac{1}{2^k}$ the runs have length $k$
+3. For each run length, there are equally many runs of 0s and of 1s
+4. Counting the number digits matching between a period of the sequence and an
+   infinite sequence from the same LFSR yields 0 if the single period is aligned
+   with a period of the infinite sequence, and a constant k otherwise
+
+The **output** of an LSFR has **no statistical redundancy** (i.e. maximum
+entropy).
+
+### Attack against stream ciphers based on simple LSFRs
+
+Stream ciphers based on LFSRs are **not usable on their own** for cryptographic
+purposes, because they are **essentially linear and subject to KPA**.
+
+Assume that the length L of an LFSR is known, and assume that we can obtain at
+least $2L$ ptx-ctx digit pairs.
+
+- The initial state of the State Register is computed recovering the keystream
+  values from the ptx-ctx pairs as $s_i = m_i \oplus c_i$
+- The coefficients of the feedback network are computed through solving a set of
+  $L$ simultaneous linear equations:
+
+  $$
+  s_{j+L} = \sum_{i=1}^L c_I s_{j+L-i} \quad \mod 2 \quad j\geq 0
+  $$
+
+### Combining LFSRs
+
+We can combine multiple LSFRs to compute a single keystream. Applying this
+**combination function results in another LFSR with a longer period**, however
+not all functions improve the strength of the LFSR.
+
+1. **Geffe generator**: uses 3 LFSRs (`LFSR1(x_1)`, `LFSR2(x_2)` and
+   `LFSR3(x_3)`)
+
+   $$
+   x = x_1 x_2 \oplus x_3 x_2 \oplus x_3 \implies
+   \begin{cases}
+     x &= x_1 \quad x_2 = 1 \\
+     x &= x_3 \quad \text{otherwise}
+   \end{cases}
+   $$
+
+   - The output bit is not chosen uniformly from $x_1$ or $x_3$ (it can be
+     proven that $Pr(x=x_1) = Pr(x=x_3) = 0.75$), thus a correlation attack can
+     be performed
+
+2. **The alternating stop-and-go generator** is defined with three LFSRs.
+   `LFSR1(x_1)` is used to trigger the clock signal between `x_2` and `x_3`,
+   - The output is `x` is $x_2 \oplus x_3$
+   - If $x_1 = 0$, `LFSR2` is clocked, otherwise `LFSR3`
+   - This is immune to the correlation attack
+3. **The shrinking generator**: two simultaneously clocked LFSRs (`LFSR1` and
+   `LFSR2`) are fed into a function with a single output that:
+   - If $x_1 = 1$, outputs $x = x_2$
+   - Else discards both inputs and forwards the LFSRs
+
+### LFSR based stream ciphers
+
+1. The **A5 family** was introduced in 1987 to encrypt on-air traffic of GSM
+   networks
+   - `A5/1` was designed secretly and reversed engineered in 1999, it uses 3
+     LSFRs with a 64-bit state in total, the output is the XOR of the registers
+     - No longer secure
+   - `A5/2` is also a stream cipher and broken
+   - `A5/3` is a Feistel-based block cipher and it is the current standard for
+     UMTS/3G networks
+     - Some cryptanalytic results are known but no practical real-world attack
+       scenarios
+2. **RC4** was designed by Ron Rivest in 1984 and was the recommended choice for
+   communication in SSL/TLS, WEP and WPA
+   - It has been broken and should no longer be used
+
+As an **alternative to stream ciphers**, one can use **block ciphers in CFB, OFB
+or CTR modes** (the current standard for WPA2 is AES-CTR for encryption and the
+last block of AES-CBC as MAC for integrity).
