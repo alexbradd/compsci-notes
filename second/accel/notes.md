@@ -373,3 +373,7 @@ manage it from software, we have different methods called I/O addressing:
 the internal memory of the peripheral to the processor memory**. Processor needs
 to **manage bus contention** when using DMA to avoid bottlenecks.
 
+## Hardware security
+
+See more or less what has been said in the computer security course and in the
+"open challenges in hardware design" class.
