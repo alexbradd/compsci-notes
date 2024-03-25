@@ -1061,7 +1061,7 @@ inverted).
 
      $$
      (\mathbb{f}_{2^8}, \oplus, \odot): i_7 x^7 \oplus i_6 x^6 \oplus \ldots \oplus i_0
-       \mod x^8 \oplus x^4 \oplus x^3 \oplus x \olpus 1
+       \mod x^8 \oplus x^4 \oplus x^3 \oplus x \oplus 1
      $$
 
   2. Compute the inverse $i^{-1}$ over the field
@@ -1239,7 +1239,7 @@ The **algorithm for updating the contents of the leftmost memory cell** (i.e.,
 $s_{L-1}$) gives a **recurrence** relation:
 
 $$
-s_{t+L} = \sum_{i=1}^L c_i \cdot s){t+L-i}, \quad t\geq 0
+s_{t+L} = \sum_{i=1}^L c_i \cdot s_{t+L-i}, \quad t\geq 0
 $$
 
 The **period** of the sequence is the smallest positive integer $N$ such that
@@ -1368,3 +1368,315 @@ not all functions improve the strength of the LFSR.
 As an **alternative to stream ciphers**, one can use **block ciphers in CFB, OFB
 or CTR modes** (the current standard for WPA2 is AES-CTR for encryption and the
 last block of AES-CBC as MAC for integrity).
+
+## Hash functions
+
+Hash functions compute a **fingerprint of a ptx through a non-injective map**.
+The computation of this map **must be efficient, deterministic and practically
+unforgeable**. The **output size is constant**. Hash functions are used to
+provide data integrity.
+
+**Formally** we can define a hash function as follows:
+
+**Definition** (Hash function):
+
+> A keyed hash function is a 4-tuple $(M, D, K, H)$ where:
+>
+> - $M$ is a set of input messages (could be unbounded)
+> - $D$ is a finite set of digests with $|M| \leq |D|$
+> - $K$ is a finite set of keys
+> - $H$ is finite set of hash functions
+>
+> For each key $k$ there is a hash function such that $h_k: M\to D$ in $H$.
+>
+> A pair $(m, d)$ is called valid if, under key $k$, we have $h_k(m) = d$
+
+An **unkeyed hash function is a hash family with a known fixed key**. In the
+following we will refer to unkeyed hash functions as $h(\cdot)$.
+
+Given an unkeyed hash function, the **following 3 problem should be
+(computationally) impossible to solve**:
+
+1. **First pre-image problem**: given $d\in D$, find $m\in M : h(m) = d$
+   - **Guarantees the one-way property**: one cannot reconstruct a valid ptx
+     from a digest
+2. **Second pre-image problem**: given $m_1\in M, d=h(m_1)$, find
+   $m_2 \in M: m_1\neq m_2, h(m_2) = h(m_1) = d$
+   - **Guarantees the weak collision resistance property**: one cannot find a
+     message hashing to the same digest of an already known message
+3. **Collision problem**: find $m_1, m_2 \in M: m_1\neq m_2, h(m_1) = h(m_2)$
+   - **Guarantees the strong collision resistance property**: one cannot find
+     two arbitrary messages with the same digest
+
+**Collision resistance implies second pre-image resistance which in turn implies
+first pre-image resistance**.
+
+As a rule of thumb, we want $|D| \geq 2^{160}$ to avoid a brute-force approach.
+
+A perfect, ideal hash function is also called a random oracle, since it for each
+possible message it return a uniformly drawn random string.
+
+### Black box analysis
+
+Let us **statistically analyze** a generic hash function.
+
+- **First pre-image** problem:
+
+  Trying to find a pre-image for a digest $d$ with random input, we will get the
+  correct one with prob. $\frac{1}{|D|}$. The probability of getting at least
+  one valid pre-image $m_i$ for $d$ with $q$ ($q \ll |D|$) call is:
+
+  $$
+  Pr(m_i: d= h(m_i)) = 1 - (1 - \frac{1}{|D|})^q \approx \frac{q}{|D|}
+  $$
+
+- **Second pre-image** problem:
+
+  Pick $q$ messages at random, like for the first pre-image problem the
+  probability of getting at least one valid pre-image is:
+
+  $$
+  Pr(\forall i: m_i \neq m,  h(m_i) = h(m)) = 1 - (1 - \frac{1}{|D|})^{q-1} \approx \frac{q-1}{|D|}
+  $$
+
+- **Collision** problem:
+
+  The approach to find a collision in a hash function is: pick $q$ messages at
+  random, if two digests for different messages are equal then return the pair.
+  We can write the probability of not finding collisions as:
+
+  $$
+  Pr(\text{no collisions}) = \prod_{i=0}^q (1-\frac{i}{|D|}) \leq
+    \text{... calculus} \leq
+    e^{\frac{q(q-1)}{2|D|}}
+  $$
+
+  We want that the **probability of not finding collisions** to be greater tan
+  random chance. Thus we have:
+
+  $$
+  \begin{aligned}
+    e^{\frac{q(q-1)}{2|D|}} &\geq \frac{1}{2} \\
+    \frac{q(q-1)}{2|D|} &\leq \ln 2 \\
+    \cdots& \\
+    0 < q &\leq 1.1774\sqrt{|D|}
+  \end{aligned}
+  $$
+
+### Design of hash functions
+
+The design of an infinite domain (unlimited message length) hash function is
+done in **two phases**:
+
+1. Designing a **finite domain compression function**
+2. Designing a **scheme to combine the compression function** in order **to act
+   on an infinite message space**
+
+Formally, given a compression function $h: M\to D$, **each message is encoded
+by** $l+t$ bits, while **each digest is encoded by** $l$ bits, thus having
+$h: \{0,1\}^l\times\{0,1\}^t\to\{0,1\}^l$, we want to build a hash function
+$\tilde{h}:\{0,1\}^\star\to\{0,1\}^s$ for some $s$ with a sequence of
+applications of $h$.
+
+The **input message should thus be preprocessed so that the length is a multiple
+of** $t$ **via padding**. Then the **padded input string** $\bar{m}$ is **split
+into substrings of** $t$ bits each. Once we have the input sequence we **feed
+them into the** $h(\cdot, \cdot)$ (**first parameter** is called **inner
+state**, while **second** is the **next message chunk**) as such:
+
+$$
+\begin{aligned}
+  z_0 &\gets IV \\
+  z_i &\gets h(z_{i-1}, \bar{m}_i) \quad 1 \leq i \leq r
+\end{aligned}
+$$
+
+**After the last substring** has been processed, a **further transformation**
+$g: \{0,1\}^l\to\{0,1\}^s$ can be applied **if necessary**.
+
+#### Merkle-Damgård construction
+
+The vast majority of currently used hash functions are based on this
+construction. Famous ciphers that use this construction are:
+
+- MD4: broken
+- MD5: broken
+- SHA-0: broken
+- SHA-1: collisions can be calculated within the bounds of current hardware
+  power ($2^{69} hash calls$)
+- SHA-2: best hashing algorithm with this structure to date
+
+```txt
+        ┌──────────────────────────┬╶╶╶╶╶╶╶╶╶┐
+        │ Original Message         │Padding  ╎
+        ├──────────────────────────┴╶╶╶╶╶╶╶╶╶┤
+        │ n bits    n bits            n bits ╎
+        ├────────┐┌────────┐        ┌────────┤
+        │  m_1   ││  m_2   │╶╶╶╶╶╶╶╶│  m_t   │
+        └────────┘└────────┘        └────────┘
+            │         │                 │
+m bits      ∨         ∨                 ∨       m bits
+┌────┐    ┏━━━┓     ┏━━━┓             ┏━━━┓    ┌──────┐
+│ IV │───>┃ h ┃────>┃ h ┃────╶╶╶╶╶╶──>┃ h ┃───>│Digest│
+└────┘    ┗━━━┛     ┗━━━┛             ┗━━━┛    └──────┘
+```
+
+The **most common attacks** against this structure **rely on appending a chosen
+block to the original message** to obtain a collision.
+
+The **design of compression functions is younger than the one for block
+ciphers**, thus it tries to **reuse some of its key ideas**. The **high level**
+structure is the **same of block ciphers**: employ a **round based structure**
+(rounds are usually many, in the range of 64 to 80) with a **small analyzable
+round primitive**. The **padded message to be hashed is expanded in a larger
+message, known as message schedule**, typically through combining the words via
+linear operations. The **purpose of the round in a hash function is to blend a
+part of the message schedule with the inner state** (in a nontrivial way).
+
+The **collision resistance** is **achieved** through **mixing the message into
+the state so that a random change in the message triggers a bit flip in every
+bit of the digest with probability as close as possible to** 50% (avalanche
+effect). This mixing is usually done through a non linear operation (like
+addition module $2^{32}$).
+
+#### Constructing hash functions from block ciphers
+
+It is possible to **employ a common block cipher in place of the ad-hoc designed
+compression function**. To this end, the message should be padded to be a
+multiple of the length of the cipher block, and split accordingly. The
+**proposed schemes work very similarly to the Merkle-Damgård construction**.
+
+**Davies-Meyer** (DM) scheme:
+
+```txt
+        ┌──────────────────────────┬╶╶╶╶╶╶╶╶╶┐
+        │ Original Message         │Padding  ╎
+        ├──────────────────────────┴╶╶╶╶╶╶╶╶╶┤
+        │ n bits     n bits           n bits ╎
+        ├────────┐ ┌────────┐       ┌────────┤
+        │  m_1   │ │  m_2   │╶╶╶╶╶╶╶│  m_t   │
+        └────────┘ └────────┘       └────────┘
+            │          │                │
+m bits      ▼          ▼                ▼         m bits
+┌────┐    ┏━K━┓      ┏━K━┓            ┏━K━┓      ┌──────┐
+│ IV │─┬─>P E C─XOR─>P E C───╶╶╶╶╶─┬─>P E C─XOR─>│Digest│
+└────┘ │  ┗━━━┛  ^ │ ┗━━━┛         │  ┗━━━┛  ^   └──────┘
+       └─────────┘ └───────╶╶╶     └─────────┘
+```
+
+**Matyas-Maeyer-Oseas** (MMO) scheme:
+
+```txt
+        ┌──────────────────────────┬╶╶╶╶╶╶╶╶╶┐
+        │ Original Message         │Padding  ╎
+        ├──────────────────────────┴╶╶╶╶╶╶╶╶╶┤
+        │ n bits     n bits           n bits ╎
+        ├────────┐ ┌────────┐       ┌────────┤
+        │  m_1   │ │  m_2   │╶╶╶╶╶╶╶│  m_t   │
+        └────────┘ └────────┘       └────────┘
+            │          │                │
+m bits      ∨          ∨                ∨         m bits
+┌────┐    ┏━P━┓      ┏━P━┓            ┏━P━┓      ┌──────┐
+│ IV │─┬─▶K E C─XOR─▶K E C───╶╶╶╶╶╶┬─▶K E C─XOR─>│Digest│
+└────┘ │  ┗━━━┛  ^ │ ┗━━━┛         │  ┗━━━┛  ^   └──────┘
+       └─────────┘ └───────╶╶╶     └─────────┘
+```
+
+**Miyaguchi-Preneel** (MP) scheme:
+
+```txt
+        ┌──────────────────────────┬╶╶╶╶╶╶╶╶╶┐
+        │ Original Message         │Padding  ╎
+        ├──────────────────────────┴╶╶╶╶╶╶╶╶╶┤
+        │ n bits     n bits           n bits ╎
+        ├────────┐ ┌────────┐       ┌────────┤
+        │  m_1   │ │  m_2   │╶╶╶╶╶╶╶│  m_t   │
+        └────────┘ └────────┘       └────────┘
+            │          │                │
+            ├────┐     ├───╶╶╶          ├────┐
+            │    │     │                │    │
+m bits      ∨    │     ∨                ∨    │    m bits
+┌────┐    ┏━P━┓  ∨   ┏━P━┓            ┏━P━┓  ∨   ┌──────┐
+│ IV │─┬─▶K E C─XOR─▶K E C───╶╶╶╶╶╶┬─▶K E C─XOR─>│Digest│
+└────┘ │  ┗━━━┛  ^ │ ┗━━━┛         │  ┗━━━┛  ^   └──────┘
+       └─────────┘ └───────╶╶╶     └─────────┘
+```
+
+### Keyed hashes
+
+We can **incorporate a secret key** into an un-keyed hash function by
+**including the key as part of the message**. If the employed hash function is
+constructed with the Merkle-Damgård structure, **care is needed to choose where
+the key is added**: the key should be added **neither as a prefix nor as a
+suffix** of the message. This attack is called Key-prefix/suffix attack.
+
+Since these attacks work on keyed hashes, they work also on un-keyed hashes
+since they are basically keyed hashes with a known fixed key.
+
+#### Key-prefix attack
+
+**Given** $(m, d)$, with $m$ being a (padded) message and $d = H(k \| m)$ an
+**attacker can provide a valid message-digest pair** $(m', d')$ with a message
+$m'$ of his choice **without knowing the secret key** $k$. Choosing an arbitrary
+message $m'$, the attacker may forge a keyed-digest $d'$ without knowing $k$
+**as follows**:
+
+$$
+d' = h(d \| m') = h(H(k \| m) \| m') \overset{\text{due to MD construction}}{=}
+  H(k \|m \| m')
+$$
+
+Thus $(m', d')$ is another valid message-digest pair.
+
+#### Key-suffix attack
+
+**Given** $(m, d)$, $d = H(m \| k)$, **an attacker can re-use** $d$ **as a
+digest for any message** $m'$ **colliding with the original one**, i.e.:
+$H(m) = H(m')$.
+
+If the **length of the known message** $m$ is a **multiple of** $t$ bits
+($m = m_1 \| \ldots \| m_r$), the **attacker can consider the last block of the
+msg and the** $l$-bit block $y$ derived from the MD construction and can
+**observe that**:
+
+1. $H(m) = h(y, m_r)$ with $y = h(\ldots h(IV, m_1), \ldots, m_{r-1})$
+2. $H(m \| k) = h(h(y, m_r), k)$
+
+If the **attacker obtains a msg** $m'$ **colliding** with $m$
+($H(m') = H(m) = h(y, m_r)$), the **keyed digest of** $m'$ would be
+$H(m' \| k) = h(h(y \| m_r) \| k) = d$, thus $(m', d)$ is **another valid
+message pair**.
+
+When $m$ is **shorter than** $t$ bits, the **above collision attack cannot be
+mounted** because part of the key $k$ would become part of the first $t$-bit
+chunk in input to $h(\cdot, \cdot)$.
+
+### Message Authentication Codes (MACs)
+
+A **keyed hash function is often used as a message authentication code** (MAC).
+A MAC can be **appended to a sequence of plaintext blocks and is used to prove**
+to the receiver that **the given plaintext originated from the rightful sender
+and was not tampered with**.
+
+A **common and widely standardised** way to construct a MAC is **HMAC**
+(keyed-Hash Message Authentication Code). This construction allows to **build a
+MAC from any un-keyed hash function**:
+
+- Take two 512 bit constants, called `ipad` and `opad`
+- Let $T = \mathrm{SHA-2}((k \oplus \mathtt{ipad})\| m)$
+- Thus we have $\mathrm{HMAC}_k(m) = \mathrm{SHA-2}((k\oplus\mathtt{opad})\| T)$
+
+If **design constraints** do not allow to implement a separate compression
+function (e.g., SHA-2) to build a HMAC, a **possibility is to reuse a block
+cipher as "compression" function**. A **first attempt was the CBC-MAC** (use a
+block cipher in CBC mode and keep only the last block as MAC), however **it is
+vulnerable** to insertion attacks:
+
+- If $d$ is a valid mac for $m = m_1 \|\ldots\| m_n$, then $d$ is also a valid
+  MAC for $m = m_1\|\dots\|m_n\|IV\oplus d\oplus m_1\|m_1\|\ldots\|m_n$
+
+To **solve the problem with CBC-MAC it is possible to employ a whitening step**,
+which involves adding with an XOR the key to the whole input message, before
+applying the block cipher encryption. **A proper way to do so has been
+standardized as CMAC**.
+
