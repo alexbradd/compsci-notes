@@ -281,3 +281,95 @@ Processors can be **connected with**:
   - Higher area of occupation, we still have cache coherency problems
 
 **The connection type is orthogonal to the type of communication type**.
+
+**After system partitioning** we got a **set of tasks assigned to system
+components** (processors executing software + hardware components); these
+processes are **communicating through abstract channels**. **Communication
+synthesis has to generate hardware and software which interconnects the system
+components and enables processes to communicate with each other, with peripheral
+devices and other interfaces**. Communication synthesis, as a top-down design
+task, is **performed in three main steps**:
+
+- **Channel binding**
+
+  **Abstract channels have to be implemented using physical communication
+  components**. Resources are allocated, abstract channels are partitioned,
+  grouped and bound to the allocated resources; messages corresponding to
+  channels in one group are multiplexed on a shared communication component.
+
+  The **main criteria** used for channel grouping is to **avoid bus conflicts
+  and reduce the total number of connecting wires**. This **can be done by
+  grouping together components** that don't access the channel concurrently, or
+  grouping together channels that are accessed by the same process. Depending on
+  its features, **a communication unit can support a certain number of channels
+  to be multiplexed on it**, without reducing the communication rate below a
+  required minimum.
+
+- **Communication refinement**
+
+  After channel binding the **interconnection topology of the system is known
+  and it is determined which channels are bound to a given communication
+  support**.
+
+  **Communication** is still quite **abstract** and has to be **refined with
+  several implementation details** (width of the lines imposed by the
+  foundry/technology, control strategy and communication protocol)
+
+- **Interface generation**
+
+  The interfaces needed for a correct functionality of the system can be
+  generated; **both software and hardware components have to be generated**
+  (access routings, controllers, adapters and low-level support for
+  communication related tasks like interrupt control, DMA etc.).
+
+**After communication synthesis, the initial system specification results in a
+specification which can be directly synthesized to a physical implementation**.
+
+### Communication protocols
+
+Like said before, a bus consists of wires connecting two or more processors or
+memories. **Bus protocols are usually described using timing diagrams. Others
+methods can also be used, like HDL descriptions or grammar-based descriptions**.
+
+We have the following two methods for **controlling access to the bus**:
+
+1. **Strobe**: the **master uses one control line**, often called the request
+   line, to **initiate the data transfer**; the **transfer is considered to be
+   complete after some fixed time interval** after the initiation
+2. **Handshake**: **master uses a request line to initiate the transfer**; the
+   **slave uses an acknowledge line** to inform the master when the data is
+   ready
+
+A multiprocessor communicates with other devices through some of its pins. To
+manage it from software, we have different methods called I/O addressing:
+
+- **Port-based I/O** (or parallel I/O): the processor has **one or more**
+  `N`-bit ports and it **read/writes to ports just like registers**
+- **Bus-based I/O**: processor has **address, data and control ports that form a
+  single bus**
+  - **Communication protocol needs to be built into the processor**
+  - A **single processor instruction carries out a protocol read/write** on the
+    bus
+- Parallel I/O peripheral: used when the processor supports bus-based I/O but
+  parallel I/O is needed
+  - Each port on peripheral is connected to a register that is read/written by
+    the processor
+- Extended parallel I/O: used when processor supports port-based I/O but more
+  ports needed
+  - One or more processor ports interface with parallel I/O peripherals
+    extending number of ports
+
+**Communication** with a device which produces data asynchronously is done using
+**two paradigms**:
+
+- **Polling**: repeatedly check whether data is available
+- **Interrupt**: the processor checks for the presence of a particular condition
+  - When an interrupt happens then the ISR is called (ISR is at a fixed
+    location)
+  - Vectored interrupts make it possible to determine the address at which the
+    ISR resides
+
+**DMA is implemented via a single-purpose processor which transfers data between
+the internal memory of the peripheral to the processor memory**. Processor needs
+to **manage bus contention** when using DMA to avoid bottlenecks.
+
