@@ -1361,3 +1361,88 @@ procedures**. In such cases it is **possible to cache the results of recent
 invocations**. **When the procedure is called again with the same arguments, the
 cached result is used instead of recomputing it**.
 
+## Scheduling
+
+**Instruction scheduling** techniques are **required in VLIW machines**, and to
+a lesser extent in superscalars, **to exploit ILP and LLP** (Loop Level
+Parallelism). We need **a way to map instructions over the machine's functional
+units. This mapping must account for time constraint and dependencies among the
+tasks**. Our goal, as usual, is to **minimize the execution time**.
+
+The scheduling problem is **NP-hard**, so we will need to use **heuristics**.
+
+### Basic blocks
+
+**Within a basic blocks**, by definition we **do not have control
+dependencies**. Thus we only need to **deal with data dependencies** and the
+machine's resources. Data dependencies are **usually modeled with a dependency
+graph**, while the **resources** are **modeled with a table** or an
+**automaton**.
+
+Several heuristic algorithms have been proposed to solve the scheduling problem
+within BBs:
+
+- **Instruction schedulers**: for **each cycle**, **issue as many** instructions
+  **as possible** from a **set of ready instructions**
+- **Operation schedulers**: for **each instruction**, **issue it at the most
+  favorable cycle**
+
+**Both** types can schedule instructions with **As-Soon-As-Possible or
+As-Late-As-Possible policies**.
+
+### Beyond basic blocks
+
+**Basic Blocks do not display, on average, a large amount of parallelism**. A
+classic study (by Tjaden and Flynn) shows that the **degree of parallelism
+within Basic Blocks is less than 3 for most applications**. We need to find and
+**exploit other sources** of parallelism, such as **loops**, or to **create
+larger blocks to work on**.
+
+**Barriers** are imposed to scheduling by the control flow:
+
+- **Branch barrier**: an instruction **cannot be moved beyond a branch or join**
+  point
+  - Scheduling techniques: **trace scheduling, superblock scheduling,
+    if-conversion**
+- **Loop barrier**: an instruction **cannot be moved between two iteration of
+  the same loop**
+  - Scheduling techniques: **loop unrolling, modulo scheduling**
+
+#### Trace scheduling
+
+Trace scheduling focuses on **traces, loop-free sequences of basic blocks
+embedded in the control flow graph**. In simpler terms, it is an execution path
+which can be taken for some set of input; **the chances that a trace is actually
+executed depends on the input data**.
+
+Trace scheduling **schedules traces just as basic blocks**, but **in decreasing
+order of execution probability**: most frequent traces are scheduled better.
+
+Trace scheduling **cannot proceed beyond a loop barrier**. To work around this
+we **can use loop unrolling to extend the trace**. Unrolling isn't free, so we
+need not to abuse it.
+
+Trace scheduling is **very intensive and requires a lot of bookkeeping**.
+
+Trace scheduling **works best when we have few very common and isolated traces
+and the rest much less common**. If **two traces have almost the same
+frequency** or have a lot of overlap, the approach **doesn't have much
+advantages**.
+
+#### Superblock scheduling
+
+It is a **variant of trace scheduling**. It creates **more redundant code, but
+removes troublesome join points and has less bookkeeping** while having the same
+effect on primary traces.
+
+It is a **good solution when more than one frequent trace is present**.
+
+#### Modulo scheduling
+
+It is an algorithm that allows us to **schedule instructions beyond the loop
+barrier**. It is based on the **software pipelining principle**:
+
+- Issue an iteration before the previous one ha finished
+- A new iteration is issued every $N$ cycles, and the code is rearranged so that
+  instructions in the same position in cycle $i$ and $i+N$ are compatible
+- Actually, all iterations of the same $\mod N$ share this property
