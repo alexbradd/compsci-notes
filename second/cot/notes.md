@@ -1007,3 +1007,357 @@ This section describes loop transformations that **change the structure of the
 loop, but leave the computations** performed by an iteration and their relative
 order **unchanged**.
 
+##### Loop unrolling
+
+**Unrolling replicates the body of a loop a number of times** $u$, called the
+unrolling factor, and iterates by step $u$ instead of step 1.
+
+It is a **fundamental technique for generating the long instruction sequences
+required by VLIW machines**. It can improve performance by reducing the loop
+overhead, increasing ILP and improving cache/register locality.
+
+Unrolling **can be applied to any loop** and can be done profitably at both the
+high and the low levels. **Some compilers also perform loop re-rolling prior**
+to unrolling because programs often contain loops that were unrolled by hand.
+
+When the it is not known at compile time whether the iteration number will be a
+multiple of $u$, a loop epilogue must be emitted. If $u>2$ the epilogue itself
+is a loop.
+
+Most compilers for high-performance machines will **unroll at least the
+innermost loop of a nesting**. **Outer loop unrolling is not as universal**
+because it yields **replicated instances of the inner loops**. To avoid the
+additional control overhead, the **compiler can often fuse the copies back
+together**. This combination of transformations is sometimes referred to as
+**unroll-and-jam**.
+
+##### Loop quantization
+
+Loop quantization is **another approach to unrolling** that avoids replicated
+inner loops. Rather than creating multiple copies and then subsequently
+eliminating them, quantization **adds additional statements to the innermost
+loop directly**. The iteration ranges are changed, but the structure of the loop
+nest remains the same.
+
+##### Loop coalescing
+
+Coalescing **combines a loop nest into a single loop, with the original indices
+computed from the resulting single induction variable**. It is **always legal**
+since it does not change the iteration order.
+
+##### Loop collapsing
+
+Collapsing is a simpler, more efficient, but less general version of coalescing
+in which the **number of dimensions of the array is actually reduced**.
+Collapsing **eliminates the overhead of multiple nested loops and
+multidimensional array indexing**.
+
+It is best suited to loop nests that iterate over memory with a constant stride.
+
+##### Loop peeling
+
+A **small number of iterations are removed from the beginning or end of the loop
+and executed separately**. If only one iteration is peeled, the code for that
+iteration can be enclosed within a conditional. For a larger number of
+iterations, a separate loop can be introduced.
+
+Peeling has two uses:
+
+1. **Removing dependences** created by the first or last few loop iterations
+   - Enables **parallelization**
+2. **Matching the iteration control of adjacent loops**
+   - Enables **fusion**
+
+Peeling can be **applied to any loop** since it simply breaks a loop into
+sections without changing the iteration order.
+
+##### Loop normalization
+
+Normalization **converts all loops so that the induction variable is initially
+1** (or 0) **and is incremented by 1 on each iteration**. It can expose
+opportunities for fusion and simplify inter-loop dependence analysis.
+
+##### Loop spreading
+
+Spreading takes **two serial loops and moves some of the computation from the
+second to the first so that the bodies of both loops can be executed in
+parallel**.
+
+The number of iterations by which the body of the second loop must be delayed is
+the maximum dependence distance between any statement in the second loop and any
+statement in the first loop, plus 1 (to ensure there are no dependence within an
+iteration).
+
+Spreading is primarily beneficial for exposing instruction-level parallelism.
+
+#### Loop replacement transformations
+
+This section describes loop transformations that operate on whole loops and
+completely alter their structure.
+
+##### Reduction recognition
+
+While a loop with direction vector $(<)$ must normally be executed serially,
+**reductions can be parallelized if the operation performed is associative**.
+**Commutativity provides additional opportunities for reordering**. Maximum
+parallelism is achieved by computing the reduction with a tree: pairs of
+elements are summed, then pairs of these results are summed, and so on. The
+number of serial steps is reduced from $\mathcal{O}(n)$ to
+$\mathcal{O}(\log n)$.
+
+##### Loop idiom recognition
+
+Parallel architectures often provide **specialized hardware that the compiler
+can take advantage of**. Frequently, for example, SIMD machines support
+**reduction directly in the processor interconnection network**. Some parallel
+machine include hardware also for **parallel prefix operations**.
+
+##### Array statement scalarization
+
+When a **loop is expressed in array notation, the compiler can either convert it
+into vector operation or scalarize it into one or more serials loops**. However,
+the conversion is not straightforward because array notation requires that the
+operation be performed as if every value on the right-hand side and every
+sub-expression on the left-hand side were computed before any assignments are
+performed.
+
+#### Memory access transformations
+
+##### Array padding
+
+**Padding is a transformation whereby unused data locations are inserted between
+the columns of an array or between arrays. Padding is used to ameliorate a
+number of memory system conflicts**.
+
+Cached memory systems, especially those that are set-associative, are less
+sensitive to low power-of-two strides. However, large power-of-two strides will
+cause extremely poor performance due to cache set and TLB set conflicts. Set and
+bank conflicts can be caused by a bad stride over a single array, or by a loop
+that accesses multiple arrays that all align to the same set or bank. Thus
+padding can be inserted between columns of an array (intra-array padding), or
+between arrays (inter-array padding). The disadvantages of padding are that it
+increases memory consumption and makes the subscript calculations for operations
+over the whole array more complex.
+
+##### Scalar expansion
+
+Loops often contain variables that are used as temporaries within the loop body.
+Such variables will create an antidependence from one iteration to the next, and
+will have no other loop-carried dependence. **Allocating one temporary for each
+iteration removes the dependence and makes the loop a candidate for
+parallelization**.
+
+Scalar expansion is a **fundamental technique for vectorizing compilers**. An
+alternative for **parallel machines** is to use **private variables**, where
+each processor has its own instance of the variable. **If the compiler
+vectorizes or parallelizes a loop, scalar expansion must be also performed for
+any compiler-generated temporaries in a loop**.
+
+##### Array contraction
+
+If the **iteration variable** of the `p`-th loop in a **loop nest is being used
+to index the** `k`-th dimension of an array `x`, then dimension `k` **may be
+removed** from `x` if:
+
+- Loop `p` is parallel
+- All distance vectors `V` involving `x` have `v_p = 0`
+- `x` is not used subsequently (i.e. it is dead after the loop)
+
+##### Scalar replacement
+
+When a **frequently referenced array element is invariant** within the innermost
+loop, it can be **loaded into a scalar** (presumably a register) before the
+inner loop and, if it is modified, stored after the inner loop.
+
+##### Code co-location
+
+Code co-location **improves memory access behaviour by placing related code in
+close proximity**. An estimate is made of the frequency with which each arc in
+the control flow graph will be traversed during program execution using either
+profiling information or static estimates.
+
+**Procedure inlining can also affect code locality**.
+
+##### Displacement minimization
+
+The target of a branch or a jump is usually specified relative to the current
+value of the program counter (PC). **If control is transferred to a location
+outside of the range of the offset, a multi-instruction sequence or long-format
+instruction is required to perform the jump**. Given the cost of long
+displacement jumps, the **code should be organized to keep related sections
+close together** in memory, in particular those sections executed most
+frequently.
+
+#### Partial evaluation
+
+Partial evaluation refers to the general technique of performing part of a
+computation at compile time.
+
+##### Constant propagation
+
+One of the most important optimizations that a compiler can perform. It
+**substitutes all uses of a variable with constant value with the constant
+itself**.
+
+##### Constant folding
+
+When an expression contains an **operation with constant values as operands**,
+the compiler can **replace the expression with the result**. Typically constants
+are propagated and folded simultaneously.
+
+##### Copy propagation
+
+Optimizations may cause the same value to be copied several times. The compiler
+can **propagate the original name of the value and eliminate redundant copies**.
+
+##### Forward propagation
+
+Forward substitution is a **generalization of copy propagation**. The **use of a
+variable is replaced by its defining expression**, which must be live at that
+point. Substitution can change the dependence relation between variables or
+improve the analysis of subscript expressions in loops.
+
+##### Algebraic simplification
+
+The compiler can **simplify arithmetic expressions** by applying algebraic rules
+to them (e.g. multiply by zero or by one etc...).
+
+##### Strength reduction
+
+Strength reduction **replaces an expensive operator with an equivalent less
+expensive operator**. Some identities for strength reduction below:
+
+|     Expression     |       Reduced        |     Types     |
+| :----------------: | :------------------: | :-----------: |
+|     $x\cdot 2$     |        $x+x$         | integer, real |
+|       $x^2$        |      $x\cdot x$      | integer, real |
+|     $x^{c.5}$      | $x^c \cdot \sqrt{x}$ |     real      |
+|    $i\cdot 2^c$    |       $i\ll c$       |    integer    |
+| $(a, 0) + (b, 0)$  |      $(a+b, 0)$      |    complex    |
+| `len(cat(s1, s2))` | `len(s1) + len(s2)`  |    string     |
+
+##### Superoptimizer
+
+A superoptimizer represents the **extreme** of optimization, **seeking to
+replace a sequence of instructions with the optimal alternative**. It does an
+exhaustive search, beginning with a single instruction. If all single
+instruction sequences fail, two-instruction sequences are searched, and so on.
+
+#### Redundancy elimination
+
+Redundancy-eliminating transformations **remove two kinds of computations**:
+those that are **unreachable** and those that are **useless**. A computation is
+**unreachable** if it is **never executed**; a computation is **useless** if
+**none** of the **outputs of the program are dependent on it**.
+
+Both unreachable and useless code are often created by constant propagation and
+other optimizations. Unreachable-code elimination can in turn allow another
+iteration of constant propagation. When a compiler finds useless or unreachable
+code, it can remove it.
+
+After a series of transformations, particularly loop optimizations, there are
+often variables whose value is never used. The unnecessary variables are called
+dead variables and can be removed.
+
+##### Common sub-expression elimination
+
+In many cases, a **set of computations will contain identical sub-expressions**.
+The compiler can **compute the value of the sub-expression once, store it, and
+reuse** the stored result. However the compiler must take into account the
+current register pressure and the cost of recomputing.
+
+##### Short circuiting
+
+Short circuiting can be performed on **boolean expressions**. The **value** of
+many binary boolean operations can be **determined from the value of the first
+operand**. If any any of the operands in the boolean expression have
+side-effects, short circuiting can change the result of the evaluation.
+
+#### Procedure call transformation
+
+These optimizations attempt to **reduce the overhead of procedure calls** by:
+removing the call; eliminating execution of the called procedure's body;
+eliminating some of entry/exit overhead; avoiding some steps when making a call.
+
+##### Leaf procedure optimization
+
+**A leaf procedure is one that does not call any other procedures**.
+
+The simplest optimization for leaf procedures is **that they do not need to save
+and restore the return address**. Additionally, if the procedure does **not have
+any local variables** allocated to memory, the compiler does **not need to
+create a stack frame**.
+
+##### Cross-call register allocation
+
+Separate compilation reduces the amount of information available to the compiler
+about called procedures. However, when both callee and caller are available, the
+**compiler can take advantage of the register usage of the callee to optimize
+the call**.
+
+If the callee does not need all the caller-save registers, the caller can leave
+values in the unused ones. Additionally, move instructions for parameters can be
+eliminated.
+
+##### Parameter promotion
+
+When a parameter is passed by reference, the address calculation is done by the
+caller, but the load of the parameter is done by the callee. This wastes an
+instruction. More importantly, if the operand is already in a register in the
+caller, it must be spilled to memory and reloaded by the callee.
+
+In general, **when the compiler can statically identify all the callers of a
+leaf procedure, it can expand their stack frames to include enough space for
+both procedures. The leaf procedure simply uses the caller’s stack frame without
+doing any new allocation of its own**.
+
+##### Procedure inlining
+
+Procedure inlining **replaces a procedure call with a copy of the body of the
+called procedure**. It can **almost always be done**, the **exception** being
+when the called procedure is **recursive**. Even then, **recursive** functions
+**may benefit from a finite number of inlined calls**.
+
+When a call is inlined, all the overhead for the invocation is eliminated.
+Another reason for inlining is to improve compiler analysis and optimization. In
+many compilers, a loop containing a procedure call cannot be parallelized
+because its read-write behaviour is unknown. An alternative to inlining is to
+perform interprocedural analysis. However it can be costly and increase the
+complexity of the compiler.
+
+The primary disadvantage of inlining is that it increases code size, in the
+worst case exponentially.
+
+##### Procedure cloning
+
+Procedure cloning is a technique for improving optimization across procedure
+call boundaries. The **call sites of the procedure being cloned are divided into
+groups, and a specialized version of the procedure is created for each group**.
+
+##### Loop pushing
+
+Loop pushing **moves a loop nest from the caller to a cloned version of the
+called procedure**. If a compiler does not perform vectorization or
+parallelization across procedure calls directly, pushing is a less general way
+of achieving a similar effect.
+
+**Pushing not only allows the parallelization of the loop, it also eliminates
+the overhead of all but one of the procedure calls**.
+
+##### Tail recursion elimination
+
+**Tail recursion is a particularly common form of recursion. Its last act is to
+call itself and return the value of the recursive call. The recursion can be
+eliminated**.
+
+Recursive programs can be transformed automatically into tail-recursive version
+that can be executed iteratively, but this is not commonly performed by existing
+compilers for imperative languages.
+
+##### Function memoization
+
+Memoization is an optimization that is **applied to side-effect free
+procedures**. In such cases it is **possible to cache the results of recent
+invocations**. **When the procedure is called again with the same arguments, the
+cached result is used instead of recomputing it**.
+
