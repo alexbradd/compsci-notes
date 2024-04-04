@@ -1446,3 +1446,291 @@ barrier**. It is based on the **software pipelining principle**:
 - A new iteration is issued every $N$ cycles, and the code is rearranged so that
   instructions in the same position in cycle $i$ and $i+N$ are compatible
 - Actually, all iterations of the same $\mod N$ share this property
+
+## LLVM framework
+
+Let us look again at the compile stages:
+
+0. Compiler driver: parses the CLI arguments and exposes an interface to users
+1. Front-end: translate a source file in the intermediate representation
+   - Completely language specific, with no generic special features for parsing
+     and AST generation (slowly changing with MLIR)
+2. Middle-end: analyze intermediate representation, optimize it
+   - Does most of the optimizations
+3. Back-end: generate target machine assembly from the intermediate
+   representation
+   - Usually uses its own machine-specific IR and does some optimizations since
+     only here architecture specifics are known
+
+**LLVM's intermediate representation is LLVM-IR is the language modified by the
+middle-end understood by the LLVM backends**. IR is **modified in pipeline
+stages called passes** (passes may have dependencies between them and the order
+is not fied) **managed and scheduled by a pass manager**.
+
+**Passes are the elementary structure of work** and must:
+
+1. **Not be dependant on pipeline layout**, since it can change between runs due
+   to different optimization levels/options
+2. **Apply transformations only if they do not change the semantic of the
+   program**
+
+**Corner cases are difficult to handle**, thus compiler **algorithms must be
+proved** to preserve semantic. Having a common methodology helps with this:
+**algorithms are built by combining 3 kinds of passes**:
+
+- **Analysis**: analyzes the IR and calculates quantities need for the
+  transformation (e.g. finding candidates for hoisting etc...)
+- **Optimization**: applies the transformation for the IR
+- **Normalization**: transforms the different language constructs into a generic
+  form usable by the analysis stage
+
+The **design stages** for a compiler algorithm is usually as follows:
+
+1. **Analyze** the problem
+2. Make some examples
+3. **Detect the common case**
+4. Declare the **input format**
+5. Declare the **analyses** you need
+6. Design an **optimization** pass
+7. **Prove** its correctness
+8. **Improve the performance on the common case**, leave corner cases alone
+   since it is better to not optimize than to break programs
+   - **Be conservative!**
+9. Improve the effectiveness of the algorithm by applying a **normalization**
+
+### Pass overview
+
+A pass is a **subroutine that programmatically transforms a piece of code**. The
+code of the pass operates on the LLVM-IR **using a set of object-oriented
+APIs**. Passes can be run on-demand using `opt -passes='...'`. Some useful
+passes are:
+
+- Printing the CFG: `opt -passes='view-cfg' input.ll`
+- Printing the dominator tree: `opt -passes='view-dom' input.ll`
+
+> Example: running two passes one after the other:
+> `opt -passes='mem2reg,view-cfg' input.ll`
+
+There are **different kinds of passes**:
+
+- `CallGraphSCCPass`: post-order visit of `CallGraph` SCCs
+- `ModulePass`: visit the whole module
+  - `ImmutablePass`: compiler configuration - never run
+- `FunctionPass`: visit functions
+- `LoopPass`: post-order visit of loop nests
+- `BasicBlockPass`: visit basic blocks
+
+**Each pass kind visits particular elements of a module**. Each specialization
+comes with some **restrictions**, e.g. a `FunctionPass` cannot add or delete
+functions
+
+### The IR
+
+The IR comes in **3 flavours**:
+
+1. **Assembly**: human readable format (`.ll`)
+2. **Bitcode**: binary on-disk machine-oriented format (`.bcc`)
+3. **In-memory**: binary in-memory, used during compilation
+
+To generate LLVM IR:
+
+- Assembly: `clang -emit-llvm -S -o out.ll in.c`
+- Bitcode: `clang -emit-llvm -o out.bc in.c`
+
+The **IR assembly** language is **like a RISC-based assembly language**:
+
+- **Few instructions**, all perfectly orthogonal
+  - **Infinite virtual registers**
+  - No special-purpose registers
+  - No implicit flag register
+- Only `load` and `store` **access memory**
+- **Everything is divided in basic blocks with no implied jumps**
+  - Every BB starts with a label and ends with a branch to the next BB
+
+We have a **few high-level CISC-like instructions**, some are:
+
+- `alloca`: used to **reserve memory** on function stacks
+- `call`: **function call**
+  - Calling convention is abstracted away
+  - There is an implicit call stack
+- `getelementptr`: pointer arithmetics
+
+The **topmost object** of the IR is the **module**. Modules contain **globals**
+(global values, functions or forward declarations). **Functions** contain
+**basic blocks** and **arguments**. **Basic blocks** contain **instructions**.
+All these parts correspond directly to C++ objects.
+
+The language is **strongly typed** with no **implicit casts**. Almost everything
+is typed, e.g. functions statements and registers all have types.** Objects that
+have a type are called LLVM values** and have `llvm::Value` as the base class.
+
+```txt
+                     Value
+                       △
+     ┌─────────────────┼────────────────┐
+     │                 │                │
+  Argument         BasicBlock          User
+                                        △
+                       ┌────────────────┼─────────────────┐
+                       │                │                 │
+                    Constant       Instruction         Operator
+                       △
+     ┌─────────────────┼─────────────────┐
+     │                 │                 │
+ConstantData      ConstantExpr      GlobalValue
+                                         △
+                                ┌────────┴────────┐
+                                │                 │
+                          GlobalObject        GlobalAlias
+                                △
+                        ┌───────┴───────┐
+                        │               │
+                    Function     GlobalVariable
+```
+
+A **variable** can be:
+
+- **Global**: `@var = common global i32 0, align 4`
+- Function **parameter**:
+  - Example of function definition: `define i32 @fact(i32 %n)`
+- **Local**: `%2 = load i32* %1, align 4`
+
+The IR is **SSA-based**: every variable is statically assigned exactly once.
+This means that **there is no explicit register type**. The **$\phi$-function**
+for handling conditional assignment is **implemented by the `phi` instruction**:
+it takes `(var_i, label_i)` pairs and it returns `var_i` if coming from
+`label_i`.
+
+```llvm
+define float @max(float %a, float %b) {
+  %1 = fcmp ogt float %a, %b
+  br i1 %1, label %if.then, label %if.end
+if.then:
+  br label %if.end
+if.else:
+  br label %if.end
+if.end:
+  %2 = phi float [ %a, %if.then ], [ %b, %if.else ]
+  ret float %2
+}
+```
+
+Example non-trivial function:
+
+```llvm
+define i32 @fact(i32 %n) {
+entry :
+  %retval = alloca i32, align 4
+  %n.addr = alloca i32, align 4
+  store i32 %n, i32* %n.addr, align 4
+  %0 = load i32* %n.addr, align 4
+  %cmp = icmp eq i32 %0, 0
+  br i1 %cmp, label %if.then, label %if.end
+
+if.then:
+  store i32 1, i32* %retval
+  br label %return
+
+if.end:
+  %1 = load i32* %n.addr, align 4
+  %2 = load i32* %n.addr, align 4
+  %sub = sub nsw i32 %2, 1
+  %call = call i32 @fact (i32 %sub)
+  %mul = mul nsw i32 %1, %call
+  store i32 %mul, i32* %retval
+  br label %return
+
+return :
+  %3 = load i32* %retval
+  ret i32 %3
+}
+```
+
+### The CFG
+
+Remember how we described the internal structure of an LLVM-IR module:
+
+- `llvm::Module` is a list of `llvm::GlobalValues`
+- `llvm::Function` is a kind of `llvm::GlobalValue`
+- `llvm::Function` is a list of `llvm::BasicBlocks`
+- `llvm::BasicBlock` is a list of `llvm::Instructions`
+
+**Functions and basic blocks act like containers** with STL-like accessors and
+iterators. Each contained element is aware of its container and can access it
+using `getParent()`.
+
+In a `llvm::BasicBlock`, the `llvm::Instructions` execute in the order specified
+by the list. This is not true for basic blocks. The way the basic blocks are
+executed is implicitly described by the branches in each block. These branches
+describe the Control Flow Graph of the function.
+
+#### Basic blocks
+
+LLVM has a simple API for operating on the CFG. **Every CFG has an entry basic
+block**, which is the first executed block and the root of the graph
+(`llvm::Function::getEntryBlock()`). **Starting from that**, we simply **get the
+terminator** (`llvm::BasicBlock::getTerminator()`) and **check the operation
+type** (return, branch, unreachable etc). To do so we need to use LLVM's
+**casting functions**:
+
+- **Static cast** of `Y*` to `X`: `X *llvm::cast<X>(Y *)`
+- **Dynamic cast** of `Y*` to `X`: `X *llvm::dyn_cast<X>(Y *)`
+- Is `Y*` an **instance of** `X`? `bool llvm::isa<X>(Y*)`
+
+> Example: is the Basic block a sink?
+>
+> ```cpp
+> lvm::isa<llvm::ReturnInst>(BB.getTerminator());
+> ```
+
+Every BB has **one or more predecessors** (from `pred_begin(BB)` to
+`pred_end(BB)`) **and successors** (form `succ_begin(BB)` to `succ_end(BB)`).
+
+Some useful methods for BBs:
+
+- `BasicBlock *getUniquePredecessor()`
+- `moveBefore(llvm::BasicBlock *)`
+- `moveAfter(llvm::BasicBlock *)`
+- `splitBasicBlock(llvm::BasicBlock::iterator)`
+
+#### Instructions
+
+The `llvm::Instruction` class **defines common operations**. We can retrieve its
+operands with `getOperand(unsigned)`. Subclasses of `Instruction` provide
+specialized accessors.
+
+New instructions are **created using the class constructor, factory methods or
+the `llvm:IRBuilder<>` class**. **Interface is not homogeneous!** Some
+instructions support all methods, others support only one.
+
+Instructions can be **inserted automatically by** `IRBuilder` (insertion point
+is given at `IRBuilder` instantiation); **manually by appending to a basic
+block** or **by inserting after/before another instruction**.
+
+Every `llvm::Value` is **typed**, retrieved by `llvm::Value::getType()`. Since
+every instruction is a value, all instructions are typed.
+
+#### Data flow
+
+In LLVM, the **data flow generated by the various instructions is represented by
+a simple hierarchy**:
+
+- **Value**: a definition, something that can be used - `llvm::Value`
+  - To visit where a definition is used: `llvm::Value::use_begin()` and
+    `llvm::Value::use_end()`
+- **User**: something that can use, that accesses a definition - `llvm::User`
+  - To visit the definitions that are used: `llvm::User::op_begin()` and
+    `llvm::User::op_end()`
+- **Use**: the link between the value and the user - `llvm::Use`
+
+Since `User` inherits from `Value` but also `Instruction` inherits from `Value`,
+**the value produced by the instruction is the instruction itself**.
+
+> Example:
+>
+> ```llvm
+> %6 = load i32, i32* %1, align 4
+> ```
+>
+> The `load` is described by an instance of `llvm::Instruction`. That instance,
+> however, also represents the `%6` variable.
