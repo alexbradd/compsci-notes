@@ -1734,3 +1734,300 @@ Since `User` inherits from `Value` but also `Instruction` inherits from `Value`,
 >
 > The `load` is described by an instance of `llvm::Instruction`. That instance,
 > however, also represents the `%6` variable.
+
+### Normalization passes
+
+These passes **transform data into a canonical form**, applying some
+transformations in the processes.
+
+#### Variable promotion (`mem2reg`)
+
+In IR representations, some `alloca` are generated. These represent
+stack-allocated local variables. They are generated due to the compiler's
+conservative approach. This makes it difficult to perform further actions due to
+the `load`/`store`.
+
+To limit the number of number of instructions accessing memory, we need to
+**eliminate** `load`/`store` **by promoting some variables from memory to
+registers**. `mem2reg` **eliminates all** `alloca` calls **that are used only
+by** `load`/`store`. It is also available as a utility: `llvm:PromoteMemToReg`.
+**Copy propagation in performed transparently** (by the `replaceAllUsesWith`
+function) by the compiler.
+
+#### Loops
+
+There are different kinds of loops, some are:
+
+- `do-while` loops: condition is at the end
+- `while` loops: condition is at the beginning
+- Irreducible loops: circular paths that do not follow the standard structure of
+  loop header+back-edge.
+  - Not really possible to do unless we get really creative with `goto`
+
+**LLVM considers only "natural loops"**. A natural loop has only **one entry
+node**, called header, and there is a **back-edge that enter the loop header**.
+Under this definition, irreducible loops are not natural loops and thus LLVM's
+loop-detection ignores it.
+
+Recap on loop terminology:
+
+- **Back-edge**: edge entering the loop header
+- **Header**: loop entry node
+- **Body**: nodes that can reach the back-edge source node without passing from
+  the back-edge target node plus the back-edge target. The
+- **Exiting** nodes: nodes with a successor outside the loop
+- **Exit** nodes: nodes with a predecessor inside the loop
+
+#### Loop simplify (`loop-simplify`)
+
+Natural loops are easy to identify but not really analysis/optimization
+friendly. The `loop-simplify` pass **normalizes natural loops by**:
+
+1. **Ensuring the loop header has a single entry edge** (loop pre-header)
+2. **Ensuring the loop has a single back-edge** (latch)
+3. **Ensure exits are dominated by the loop header** (creating a exit block)
+
+This pass actually **makes the output worse, but much more simple for the
+compiler to work with**. It is the best definition of a normalization pass.
+
+#### Loop-closed SSA (`lcssa`)
+
+Keeping **SSA form is expensive with loops: any optimization involving a SSA
+variable defined inside the loop and used outside the loop causes a ripple
+effect, causing an "accidental" quadratic complexity**.
+
+The `lcssa` **inserts** `phi` **instructions at loop boundaries** for variables
+defined inside the loop body and used outside. This guarantees isolation between
+optimizations performed inside and outside the loop.
+
+#### Induction variable reduction (`indvars`)
+
+Some loop variables are special, like counters. A generalization is induction
+variables.
+
+A variable `foo` is a **loop induction variables if its successive values form
+an arithmetic progression of the form**
+`foo = invariant_1 * induction + invariant_2`. `foo` is a **canonical induction
+variable** if it is **always incremented by a constant amount**
+(`foo = foo + invariant`).
+
+> We can see that counters are canonical induction variables since they are of
+> the form `counter = counter + stride`.
+
+Canonical induction variables are used to drive loop execution: given a loop,
+the `indvars` pass tries to find its canonical induction variable, normalizing
+it to be initialized by 0 and incremented by 1 at each iteration.
+
+### Analysis passes
+
+Analysis allows to **derive information and properties of the input** and
+**verify those properties**. Keeping information analysis is expensive, thus
+algorithms updates information incrementally when transformations invalidates
+it.
+
+We will see the following passes:
+
+|        Pass         |        Name        |
+| :-----------------: | :----------------: |
+|   Dominator tree    |     `domtree`      |
+| Post-dominator tree |   `postdomtree`    |
+|  Loop information   |      `loops`       |
+|  Scalar evolution   | `scalar-evolution` |
+|   Alias analysis    |         -          |
+|     Memory SSA      |    `memoryssa`     |
+
+#### Control flow graph
+
+The control flow graph is implicitly maintained by LLVM, we do not run passes to
+build it.
+
+#### Dominator tree (`domtree`) and post-dominator tree (`postdomtree`)
+
+Dominance trees **answer to control-related queries**:
+
+- "Is this BB **executed before** that?" - **Dominator** tree
+  - Used with `llvm::DominatorTree`
+- "Is this BB **executed after** that?" - **Post-dominator** tree
+  - Used with `llvm::PostDominatorTree`
+
+The interface is similar between the two:
+
+- `bool dominates(X*, X*)`
+- `bool properlyDominates(X*, X*)`
+
+With `X` being either `llvm::BasicBlocks` or `llvm::Instructions`.
+
+#### Loop information (`loops`)
+
+Loop information is represented using two classes:
+
+- `llvm::LoopInfo`: result of `llvm::LoopAnalysis` performed on a given function
+- `llvm::Loop`: represents a single loop in a function
+
+Using `llvm::LoopInfo` it is **possible to navigate through top-level loops**
+(`llvm::LoopInfo::begin()`, `llvm::LoopInfo::end()`) or get a loop for a given
+basic block: `llvm::LoopInfo::operator[](llvm::BasicBlock *)`
+
+Loops are **represented in a nesting tree**. We can iterate on children loops
+using `llvm::Loop::begin()` and `llvm::Loop::end()`. The parent loop is
+retrieved by `llvm::Loop::getParentLoop()`.
+
+We can also **query the various loop components**:
+
+- `llvm::Loop:getLoopPreheader()`
+- `llvm::Loop::getHeader()`
+- `llvm::Loop::getLoopLatch()`
+- `llvm::Loop::getLoopExiting(),`
+- `llvm::Loop::getExitingBlocks(...)`
+- `llvm::Loop::getExitBlock()`
+- `llvm::Loop::getExitBlocks(...)`
+
+Or the **basic blocks that make up the loop with** `llvm::Loop::block_begin()`
+and `llvm::Loop::block_end()`, or
+`std::vector<llvm::BasicBlock *> &llvm::Loop::getBlocks()`.
+
+#### Scalar evolution (`scalar-evolution`)
+
+The SCalar EVolution pass **analyzes scalar expressions** inside loops. All
+expressions are **categorized and represented uniformly**, allowing it to handle
+general induction variables. SCEV is also useful outside of loops.
+
+We can run SCEV with `opt` by passing the following flags:
+`-analyze -scalar-evolution`.
+
+Printing an expression analyzed by SCEV we get the following output:
+
+```txt
+{A,B,C}<FLAG>...<%D>
+```
+
+Where:
+
+- `A` is the starting value
+- `B` is the operator
+- `C` is the stride
+- `FLAG` indicates some property that the framework has been able to deduce:
+  - `nuw`: No Unsigned Wraparound
+  - `nsw`: No Signed Wraparound
+- `D` is the loop head BB label
+
+SCEVs are modeled by the `llvm::SCEV` class, with a subclass for each kind of
+SCEV (e.g. `llvm::SCEVAddExpr`). Instantiation is disabled. A **SCEV is a tree
+of SCEVs**: `{(80 + %bar),+,80}` is divided into two nodes `{%1,+,80}` and
+`%1 = 80 + %bar`, which will form another SCEV sub-tree. The **tree leaves can
+be either**:
+
+- **Constant**: `llvm::SCEVConstant`
+- **Unknown** (i.e. not further splittable): `llvm::SCEVUnknown`
+
+The `llvm::ScalarEvolutionAnalysis` pass computes all the SCEVs for a given
+`llvm::Function`. The pass produces an instance of the `llvm::ScalarEvolution`,
+which provides the following services:
+
+- Get the SCEV representing a value: `getSCEV(llvm:Value *)`
+- Get important SCEVs from other structures or SCEVs, examples:
+  - `getBackedgeTakenCount(llvm::Loop *)`
+  - `getPointerBase(llvm::SCEV *)`
+- Create new SCEVs explicitly, examples:
+  - `getConstant(llvm::ConstantInt *)`
+  - `getAddExpr(llvm::SCEV *, llvm::SCEV *)`
+
+#### Alias analysis
+
+Let $X$ be an **instruction accessing a memory location: is there another
+instruction accessing the same location**? **Alias analysis** (AA) tries to
+answer this question the best it can. Alias analysis is **used in a lot of
+memory optimizations, but it is not very accurate and often fails**.
+
+Alias analysis is actually a **chain of multiple analyses**, executed in
+sequence:
+
+- First: Basic alias analysis (`basicaa`)
+- nth: Type-based alias analysis (`tbaa`)
+- Last: Dummy alias analysis (`noaa`)
+
+**Every analysis in the chain fills the gap left by the previous analyses**.
+
+The main interface for AA is `llvm::AAResults`. The basic building block is
+`llvm::MemoryLocation`: it encapsulates a `(addr, size)` tuple and can be
+computed from a `llvm::Value`.
+
+##### Low-level interface
+
+Given **two memory locations** $X$ and $Y$, the analyzer **classifies them as**:
+
+- `llvm::AliasResult::NoAlias`: $X$ and $Y$ are different memory locations
+- `llvm::AliasResult::MustAlias`: $X$ and $Y$ are equal - i.e. they point to the
+  same address
+- `llvm::AliasResult::PartialAlias`: $X$ and $Y$ partially overlap - i.e. they
+  point to different addresses, but the pointed memory areas partially overlap
+- `llvm::AliasResult::MayAlias`: the analyzer is unable to compute aliasing
+  information yet
+
+Queries are performed using `llvm::AAResults::alias(X, Y)`.
+
+A **different categorization** involves whether an **instruction $I$ reads
+and/or modifies a memory location** $X$:
+
+- `llvm::ModRefInfo::NoModRef`: the access neither references nor modifies the
+  value stored in the memory location
+- `llvm::ModRefInfo::Ref`: the access may reference the value stored in the
+  memory location
+- `llvm::ModRefInfo::Mod`: the access may modify the value stored in the memory
+  location
+- `llvm::ModRefInfo::ModRef`: the access may reference and may modify the value
+  stored in the memory location
+
+Queries are performed using `llvm::AAResults::getModRefInfo(I, X)`.
+
+##### Mid-level interface
+
+To **compute all aliases of a single value** $X$ LLVM provides the
+`llvm::AliasSet` class:
+
+1. Instantiate a new `llvm::AliasSetTracker` starting from `llvm::AAResults`
+2. It builds (one or more) `llvm::AliasSet` through a call to
+   `llvm::AliasSetTracker::getAliasSetFor(llvm::MemoryLocation&)`
+
+Once you have the `llvm::AliasSet` you can inspect the list of memory locations
+in it with the standard C++ iterator pattern.
+
+**Alias sets return memory reference and aliasing information just like the
+low-level interface. This information is less precise, as it is derived by
+conservatively aggregating more detailed data!**
+
+- `llvm::AliasSet::isRef()`: true if the memory is accessed in read-mode
+  - e.g. a `load` is inside the set
+- `llvm::AliasSet::isMod()`: true if the memory is accessed in write-mode
+  - e.g. a `store` is inside the set
+- `llvm::AliasSet::isMustAlias()`: all pointers in the set `MustAlias` with each
+  other
+- `llvm::AliasSet::isMayAlias()`: at leas one pair of pointers is not a
+  `MustAlias` pair
+
+#### Memory SSA (`memoryssa`)
+
+The `llvm::MemorySSAAnalysis` pass **wraps alias analysis to answer queries in
+the following form**:
+
+> Let `%foo` be an instruction accessing memory; **which preceding instructions
+> does `%foo` depend on**?
+
+This is done by **representing all memory accesses in a SSA-like form**:
+
+- `store`-like instructions become definitions (`MemoryDef`)
+- `load`-like instructions become uses (`MemoryUse`)
+- `store`s to the same location in parallel CFG branches become `phi`s
+  (`MemoryPhi`)
+
+MemorySSA "instructions" are owned by `llvm::MemorySSA` objects and they are
+overlaid on top of the normal CFG. Queries are done with:
+
+- `AccessList *getBlockAccesses(BasicBlock *)`
+- `DefsList *getBlockDefs(BasicBlock *)`
+
+The basic interface is quite difficult to use, the basics are:
+
+- `llvm::MemorySSAWalker` provides support for the most common queries
+- `MemoryAccess *getClobberingMemoryAccess(...)` returns the nearest dominating
+  memory access that clobbers the same memory location given
