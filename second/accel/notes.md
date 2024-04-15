@@ -377,3 +377,76 @@ to **manage bus contention** when using DMA to avoid bottlenecks.
 
 See more or less what has been said in the computer security course and in the
 "open challenges in hardware design" class.
+
+## HLS
+
+High-Level Synthesis creates an **RTL implementation from C, C++, System C,
+OpenCL kernel code**. **Extracts control and dataflow** from the source code and
+**implements the design based on defaults and user applied directives**. **Many
+implementation are possible from the same source description**, enabling easy
+design-space exploration.
+
+HLS brings the following advantages:
+
+- Productivity:
+  - **Easy to model higher level of complexity**
+  - **Smaller source** in size compared to RTL
+  - Generates RTL faster than the manual method
+- Quality of results:
+  - **Automatic parallelism extraction**
+  - **Multi-cycle functionality**
+  - **Loop optimization**
+  - **Optimization of memory access**
+
+HLS enables us to **do both functional verification**, by feeding the C code
+test inputs and checking the output against a reference, **and cosimulation**,
+by synthesizing the RTL design with the desired constraints/directives and
+checking again the outputs. We then evaluate the implementation and iterate as
+necessary.
+
+### Control and datapath extraction
+
+Control and datapath can be **extracted from C code for each function**. At some
+point in the top-level control flow, control is passed to a sub-function.
+**Sub-functions may be implemented to execute concurrently with the top-level
+one and/or other sub-functions**.
+
+High-level concepts:
+
+- **Functions**: all code is made up of functions which represent the design
+  hierarchy - the **same hierarchy in hardware**
+- **Top Level IO**: the **arguments of the top-level function** determine the
+  hardware RTL interface ports
+- Types: all variables are of a defined type (even custom). The type can
+  influence the area and performance
+- Loops: how these are handled can have a major impact on area and performance
+- Arrays: they can influence the device IO and become performance bottlenecks
+- Operators: operators in C code may require sharing to control area or specific
+  hardware implementations to meet performance
+
+**HLS maps** C code to hardware **through scheduling and binding processes**:
+
+- **Scheduling** determines in **which clock cycle an operation will occur**,
+  taking into account control, dataflow, and directives; the technology and user
+  constraints impact the schedule
+- **Binding** determines **which functional unit is used for each operation**,
+  taking into account component delays and the given directives
+
+### High-level functionality description
+
+Our problem is the following:
+
+- **Input**:
+  - An **intermediate representation**
+  - A set of functional **resources**
+  - A set of **constraints**
+    - Maximum area, maximum latency/minimum throughput
+  - One or more **objectives**
+    - Maximize area, minimize latency/maximum throughput
+- **Output**:
+  - **Hardware description** of the data-path+controller
+    - Datapath: contains the functional/memory/interconnection resources
+    - Controller: a FSM that determines the next action to run
+- **Tasks**:
+  - **Place** operations in **time** (scheduling) and **space** (binding)
+  - Determine **detailed interconnection and control**
