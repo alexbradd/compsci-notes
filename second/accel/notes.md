@@ -450,3 +450,69 @@ Our problem is the following:
 - **Tasks**:
   - **Place** operations in **time** (scheduling) and **space** (binding)
   - Determine **detailed interconnection and control**
+
+**Translation into hardware works analogously to any compilation with a standard
+compiler based on e.g. LLVM**.
+
+Given a functionality, **HLS always generates ports for each of the top-level
+parameters as follows**:
+
+- Parameters **passed by copy** are converted into **input ports** (connected to
+  registers written by the CPU)
+- Parameters **passed by reference** are converted into **memory interfaces**
+  (access to a memory external to the component)
+
+HLS also **adds control ports to manage start/done/reset**.
+
+HLS can also **automatically generate standardized interfaces on top of the
+basic ones** (AXI-lite for parameters or AXI-Master/Stream for memory accesses).
+
+When dealing with **external memories**, the **scheduling** phase must have
+**assumptions on the latency of the operations**:
+
+- **Local data** (PLM or scratchpad) have **fixed-latency** access
+  - Generates **simple interfaces without sync protocols**
+- **Remote data** (cache or off-chip memory) have **variable-latency** access
+  - Necessitates **more complex interface** with protocols to exchange data
+
+### Scheduling and binding
+
+**Scheduling** is the **assignment of operations to time** (control steps),
+possibly **within given limits** on hardware resources and latency. It:
+
+- Uses the **data-dependencies** identified during compilation **to identify
+  parallelism**
+- Exploits **mutual exclusion to avoid conflicts** on resources
+- **Optimizes loops**
+
+Generally it is **one of the first steps** in the HLS engine.
+
+**Binding** is the **assignment of operations to hardware resources**
+(functional units) **such that** there are **no conflicts in using them** and
+the **total number is minimized**. To do so, it:
+
+- **Uses scheduling information** to identify sharing opportunities
+- **Exploits mutual exclusion** (e.g. operation in different BBs are never
+  executed at the same time and can share resources)
+- **Can be defined before scheduling**
+  - Imposes constraints on scheduling
+
+**Resource sharing** is the possibility of using the same functional unit to
+implement two (or more) operations without any conflicts. Sharing opportunities
+**can be defined before or after scheduling**:
+
+1. **Before** scheduling:
+   - **Pre-defined binding**: two operations that share the same resource
+     **cannot be executed in the same clock cycle and must be serialized**
+2. **After** scheduling:
+   - **Binding algorithms on scheduled graph**. Two operations that are not
+     executed in the same clock cycle can share the same functional unit
+
+#### Scheduling
+
+The scheduling steps **takes as input the IR, the clock period and the FU
+latencies, and it produces the start time of each operations such that all
+data-dependencies and resource constraints are satisfied**. Its **primary goal**
+is to **optimize the circuit latency**, the **secondary** objective is to
+**manage the area/latency trade-off**.
+
