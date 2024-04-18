@@ -516,3 +516,208 @@ data-dependencies and resource constraints are satisfied**. Its **primary goal**
 is to **optimize the circuit latency**, the **secondary** objective is to
 **manage the area/latency trade-off**.
 
+Scheduling determines the timing evolution of the circuit, so **it has a direct
+impact on the latency** (or throughput) of the implementation. It has also an
+**indirect effect on area**: operations in the same clock cycle require to be
+assigned to different physical units so the **maximum number of concurrent
+operations of the same type is an upper bound on the required number of hardware
+resources**.
+
+We can **approach** scheduling in 3 different ways:
+
+- **Without constraints**:
+  - Assumptions: **infinite resources**
+  - Uses: calculate a **lower bound on clock cycles**
+- With **resource constraints**:
+  - Schedules operations (possibly serializing them) such that the overall
+    number of used resources is with a given budget
+  - Applications: limit the use of resources
+- With **timing constraint**:
+  - Schedules operations such that the end time of the last ones are within a
+    given time budget
+  - Applications: real-time scheduling
+
+Scheduling is an **NP-hard problem**, so we need some **heuristics** to make the
+problem algorithmically feasible. There are several algorithms, some are:
+
+- As Soon As Possible (**ASAP**) and As Late As Possible (**ALAP**)
+- Borrowing from compilers:
+  - **List-based scheduling**
+  - Force-directed scheduling
+  - Path-based scheduling
+  - Percolation scheduling
+- **Meta-heuristic**: simulated annealing, tabu search etc...
+  - As opposed to simple heuristics, meta-heuristics **explore the design
+    space** and may or may not converge to one/the same solution
+  - They generally provide **better solution**, but require **much more
+    computational resources** than simple heuristic
+
+##### ASAP
+
+Each operation is **scheduled in the first clock cycle in which is available**,
+i.e. when all its predecessors have been scheduled and have completed their
+execution.
+
+- Assumption: **all operations have a bounded delay** (in clock cycles)
+- Imposes **no constraint on resources/area**
+- **Minimizes latency**: provides a lower bound to latency
+
+Algorithm:
+
+1. Initialize the set of ready vertices with the source node
+2. Pick one node from the set of ready vertices and schedule it with the
+   following equation
+
+   $$
+   start_time(w) = \max_{p\in Pred} end_time(op_p)
+   $$
+
+3. Define the end time of the current node
+
+   $$
+    end_time(op_i) = start_time(op_i) + delay(op_i)
+   $$
+
+4. Add all successors of the current node to the set of ready vertices
+5. Repeat from step 2 until the set is empty
+
+##### ALAP
+
+Each operation is **scheduled in last clock cycle where it can be scheduled
+without causing an extra delay**. It is the **dual problem of ASAP**: it solves
+a latency-constrained problem where the latency bound is set to latency computed
+by ASAP algorithm.
+
+- Assumption: **all operations have a bounded delay** (in clock cycles)
+- Imposes **no constraint on resources/area**
+
+Algorithm:
+
+1. Initialize the set of ready vertices with the sink node
+2. Pick one node from the set of ready vertices and schedule it with the
+   following equation
+
+   $$
+    end_time(op_i) = \min_{s\in Succ} start_time(op_p)
+   $$
+
+3. Define the start time of the current node
+
+   $$
+    end_time(op_i) = end_time(op_i) - dealy(op_i)
+   $$
+
+4. Add all predecessors of the current node to the set of ready vertices
+5. Repeat from step 2 until the set is empty
+
+##### Mobility
+
+Mobility is a **metric associated with each operation and is defined as the
+difference between its ALAP and ASAP schedules**.
+
+- **Zero mobility** implies that an **operation can start only at a given time
+  step** without introducing any delay on the overall schedule
+- Mobility **greater than zero measures the slack** on the start time
+
+##### List-based scheduling
+
+**Most common heuristic for constraint-based scheduling**, it is a simple
+**greedy algorithm** (does **not guarantee optimality** but it is **linear** in
+complexity). It can be used both for **minimizing latency given constraints on
+area/resources** (ML-RCS) or **minimizing resources given a bound on latency**
+(MR-LCS).
+
+Algorithm:
+
+1. Construct a priority list based on some metrics (operation mobility, number
+   of successors, etc...)
+2. While not all operations scheduled
+   1. For each available resource, select an operation in the ready list
+      following the descending priority.
+   2. Assign the operation to the current clock cycle
+   3. Update the ready list
+   4. Continue until there are no more ready operations or available resources
+   5. Increment the clock cycle
+
+##### Static vs dynamic mobility
+
+An operation with **high mobility** (and static mobility) is **generally
+postponed** to the next clock cycle. This incurs a **risk of starvation**
+possible solution is to **update the mobility after each iteration** (dynamic
+mobility): we decrease the mobility each time we postpone it.
+
+##### Challenges
+
+All algorithms assumed functional units that complete in one (single-cycle) or
+more cycles (multi-cycle) and that execute at most one operation. However, we
+can have **FUs** that can execute more than one operation (**multi-function**)
+or start another operation before the previous one is completed (**pipelined**).
+
+If two operations are serial and the total execution time is less than the clock
+period, they can be executed one after the other (**chaining**).
+
+Operations may have unbounded latency, e.g. accesses to external memory, and may
+require **synchronization protocols**.
+
+#### Binding
+
+It is defined as the **spatial mapping between operations and resources**. It
+tries to search for sharing opportunities.
+
+It can be **constrained**:
+
+- Resource-dominated circuits
+- Fixed number and type of available resources
+
+This is again an **NP-complete** problem, meaning we need to use **heuristics**.
+
+We take as **input the scheduled graph and well defined concurrency
+information** for operations. We **consider operation types independently**. We
+**perform analysis on operation pairs**:
+
+- **Compatibility**: same type, non-concurrent, etc.
+- **Conflict**: concurrent, different types, etc.
+
+These two are **dual** problems.
+
+##### Compatibility
+
+Let use define the **compatibility graph** $G_+$:
+
+- Vertices represent operations
+- Edges represent compatible operation pairs
+  - Two operations are compatible if they are not concurrent and can be
+    implemented by resources of the same type
+
+The binding problem can be formulated as a **partitioning of the compatibility
+graph**:
+
+> Each partition is a clique (fully connected subgraph) of operations that are
+> all compatible with each other. So, they can share the same resource
+
+The **clique covering** is thus a partitioning of graph $G_+$ into the minimum
+number of cliques, where each clique represents a functional unit.
+
+It is possible to **solve the partitioning** imposing a **minimum number of
+cliques** (more units, less interconnections), **or to assign weights** to edges
+to prioritize some connections.
+
+##### Conflict
+
+We can define the **conflict graph** $G_-$, which is the **complementary of the
+compatibility graph**, as such:
+
+- Vertices represent operations
+- Edges represent operations pairs in conflict
+  - Two operations are in conflict if they are not compatible
+
+The binding problem can be **formulated as a coloring problem** of the conflict
+graph.
+
+> Each node will be assigned to a color and two adjacent nodes cannot have the
+> same color
+
+The **color** will represent the **identifier of the functional unit**.
+
+The goal is to **minimize the overall number of colors** (each node with a
+different color is an admissible but trivial solution).
