@@ -721,3 +721,131 @@ The **color** will represent the **identifier of the functional unit**.
 
 The goal is to **minimize the overall number of colors** (each node with a
 different color is an admissible but trivial solution).
+
+### Microarchitecture creation
+
+After defining the operation scheduling and binding, HLS **proceeds with the
+generation of the RTL microarchitecture** of the following elements:
+
+- **Controller**: a **FSM** where
+  - The states are a collection of operations to be executed in the given clock
+    cycle
+  - The transitions define the evolution over time of the behaviour; can be
+    either:
+    - Inside a basic block, in that case it is a sequential list of states to be
+      executed from the beginning to the end
+    - Among basic blocks, in that case it transitions between the last operation
+      of one basic block to the first operation of the next one
+- **Datapath**: a collection of **hardware resources for computation and
+  storage**, mainly composed of:
+  - Functional units
+  - Registers
+  - Wires and multiplexers to interconnect all resources
+- **Interfaces** with local and/or external memories
+
+#### Memories and memory operations
+
+**C** allows us to easily specify, design, and optimize **accelerators for
+irregular applications** thanks to the massive use of **pointer-based
+operations** (arithmetic, dynamic resolutions, accesses to external memory
+etc...).
+
+**SystemC** allows us to to easily specify, design, and optimize
+**data-intensive accelerators** thanks to the **massive use of arrays with
+predefined size** and **the use of DMA transfers** with main memory to exchange
+data blocks.
+
+##### Pointers
+
+In software, a C program targets a virtual architecture consisting of a single
+(unified) memory in which all data are stored. Pointers are the addresses of
+elements in memory. Even though register declarations may allow programmers to
+specify the variables to be placed in registers, the assignment of variables to
+registers is generally done by the compiler. Moreover, the notions of caches and
+memory pages are transparent to programmers.
+
+In hardware, **designers want to have control on where data are stored and
+optimize data locality**. Typically, a chip design contains multiple memory
+banks, register files, registers, and wires. **To efficiently map C code onto
+hardware, the unified storage space must be partitioned**. During synthesis,
+**each partition is then mapped to a register, a wire, or a memory**.
+
+**Pointers may be used to reference any variable no matter where its information
+is available** (references to memory elements, registers, wires, or ports).
+
+The **hardware synthesis of pointers** includes the following steps:
+
+- **Partitioning** of the memory into locations (or partitions)
+- **Mapping** of the partitions onto hardware resources
+  - To a variable (wire or register)
+  - To an array (akin to memory or register file)
+- **Generation of the proper hardware logic to access the data**
+
+**Virtual addresses must be translated into operations** to the proper hardware
+resources.
+
+A possible architecture is having an **internal memory bus** where the **pointer
+is dynamically resolved**. This creates a **daisy-chain architecture** with
+possibility to access the external memory.
+
+##### Private local memories
+
+PLM are commonly implemented as **specialized multi-bank memories for storing
+part of the data**. The **memory design is transparent to the accelerator
+logic** (a PLM controller manages it). **Each PLM unit can have alternative
+implementations by using block/cyclic partitioning**.
+
+To ensure optimal performance, we must **ensure that arrays are transformed in
+such a way to create independent data structures that can be accessed in
+parallel**:
+
+- Each new substructure is managed as a new array
+- How to distribute the data contained into the original array to guarantee that
+  parallel operations operate on distinct arrays?
+
+It is necessary to **determine the access pattern**, i.e., the distribution of
+the memory operations on the array over time. **When the access pattern is
+irregular or unknown, we need to duplicate the data**.
+
+**HLS** is responsible for the creation of **accelerator logic**. **PLM
+generation is done in a separate process** that considers **memory-related
+parameters, defined data structures and information about access patterns**.
+This process **creates specialized PLMs** that include various **technology
+related optimizations and system-level optimizations**.
+
+Generally, we can use one PLM unit (eventually composed of many banks) for each
+data structure. Ideally, **we want reuse as much as possible the same memory
+IPs**. We say that **two data structures are compatible if they can be allocated
+to the same PLM unit**. A common case is accelerators never executed at the same
+time.
+
+The accelerator(s) **memory subsystem is defined during SoC integration** since
+it allows for **more optimization** possibilities (like inter-accelerator one).
+
+We can specify **two types of compatibility**:
+
+1. **Address compatibility**: the data structures are compatible and can use the
+   same memory IPs
+   - Different partitioning schemes might be used depending on the data
+     structure
+2. **Memory-interface compatibility**: the ports are never accessed at the same
+   time and the data structures can stay in the same memory IP
+
+We can define the **Memory Compatibility Graph** (MCG), a graph that represents
+the possibilities for optimizing data structures. Each **node** represents a
+**data structure to be allocated**, annotated with its data footprint; each
+**edge** represents the **compatibility between the structures** (address or
+memory-interface). **A clique** of this graph represents a **set of data
+structures that can share the same memory IPs**.
+
+**To generate the memory subsystem** we follow this process:
+
+1. **Determine how to partition the MCG**:
+   - **Clique enumeration**: define the list of admissible cliques
+   - **Clique characterization**: for each clique, determine the architecture
+     and memory cost
+   - **Memory cost minimization**: determine the partitions that minimize the
+     total memory cost
+2. **PLM controller generation**: a lightweight PLM controller is created for
+   each compatibility set
+
