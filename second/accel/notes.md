@@ -849,3 +849,155 @@ structures that can share the same memory IPs**.
 2. **PLM controller generation**: a lightweight PLM controller is created for
    each compatibility set
 
+##### Dynamically controlling the banks
+
+A **scenario** is a **given configuration of the accelerator to execute a
+specific problem instance**. **PLM** units must be **sized for the worst-case
+scenario**, but they **may not be entirely used in all scenarios, allowing for
+fine-grained power-savings**.
+
+Each accelerator can **turn off the banks that are not entirely used** in the
+current scenario. **Design-time partitioning** of the banks is done to
+**maximize the ones that are power gated**. **System conditions can also alter
+the execution dynamics**, thus we can also **dynamically control the power
+gating** based on the execution phases with **3 operating modes**: **active,
+idle and deep-sleep**.
+
+Each PLM unit can be extended with power-control logic. Each SRAM bank is
+controlled in a fine-grained way through its output pins (`PGL` and `PGM`). **We
+have 2 controller working in tandem to ensure optimal behaviour**:
+
+- **Scenario Memory Controller** (SMC): identifies the current execution
+  scenario by analyzing the configuration registers (provided by the user with
+  memory- mapped operations)
+  - In each scenario, only the used banks are kept active, while the others are
+    power gated
+- **Operating Mode Controller** (OMC): manages the SRAM operating modes; an FSM
+  handles the transitions
+
+This is called the **DarkMem** architecture.
+
+HLS can **automatically generate DarkMem units** as an extension of the "PLM
+Customization" phase. Additional information about the execution scenario can be
+estimated by the designer.
+
+**Determining the optimal number and type of banks for each PLM unit can be
+formulated as an Integer Linear Programming problem** based on:
+
+- List of scenarios and frequency of execution
+- Data to be stored (bitwidth and number of words) in each scenario
+- List of available memory IPs and corresponding active/gated static power
+  configurations
+
+##### Off-chip memory
+
+**Application data footprint grows more than available on-chip storage**.
+Cache-based memory hierarchies and virtual memory have been able to deal with
+this for CPUs. **Accelerators**, on the other hand, **need fast memory access to
+fetch long data bursts** and **cannot work well with caches since**:
+
+1. **PLMs are too large** to maintain an inclusive directory and avoid recalls
+2. **Long data transfers exploit little locality** and frequently incur eviction
+   penalty
+3. **Address translation with typical page sizes requires extremely large page
+   tables** (equally-sized pages) **or slow translation logic** (scatterlists)
+   with CPU control
+
+To remedy this we:
+
+- **Allocate equally sized large chunks and create a small page table**
+  - **Similar to huge pages**, but with configurable page-size and not allocate
+    at boot
+  - Similar to a scatterlist, but the chunks' length doesn't need to be stored
+    and page lookup only requires bit-selection logic
+  - **Built-in load balancing across DRAM controllers**
+- **Dedicated DMA controller with TLB per tile**
+  - Allows to fetch the entire page table with one DMA transaction
+  - It hides look-up latency during accelerator computation
+  - Breaks long bursts into equally sized DMA transactions to balance link
+    access across accelerators
+
+#### Balancing multiple accelerators
+
+**Balancing communication and computation is crucial for performance
+optimization**. Optimizing microarchitecture reduces the computation latency
+(through a combination of HLS transformations and PLM customization). **The
+input and output phases interact with the rest of the system, since backpressure
+due to congestion may increase latency. We can either reduce it, or exploit it
+to optimize the execution at the system level**.
+
+### Hardware security
+
+Increasing system complexity demands design & reuse approaches. **IP components
+are coming from many vendors and assembled to create the SoC**. Hardware
+security is the **next big issue for hardware design** since the **supply chain
+is getting more and more distributed** to reduce costs, leading to more security
+threats.
+
+Some **common hardware threats** are:
+
+- **Reverse engineering and IP theft**
+- **Hardware trojans**: malicious modifications of an existing chip design to
+  introduce an additional functionality
+- **Data injection**: injection of spurious data to exploit software or
+  hardware/software vulnerabilities
+- **Side-channel**: methods to create additional communication channels to steal
+  sensitive data
+
+**HLS** is used to automatically generate RTL designs starting from a high-level
+specification and thus **can be used to integrate the automatic generation of
+security features** like:
+
+- Fine-grained dynamic information flow tracking (**DIFT**)
+- **Algorithm obfuscation**
+- **IP watermarking**
+
+This also becomes a problem since the **HLS generation becomes itself a possible
+attack vector**.
+
+#### Dynamic Information Flow Tracking
+
+Dynamic Information Flow Tracking (DIFT) **allows marking data coming from
+untrusted sources with tags, such that the hardware can trap to the OS if
+tainted data is used in critical operations**. DIFT can protect from several
+software-based attacks.
+
+Applications interleaves tasks in both hardware and software. **Since our
+accelerator may do its work between when the malicious data is injected and when
+the exploit is enabled, we need to explicitly support fine-grained DIFT in our
+accelerators**. **Otherwise**, if we are acting like black-boxes, we can act in
+**two ways**:
+
+- **Optimistic**: we ensure that the **data** that comes out of our accelerator
+  is **always safe**
+  - This means that **possibly bad data will always become untainted**
+  - We need to guarantee that our logic does not have any bugs
+- **Pessimistic**: we **do not guarantee any safety** of the output of the
+  accelerator
+  - This means that **potentially good data will always become tainted**
+  - If all output data is always tainted, **the system will always halt**
+
+**To implement** fine-grained DIFT we need to:
+
+- **Extend the data-path** with **shadow logic** for handling the **propagation
+  of the taint flag**
+- A **memory architecture** with **taint memories** to store the taint flags of
+  variables
+
+This incurs **almost no performance overhead** with **available optimizations to
+limit the area overhead**. There are **HLS-based methodologies for automatic
+generation** of all the necessary logic.
+
+DIFT is **based** on the notion of **data-flow consistency**, which is the idea
+of **doing the same operations we do to the elements of the datapath to those of
+the taint, for example**:
+
+- Writing to a register causes an update to the taint of the register
+- Writing to a certain memory address causes an update to the taint associated
+  with that address in the taint memory
+- Paths between the various units of the datapath are the same as those between
+  different units of the DIFT logic
+
+The **area overhead** for DIFT is **at most around 30%** with bit-level
+granularity. With less granularity we have less overhead.
+
