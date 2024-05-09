@@ -1001,3 +1001,130 @@ the taint, for example**:
 The **area overhead** for DIFT is **at most around 30%** with bit-level
 granularity. With less granularity we have less overhead.
 
+#### Obfuscation
+
+To **avoid IP theft**, one simple way is to **send to foundries/integrators an
+obfuscated netlist**. The **chip will work correctly only if the corresponding
+key is provided**. This method is **weak if the third party can somehow find out
+some details about our chip**, allowing them to **rule-out bad keys and narrow
+down the search**.
+
+Another way is to **obfuscate at the algorithm-level, such that the obfuscation
+is semantically meaningful** and allow us to better hide the semantics of the
+chip. An algorithm is characterized by different elements that can be protected,
+each protected by a different technique of algorithm-level obfuscation:
+
+1. **Constant obfuscation**: `m`-bit **constants are extracted and encoded
+   using** `m` **working key bits**
+   - Obfuscates: data coefficients, signal extensions and mask values
+   - Doesn't obfuscate: reset values, signal polarity
+   - Less information is made available to the attacker, but we also **lose some
+     potential logic optimizations**
+2. **Control-flow obfuscation**: we **mask control conditions with a XOR with
+   the key bit**
+   - Needs to focus on branches during data computation
+   - **Easy to apply** (a XOR gate has minimal overhead)
+   - **Almost impossible to replicate at gate-level** (branch info is already
+     embedded)
+3. **Operation obfuscation**: the **key controls a mux that chooses between
+   correct/incorrect operations based on the key bit**
+   - **Easy to apply** with **reasonable area overhead** due to additional fake
+     operations plus multiplexer
+   - **Each operation type has a pre-defined set of alternatives** to choose
+     from
+     - Based on statistical frequency of the various operations
+   - **How to select** operation variants is still an **open issue**
+4. **Dependence obfuscation**: `K` key bits are used to **select among** `2^K`
+   **DFG variants**
+   - Basically the key **controls multiplexers that create correct/fake paths**,
+     creating several semantically-different but feasible code variants
+   - It **may affect component latency**
+   - **Significant area overhead** due to many additional operators, connections
+     and multiplexers
+   - It can be **applied only during component generation**
+
+Obfuscation **results are validated by measuring "output corruptibility"**: it
+is defined as the **Hamming distance** between **output values generated with
+correct and incorrect keys**. Some open question are still:
+
+- **How to select which parts to protect** to minimize the overhead?
+- **How to "measure"** the level of obfuscation/security?
+
+#### Watermarking
+
+IP watermarking is the **process of embedding hidden marks inside the chip's
+logic such that copied chips are easily identifiable**. The structure of a
+**Hardware Trojans** can be used for it as:
+
+- It is **stealthy during normal operation**
+- Can be **activated on a rare condition** (the trigger)
+- The **payload is a small and powerful function** intertwined with the
+  functionality
+
+Only one function contains the watermarks but the others must propagate the
+values.
+
+To **generate the watermark**, we **analyze the input call graph**. Our
+**target** are **functions with the largest number of operations or the most
+frequently executed ones**. Then we **modify/remove operations in such a way
+that we have a low probability of accidentally finding the watermark** (low
+probability of coincidence). Since the **HLS tools knows the modified
+operations**, it is **able to generate golden values in order to validate a
+watermarked design**.
+
+Unlike locking, which actively prevents copying, **watermarking can only detect
+if a design has been copied but cannot prevent the copy**.
+
+#### Planned obsolescence
+
+A problem present with the whole hardware design flow, not only HLS, is that it
+is **very difficult to check the non-functional properties** of a
+hardware/software system. This fact can be **abused by manufacturers to sneakily
+degrade IPs after a certain amount of time, pushing consumers to change
+devices**.
+
+#### HLS as the potential attack vector
+
+CAD tools are software, and all software is susceptible to bugs or other
+security threats (black-hat HLS is possible!). This means that **we cannot fully
+trust third party CAD tools with our designs**.
+
+Attacks are usually **implemented as malicious passes inserted in the HLS design
+flow** that alters the design in undesired ways. Some possible attacks are:
+
+1. **Degradation attack**: aims at **degrading the performance of the IP core**
+   after a pre-defined amount of time
+   - Usually done by **adding bubble states in specific points of the FSM**
+   - Can degrade performance of up to 60% with just 16 extra states added to
+     critical FSMs
+2. **Accelerated battery discharging**: since HLS knows which functional units
+   are used in each clock/cycles, we can use this information to **artificially
+   increase the power consumption by turning on unused units or adding extra
+   logic**
+3. **Key recovery with reduced-rounds**: many **cryptographic algorithms**
+   execute multiple "rounds", we can **stealthily reduce the number of rounds to
+   ease key recovery**
+   - Requires **collusion between HLS developer and IP developer**
+
+#### Future work
+
+**Ideally**, we want a **clear metric** to quantify how much a system is secure
+and a **push-button solution to create a complete and secure architecture**
+since hardware security is critical as it isn't possible to "patch" hardware as
+we do with software.
+
+The reality, however, is very different. **Security certification is
+impossible** since we can prevent only attacks that we know, meaning that **it
+is all a cat-and-mouse game between designers and attackers**. We can **never
+completely prevent attacks, thus the goal is then to make the life of attackers
+extremely difficult**, but at which cost and at which level?
+
+**Security must be addressed at ALL levels** with:
+
+- Provably-secure algorithms
+- Robust OSs and protected communication
+- Secure components, architectures, integrations etc...
+
+Separation of concerns is required for scalable solutions, so a complete and
+integrated solution is missing. Being aware of the problems is, however, as
+important as proposing countermeasures.
