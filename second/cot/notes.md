@@ -930,7 +930,7 @@ $V = (v_1, \ldots, v_p, \ldots, v_q, \ldots, v_d)$ in the original nest becomes
 $V' = (v_1, \ldots, v_q, \ldots, v_p, \ldots, v_d)$ in the transformed loop
 nest. If $V'$ is lexicographically positive, then the dependence relationships
 of the original loop are satisfied. Switching the loop bounds is straightforward
-when the iteration space is rectangular. When it’s not, computing the bounds is
+when the iteration space is rectangular. When it's not, computing the bounds is
 more complex. Further techniques are necessary to manage imperfectly nested
 loops.
 
@@ -1308,7 +1308,7 @@ caller, it must be spilled to memory and reloaded by the callee.
 
 In general, **when the compiler can statically identify all the callers of a
 leaf procedure, it can expand their stack frames to include enough space for
-both procedures. The leaf procedure simply uses the caller’s stack frame without
+both procedures. The leaf procedure simply uses the caller's stack frame without
 doing any new allocation of its own**.
 
 ##### Procedure inlining
@@ -2031,3 +2031,292 @@ The basic interface is quite difficult to use, the basics are:
 - `llvm::MemorySSAWalker` provides support for the most common queries
 - `MemoryAccess *getClobberingMemoryAccess(...)` returns the nearest dominating
   memory access that clobbers the same memory location given
+
+## Linker
+
+The linker is the component of the compiler toolchain that links together
+different object files, resolving the various data/function names, producing a
+single executable.
+
+### ELF crash-course
+
+For most UNIX-like platform, object files are in the **ELF format**. It is
+divided into **several sections**:
+
+- `.text`: The actual executable **code**
+- `.data`: Global, **initialized writeable data**
+- `.bss`: Global, **non-initialized writeable data**
+  - **Not stored in the file**, since it is all zeroes
+- `.rodata`: Global **read-only data**
+- `.symtab`: The **symbol table**
+- `.strtab`: **String table** for the **symbol table**
+- `.rela.section`: The **relocation table** for section `.section`
+- `.shstrtab`: **String table** for the **section names**
+
+#### Symbols
+
+A symbol is a **label for a piece of code or data**. Each symbol is **composed
+of**:
+
+- `st_name`: the **name** of the symbol (stored in `.strtab`)
+- `st_shndx`: index of the **containing section**
+  - If `st_shndx` is 0, the symbol is not defined in the current translation
+    units. If the linker can't find it in any TUs it will complain.
+- `st_value`: the symbol's **address/offset in the section**
+- `st_size`: the **size** of the represented object
+- `st_info`: the symbol **type and binding**
+- `st_other`: the symbol **visibility**
+
+If `st_shndx` is `COM` (`0xfff2`), it's a common symbol. **Common symbols** are
+used by **uninitialized global variables** and can have **multiple definitions
+in different translation units (TUs)**. They can also have **different sizes**,
+then the largest will be chosen. Common symbols have **no storage associated and
+usually end up in** `.bss`.
+
+Symbols are of different **types**:
+
+- `STT_OBJECT`: a **global variable**
+- `STT_FUNC`: a **function**
+- `STT_SECTION`: a **section**
+- `STT_FILE`: a **TU**
+
+The **binding** of a symbol determines **if and how it can be used by other
+TUs**:
+
+- `STB_LOCAL`: **local** to the TU (`static` in C terms)
+- `STB_GLOBAL`: **available to other** TUs (`extern` in C terms)
+- `STB_WEAK`: like `STB_GLOBAL`, but **can be overridden**
+
+**Visibility** determines whether it is **available to other modules**, where
+**a module is an external executable or dynamic library**. This means that
+visibility **determines whether a function is exported by the library**,
+executables usually ignore visibility. The different types of visibility are:
+
+- `STV_DEFAULT`: **visible**, can **use an external version**
+- `STV_HIDDEN`: **not visible**, always **use own version**
+- `STV_PROTECTED`: **visible**, but **always use own version**
+
+#### Relocations
+
+Relocations are the most important operations done by the linker. They are
+**directives** where we basically **ask the linker to write the value of a
+certain symbol, in a certain location, in a certain way**. Relocations are
+**organized in relocation tables**, possibly one for section. A relocation is
+**composed of** the following fields:
+
+- `r_offset`: **where** to write (as an offset in the section)
+- `r_info`: **symbol** identifier and **relocation type**
+
+  - **Part** of this fields is **to specify how to write the symbol's value**.
+    There are several arch-specific relocation types like:
+
+    - `R_X86_64_64`: full symbol value (64 bit)
+    - `R_X86_64_PC32`: offset from the relocation target (32 bit)
+
+    Some linkers can also do "back-patching", i.e. optimize possibly not
+    efficient placeholder assembly put in by the compiler.
+
+- `r_addend`: **value to add to the symbol's value** (optional)
+
+#### Linkers more in depth
+
+The linker is not usually invoked directly, the compiler driver does it for us.
+Under UNIX-like platforms, we have 4 main linkers:
+
+- `ld.bfd`: High compatibility (even with ancient formats), the slower of the
+  bunch
+- `ld.gold`: ELF-only, optimized
+- `lld`: LLVM-based and highly optimized, but with limited usage
+- `mold`: the new kid in the block, built for extreme performance and
+  parallelization
+
+As we said before, **conceptually** the job of the linker is to **execute the
+following steps**:
+
+1. Take **in several object files**
+2. **Lay out the output binary**
+3. **Build** the **final symbol table** from the inputs
+4. **Apply** all the **relocations**
+5. **Output** the **final executable/dynamic library**
+
+To **generate the binary layout**, we **fix a starting address for each
+section**, **concatenate** all sections with the **same name**, all while
+**trying to keep similar sections close** to each other.
+
+To **build the symbol table**, we **scan** all input tables and **merge them**
+**setting the symbol values** to their **final virtual addresses**; we **check**
+that all **undefined symbols have been resolved** and that **no symbol is
+defined twice**.
+
+**Finally, relocations** are simply executed as specified.
+
+#### Memory mapping and segments
+
+We said the linker places similar sections together, why? Because **similar
+sections will be mapped together**:
+
+- Code (e.g., `.text`) will go in a executable page
+- Read-only data (e.g., `.rodata`) will go in a read-only page
+- Writeable data (e.g., `.data`) will go in a writeable page
+
+A **segment groups sections requiring similar permissions** and is **defined in
+the program header**. It is composed by:
+
+- `p_offset`: offset in the file **where the segment starts**
+- `p_vaddr`: **virtual address where it should be loaded**
+- `p_filesz`: **size** of the segment **in the file**
+- `p_memsz`: **size** of the segment **in memory**
+- `p_flags`: **permission**: executable, writeable, readable
+
+**Typically** a program has **two segments**: `+rx .rodata, .text, ...` and
+`+rw .data, .bss, ...`. The kernel reads the program headers and maps the
+required pages in memory with the appropriate permissions.
+
+How come we have both `p_memsz` and `pfilesz`? Because they might differ: `.bss`
+is all zeros, so it's not stored in the file. The `p_memsz` portion exceeding
+`p_filesz` is zero-initialized.
+
+### Static linking
+
+Static libraries `.a` are just an **archive of object files** (basically a fancy
+`.zip` generated by `ar`) and are **copied into the final library**. **Not all
+object files will be linked, only those providing undefined symbols**.
+
+```sh
+# Generate an archive
+ar rcs libmine.a example.o other.o
+ranlib libmine.a
+# Link with it
+gcc -lmine main.c -o main.o # libmine must be in the library search path (e.g. /lib)
+```
+
+### Dynamic linking
+
+Dynamic linking is required to support dynamic libraries, which provide the
+following benefits:
+
+- Fixing a bug in a library means multiple applications will benefit
+- We need to load the library once, saving physical memory
+- It does not replicate code, saving disk space
+
+Dynamic-linking is a **lighter version of the linking process that is performed
+at runtime**. It **loads dynamic libraries in memory** and **provides the
+addresses of symbols**. It has some **differences w.r.t static linking**:
+
+- **Used sections**:
+  - `.dynsym`: **Dynamic symbol tables** (instead of `.symtab`)
+  - `.dynstr`: **String table** for `.dynsym` (instead of `.strtab`)
+  - `.rela.dyn`: **Dynamic relocation table** (instead of `.rela.`...)
+- Uses a **different set of relocation types**
+- `r_offset` is **not an offset in a section, but a virtual address**
+
+Dynamic libraries **can be anywhere in the address space**, meaning they **can't
+have absolute addresses at linking time**. Since we want to share read-only
+parts among processes, **we can't patch them at run-time!** This means that
+there are **no dynamic relocations** in `.text` or `.rodata`.
+
+The solution is **compiling libraries as Position Independent Code** (PIC). This
+option **forces the compiler to never use absolute addresses, but only offsets
+from the current** `PC`. In the linked binary, the **program base address is
+0**. Since we always know the relative distance between symbols (even data since
+the distance between `.text` and `.data` is usually fixed) and the current `PC`,
+we can always calculate the addresses!
+
+To create a dynamic library:
+
+```sh
+gcc -fPIC -c libone.c -o libone.o
+gcc -shared -fPIC libone.o -o libone.so
+```
+
+To link against a dynamic library:
+
+```sh
+gcc main.c -lone -o main
+```
+
+Dynamic libraries are **not copied into the final executable**. The `.so` file
+must be available in predefined paths:
+
+- `/usr/lib`, `/lib`...
+- Any path in the `LD_LIBRARY_PATH` environment variable
+
+**Input object files are always linked in, their order doesn't matter**.
+**Static and dynamic libraries' order, however, is important** since there may
+be dependencies between them. Suppose `libone.so` requires `libtwo.so`, the
+`-ltwo` parameter must be passed before `-lone`; or we can use fixed-point
+linking with `--start-group`/`--end-group`.
+
+#### Global Offset Table and Procedure Linkage Table
+
+**What about symbols in another library, how can we access access global
+variables or call function in another module?**
+
+Let's first see how we can access **global variables**. For this purpose, the
+linker will create a **Global Offset Table** (`.got`): It contains a
+**pointer-sized entry for each imported variable, holds their run-time addresses
+and is populated upon startup by the dynamic loader**.
+
+For **functions**, we need another method since a program may use a lot of
+different function, bloating the size of the tables. Thus, **we fix the
+relocation only when needed (lazy loading)**. To implement it, we use **3 new
+sections**:
+
+- `.plt`: **Small code stubs** to call library functions (trampoline)
+- `.got.plt`: **Lazily populated GOT** for library functions addresses
+- `.rela.plt`: **Relocation table** relative to `.got.plt`
+
+For each imported function we have an entry in all of them.
+
+**At startup**, `.got.plt` **doesn't contain function addresses, it contains the
+address of the stub's instructions**. This **stub invokes the dynamic loader**,
+which will **fix the relocation**. From **then** on, `.got.plt` will **contain
+the correct address**. This process is **slow** and can has some security
+repercussions, thus it **can be disabled** by **forcing the dynamic linker to
+resolve all function calls at load time** (by generating the object with the
+`-z now` option).
+
+#### `.dynamic` section and stripping
+
+The dynamic loader **ignores sections as it just knows about program headers**.
+In particular **it uses the** `PT_DYNAMIC` header, which **points to the**
+`.dynamic` section. `.dynamic` **contains all needed information by the loader**
+like needed libraries, address and size of other sections like `.dynsym`,
+`.dynstr`, `.got.plt`, `.rela.plt`.
+
+This means that **the section table is optional**. The **same goes for**
+`.symtab` **and** `.strtab`. **Stripping** is the practice of **removing these
+sections to reduce executable footprint** (achieved with the aptly named `strip`
+program). Usually striped information is kept in only for debugging purposes.
+
+### Advanced linking features
+
+1. **Relaxation**: we briefly mentioned the ability of linkers to **back-patch**
+   the executable to correct conservative compiler decisions.
+2. **Reducing size**: it might happen that unused functions make it to link time
+   as the compiler ignores whether non-`static` functions are unused. The
+   linker, however, has the information to know whether a function is
+   effectively used or not, but it is just dumb: an **ELF section will always be
+   linked in its entirety**. We can, however, **ask the compiler to generate a
+   section for each function/data-object and then the linker to drop unused
+   sections**.
+3. **Link-time optimization**: basically, this means **optimizing code _after_
+   linking instead of before**. This enables **cross TU optimizations** due to
+   the larger scope, **at the price of more resource usage** and a limited of
+   optimizations possible.
+
+   With LTO, the **compiler does not emit a standard object file but a
+   high-level internal representation** (ELF with special sections containing
+   GIMPLE for GCC or bitcode LLVM IR for clang). The **linker needs to be able
+   to understand these representations, merge them and optimize them**.
+
+4. **Security**: some **useful linker options to harden** executables
+   - `-z relro`: An attacker could change the `.dynamic` section for malicious
+     purposes. With `-z relro` enabled, once `.dynamic` has been initialized, it
+     is **marked read-only**.
+   - `-z now`: An attacker could use the lazy loading system to call an
+     arbitrary function. `-z now` **completely disables lazy loading**.
+   - `-pie`: By default executable's position, unlike libraries, is not
+     randomized. An attacker could then reuse code in the executable binary for
+     malicious purposes. `-pie` **compiles the executable as PIC and produces a
+     relocatable program** (similar to a shared library).
