@@ -1128,3 +1128,133 @@ extremely difficult**, but at which cost and at which level?
 Separation of concerns is required for scalable solutions, so a complete and
 integrated solution is missing. Being aware of the problems is, however, as
 important as proposing countermeasures.
+
+## Dependability
+
+Dependability is the **ability of a system to perform its functionality while
+exposing**:
+
+- **Reliability**: continuity of the service
+- **Availability**: to be working properly when the service is required
+- **Maintainability**: capability of a system to be easily repaired/maintained
+- **Safety**: absence of catastrophic failures
+- **Security**: ability to guarantee confidentiality and integrity of data
+
+Dependability is important because **we are not only trying to design a system
+that works correctly** (i.e. it meets functional requirements), **but one that
+also works acceptably** (e.g. doesn't break after 2 hours) and doesn't fail
+since a failure:
+
+- May affect a large number of people
+- May incur high costs if it impacts economic losses or physical damage
+- May damage the reputation of the manufacturer (no one will buy a system that
+  constantly breaks)
+- May cause information loss with high recovery costs
+
+As such, **every system needs to expose dependability**. Moreover, **depending
+on the industry, standards may require it** (ISO 26262 for automotive and
+others).
+
+Dependability **needs to be addressed**:
+
+1. **At every step of the design process**
+   - By analyzing the system under design, measuring the appropriate
+     dependability properties and adapting the design to optimize it
+2. At **runtime**
+   - By **detecting malfunctions, tolerating them and reacting** appropriately
+
+Let us define three important terms:
+
+1. **Fault**: and event within the system
+2. **Error**: a deviation from the required operation of the (sub)system
+3. **Failure**: the system fails to perform its required function
+
+The basic timeline of events goes as follows:
+
+```txt
+        fault      error  detection
+   ╍╍━━━━━╋━━━━━━━━━━╋━━━━╋━╱       ╱╋╍╍╍╍╍━━━━━━━━━━━━━━━━━━━>
+          ┃          ┃    ┃      repair   recovery
+   ───────┨          ╂────╂────────────────╂─────────────>
+fault free          latency     outage       fault free
+```
+
+Note that even if $\mathrm{error}\implies\mathrm{fault}$, the reverse is not
+necessarily true: this means that **the fault-error-failure chain not always
+goes to the end** as faults could not cause errors or errors may be corrected
+and not cause failures.
+
+We have **two paradigms** for **dealing with failures**:
+
+- **Failure avoidance**: it tries to avoid failures at design time as much as
+  possible by:
+  - Using a more **conservative design**
+  - Formally **validating** the design
+  - **Testing** in a very detailed manner both HW and SW
+  - **Screening for "infant mortality"** of the components
+    - There is a time after the production but before the deployment where bad
+      components are more likely to be found (e.g. by stress-testing) that will
+      make your system unreliable ad launch. By screening these components, we
+      can lower our unreliability to acceptable levels, until inevitable wear
+      degrades reliability again. At that time we should recall the system.
+  - Implementing **error avoidance**
+- **Failure tolerance**: tolerate failures when they happen at runtime by:
+  - **Error detection/error masking** mechanisms
+  - On-line **monitoring**
+  - **Diagnostics**
+  - **Self-recovery or self-repair** functionalities
+
+To ensure dependability we can work at **different levels**:
+
+- **Technological/component** level:
+  - Design and manufacturing is done employing reliable and robust components
+- Hardening of the **functional units, register files or memories**:
+  - Redundancy, error detection/correction etc..
+- **Architectural** level:
+  - Integrate normal components in an architecture that allows to manage the
+    occurrence of failures
+  - Some **example architectures**:
+    - **Lock-step dual processor**: two processors execute the same code in a
+      strictly synchronized matter, bus and memories are protected with codes
+      and the interrupt controller is specifically designed with this fault
+      tolerance in mind; if one of the two processors produces a different
+      result, the fault is detected and no output is produced, no tolerance if
+      guaranteed
+    - **Loosely-coupled dual processor**: the two processors run independently
+      and at runtime may be configure to run in lock-step or not
+    - **Watchdog/checker processor**: observes the behaviour of the processor
+      and performs a high-level anomaly detection like: if execution statistics
+      differ from the profiled ones, if the data values or ranges are the
+      expected ones, timeout expirations
+    - **TMR**: lock-step solution with 3 processors, allowing detection and
+      tolerant of single faults
+    - **Dual lock-step**: two lock-step processors (for a total of 4) providing
+      both fault detection and tolerance
+- **Application** level:
+  - Process replication/diversification
+  - Process re-execution
+  - Checkpointing
+  - Instruction-level hardening
+  - Codes (e.g. CRC)
+
+All these approaches have a **clear trade-off**: they **cost more and have
+reduced performance**. We have to pay for dependability. This means that we need
+to **find the best compromise** between dependability and cost **by
+considering**:
+
+- The **application field** of the system
+  - If there is a specific design standard?
+  - Which degree of dependability is actually required?
+  - What is the cost (monetary, lives etc) of a failure?
+- The **working scenario**
+  - Are there special sources of faults (radiation, pressure, temperature etc)?
+  - Which are the nominal working condition
+  - Are there other components connected to the system that may induce faults?
+- **Employed technologies**
+  - Are CPU/memory/interfaces free from the sources of failure, tolerant to
+    them?
+  - Which are the components most susceptible to failures?
+- **Algorithms and applications**
+  - Are the inputs free of inexactness or are they noisy?
+  - Is the algorithms tolerant to faults?
+  - Can the application tolerate downtime?
