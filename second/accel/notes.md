@@ -1258,3 +1258,7 @@ considering**:
   - Are the inputs free of inexactness or are they noisy?
   - Is the algorithms tolerant to faults?
   - Can the application tolerate downtime?
+
+### Advanced dependability for image processing and ML
+
+Didn't have time to take notes soz.
