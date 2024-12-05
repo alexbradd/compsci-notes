@@ -347,8 +347,8 @@ in the instruction**, qualified as used or defined.
 We can **read our CFG as a FSA** where:
 
 - Terminal **alphabet**: instruction **labels** `l`
-- The **language of strings** on `l**` which label a path in the CFG from the
-  initial state to a final state\*\*
+- The **language of strings** on `l` **which label a path in the CFG from the
+  initial state to a final state**
 
 **Not all paths accepted by the CFG automaton are feasible**, e.g. contradictory
 conditionals are ignored. Thus, **answers from static analysis are conservative
@@ -373,7 +373,8 @@ If `p` has two successors, we say that `a` is **live on exit from** `p` if it is
 `a` is **live on entry to node** `p` if it is **live on any of the edges
 entering** the node.
 
-We can **formalize** the property of being **live on exit** as follows:
+We can **formalize** the property of being **live on exit from node `p`** as
+follows:
 
 - Consider the sets `D(a)` and `U(a)` respectively defining the sets defining
   and using `a`
@@ -381,14 +382,14 @@ We can **formalize** the property of being **live on exit** as follows:
   path) of the following form:
 
   ```txt
-  u*vqw
+  upvqw
   ```
 
   Where:
 
   - `u` is a path from the initial node
-  - `v` is an instruction that does not define `a`
-  - `q` are instructions that use `a`
+  - `v` are instructions that do not define `a` (may be empty)
+  - `q` is an instruction such that $a\in\mathit{use}(q)$
   - `w` is a path to the final node
 
   This forms a **regular language**.
@@ -1561,7 +1562,7 @@ The **topmost object** of the IR is the **module**. Modules contain **globals**
 All these parts correspond directly to C++ objects.
 
 The language is **strongly typed** with no **implicit casts**. Almost everything
-is typed, e.g. functions statements and registers all have types.** Objects that
+is typed, e.g. functions statements and registers all have types. **Objects that
 have a type are called LLVM values** and have `llvm::Value` as the base class.
 
 ```txt
@@ -2320,3 +2321,82 @@ program). Usually striped information is kept in only for debugging purposes.
      randomized. An attacker could then reuse code in the executable binary for
      malicious purposes. `-pie` **compiles the executable as PIC and produces a
      relocatable program** (similar to a shared library).
+
+## DWARF debugging standard
+
+To provide all its debugging capabilities, a debugger should not reimplement a
+compiler from scratch, but it should get information from a special data
+structure, since reversing the compilation process is impossible. This
+additional data structure should be:
+
+1. Extensible
+2. Language independent
+3. Compact
+4. Self-contained within the executable or optionally delivered separately
+
+This data structure, used for all UNIX platforms and even embedded ones (Windows
+uses its own proprietary format called CodeView), is called DWARF.
+
+At the highest level, DWARF consists of a tree structure, with each node, called
+Debugging Information Entries, corresponding to an element of the program (the
+general idea is to mimic the compiler's AST). Every DIE has a type (tag) and a
+set of key-value pairs containing the debug information itself. One can examine
+the DIEs using the `dwarfdump` program (we will be using the llvm version).
+
+### Describing data
+
+Programming language symbols will not be the same as the symbols in the
+executable for a variety of reasons:
+
+- Symbol names are meant for the linker, not for the debugger
+- Names might have changed due to some name-mangling
+- `static` globals do not have any symbol
+- Stack allocated variables are not symbolicated since the linker does not care
+  about them
+
+Moreover, the debugger doesn't have knowledge about the format of the data types
+(structs, floating-points, big-endian/little-endian). Therefore DWARF needs to
+describe in detail all data types.
+
+<!-- TODO: data types -->
+
+As opposed to types, variables are represented by three tags: <!-- TODO: -->
+
+Apart from the obvious ones, two more tags are:
+
+- External: encodes whether the symbol is visibile from the outside
+- Location: specifies where the data is located using a DWARF expression
+  - There can be multiple locations since a variable can be spilled and then
+    loaded to different registers
+
+DWARF expressions are composed of sequences of commands in prefix notation and
+are interpreted by a stack-based interpreter. There are also commands for
+branches/function calls meaning we have a mini assembly language. This power,
+however, is seldom used. The most used commands are: <!-- TODO: -->
+
+DWARF section are linked together with the rest of the executable, meaning the
+addresses are subject to linker relocations.
+
+All of these DIEs (along with others) support specifying where each type is
+declared using specific attributes: <!-- TODO: -->
+
+### Describing code
+
+An obvious requirement is mapping each line of source code to assembler
+instructions since we want to insert breakpoints. Less obvious requirements are:
+
+<!-- TODO: -->
+
+Like for data, compilation units, function calls and functions are all stored
+into DIEs.
+
+<!-- TODO: -->
+
+<!-- TODO: Compilation units -->
+<!-- TODO: Functions -->
+<!-- TODO: Lexical blocks -->
+<!-- TODO: Line numbers -->
+
+### Other information
+
+<!-- TODO: -->
